@@ -94,6 +94,9 @@ A **social network of timelines**. Timelines are personal, but they are interest
 Open questions: is the social layer public/followable, or invite-only between friends? Is the
 unit of sharing the whole timeline, or a subset by tag?
 
+## Ideas for functionality
+ - **Automatic generation** Consume content (book, pdf, word doc etc.), produce timeline points based on the content.
+
 ## Open questions
 
 - **Time representation.** Fuzzy, ranged and disputed dates are the norm in history, not the
