@@ -39,13 +39,14 @@ import { gaussianBlur } from './blur';
 import {
   DEFAULT_BETA,
   DEFAULT_LAMBDA_REF,
+  DEFAULT_MASS_EXPONENT,
   DEFAULT_SUPERSAMPLE,
   type DensityOptions,
   type DensityResult,
 } from './shared';
 
 export type { DensityOptions, DensityResult } from './shared';
-export { DEFAULT_BETA, DEFAULT_LAMBDA_REF } from './shared';
+export { DEFAULT_BETA, DEFAULT_LAMBDA_REF, DEFAULT_MASS_EXPONENT } from './shared';
 export { densityAt, computeDensityReference, specDensityAt } from './reference';
 export { normalCdf, normalPdf, psi } from './normal';
 
@@ -197,15 +198,20 @@ export function computeDensity(
 /**
  * Mass height as a fraction of the available space (§3.4).
  *
- * The square root is doing real work: it keeps a lone event visible without
- * letting the Second World War flatten everything else into the baseline. The
- * scale is fixed rather than ranged to the viewport, so a sparse stretch of
- * history honestly looks sparse — which is the property the whole far view
- * exists to show.
+ * The compression is doing real work: it keeps a lone event visible without
+ * letting the Second World War flatten everything else into the baseline. See
+ * `DEFAULT_MASS_EXPONENT` for why it is a cube root rather than the square root
+ * the design first assumed. The scale is fixed rather than ranged to the
+ * viewport, so a sparse stretch of history honestly looks sparse — which is the
+ * property the whole far view exists to show.
  */
-export function heightFraction(lambda: number, lambdaRef: number = DEFAULT_LAMBDA_REF): number {
+export function heightFraction(
+  lambda: number,
+  lambdaRef: number = DEFAULT_LAMBDA_REF,
+  exponent: number = DEFAULT_MASS_EXPONENT,
+): number {
   if (!(lambda > 0) || !(lambdaRef > 0)) return 0;
-  return Math.min(1, Math.sqrt(lambda / lambdaRef));
+  return Math.min(1, Math.pow(lambda / lambdaRef, exponent));
 }
 
 /**

@@ -327,10 +327,12 @@ describe('display scaling', () => {
   it('compresses height so one event stays visible beside a dense war', () => {
     const lone = heightFraction(0.5);
     const war = heightFraction(8);
-    expect(lone).toBeGreaterThan(0.2);
+    expect(lone).toBeGreaterThan(0.3);
     expect(war).toBe(1);
-    // Sixteen times the density is four times the height, not sixteen.
-    expect(heightFraction(8) / heightFraction(0.5)).toBeCloseTo(4, 6);
+    // Sixteen times the density is 16^(1/3) ≈ 2.5 times the height, not sixteen.
+    expect(heightFraction(8) / heightFraction(0.5)).toBeCloseTo(Math.cbrt(16), 6);
+    // Still monotone, so the ordering of periods is never misrepresented.
+    expect(heightFraction(4)).toBeGreaterThan(heightFraction(1));
   });
 
   it('clamps and rejects nonsense', () => {

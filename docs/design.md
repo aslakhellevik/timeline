@@ -253,10 +253,21 @@ budget.
 Define `λ(t) = ρ(t) · Δt_px` — **expected events per pixel column**. This single scalar drives
 everything:
 
-- **Height:** `H · min(1, √(λ / λ_ref))` with `λ_ref` fixed (e.g. 8 events/px = full height).
-  The square root keeps a lone event visible without letting the Second World War flatten the
-  rest of the chart. The scale is *fixed*, not auto-ranged to the viewport, so sparse regions
-  honestly look sparse.
+- **Height:** `H · min(1, (λ / λ_ref)^p)`. Both constants were settled by eye in M1, and both
+  moved from the design's first guess:
+  - `p = 1/3`, not `1/2`. A realistic personal timeline spans roughly 500:1 between the Second
+    World War and the early middle ages. A square root flattens that only to 22:1, which leaves
+    everything before 1000 AD as a sliver along the bottom and most of the canvas empty. A cube
+    root brings it to 8:1 — antiquity shows its structure, the modern peak still plainly
+    dominates, and the ordering stays monotone so no period is ever misrepresented.
+  - `λ_ref` is **calibrated once per corpus** at full extent, not fixed at a constant. One
+    number cannot serve both a timeline of fifty events and one of fifty thousand: whatever
+    keeps a sparse corpus visible clips a dense one flat across its peaks. Calibrating at full
+    extent means the densest period fills the frame when zoomed out, and everything shrinks
+    from there as you zoom in and events-per-pixel fall.
+
+  The scale remains *fixed with respect to the viewport* — it is not re-ranged as you pan or
+  zoom — so sparse regions honestly look sparse, which is the property the far view exists for.
 - **Semantic zoom:** far view while `λ_max > 1`; crossfade over `1 → 0.25`; tick marks below.
   Tying the transition to the same quantity as the height means there is no popping and no
   arbitrary zoom thresholds to tune. Labels appear on a separate, simpler test (available label
@@ -618,7 +629,7 @@ Ordered to put the risky, distinctive work first and the CRUD last.
 | Milestone | Content |
 |---|---|
 | ~~**M0**~~ | ✅ Repo skeleton, TS + Vite. Time library: parser, fuzzy interval, formatting, calendar conversion. Density estimator. Synthetic data generator. Viewport and interaction maths. 314 tests. |
-| **M1** | Canvas renderer against synthetic data: linear axis, pan/zoom, density field, semantic zoom crossfade. No persistence, no UI chrome. **This is the proof-of-concept — if the far view isn't striking, the project needs rethinking before anything else is built.** |
+| ~~**M1**~~ | ✅ Canvas renderer against synthetic data: linear axis, pan/zoom, density field, semantic zoom crossfade, calendar-correct ticks at every scale, selective labels, hover crosshair. The far view works — it reads as a picture of what someone knows, with the gaps legible at a glance. |
 | **M2** | Real store: IndexedDB, quick-add capture, event detail, the list view and search, export/import/backup, URL state, first run. |
 | **M3** | Connections: creation flow, arcs, Markdown note editor. Near-zoom labels. |
 | **M4** | Tags and filters with animated mass redistribution. Eras with lane layout. |
@@ -655,9 +666,10 @@ the right time to make them is after M1 is on screen:
 
 1. **Connection colour encoding.** By dominant tag, by era, or a per-connection colour. Depends
    entirely on what the far view actually looks like with real arc density.
-2. **Kernel constants.** `β` (bandwidth in pixels), `λ_ref` (events/px for full height), and the
-   crossfade window. Set by eye against synthetic data in M1; the forms in §3 are settled, the
-   numbers are not.
+2. ~~**Kernel constants.**~~ Settled in M1: `β = 5 px`, crossfade over λ 1 → 0.25, and the two
+   changes recorded in §3.4 — a cube-root height and a per-corpus `λ_ref`. Worth revisiting once
+   there is a real corpus rather than a synthetic one, since both were tuned against the
+   generator's distribution.
 3. **Mobile default view.** Whether the density view is legible at 390 px or mobile needs a
    different default. Test on a real phone in M5 before deciding.
 4. **Density-equalised axis** (§2.4) — a good idea that may or may not be a good view. It is a

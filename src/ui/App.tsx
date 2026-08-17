@@ -1,20 +1,33 @@
+import { useMemo } from 'react';
+import { generateTimeline } from '../core/testing';
+import { TimelineView } from './TimelineView';
+
 /**
- * M0 shell. The canvas timeline lands in M1 (docs/design.md §9); until then this
- * exists only to prove the stack boots and to hold the layout the renderer will
- * mount into.
+ * M1: the renderer against the synthetic corpus (docs/design.md §9).
+ *
+ * No persistence and no chrome beyond a title — the question this milestone
+ * exists to answer is whether the far view is striking, and everything else
+ * would only get in the way of looking at it.
  */
 export function App() {
+  const timeline = useMemo(() => generateTimeline({ events: 2000, connections: 400 }), []);
+
   return (
-    <div className="flex h-full flex-col">
-      <header className="flex items-baseline gap-3 border-b border-line px-5 py-3">
-        <h1 className="text-lg font-semibold tracking-tight">Årlinje</h1>
-        <p className="text-sm text-paper-dim">a personal historical timeline</p>
+    <div className="flex h-full flex-col bg-ink">
+      <header className="flex items-baseline justify-between gap-4 px-5 py-3">
+        <div className="flex items-baseline gap-3">
+          <h1 className="text-base font-semibold tracking-tight text-paper">Årlinje</h1>
+          <p className="text-xs text-paper-dim">
+            synthetic corpus · {timeline.events.length.toLocaleString('en-GB')} events
+          </p>
+        </div>
+        <p className="text-xs text-paper-dim">
+          scroll to zoom · drag to pan · arrows and +/− when focused
+        </p>
       </header>
 
-      <main className="flex flex-1 items-center justify-center">
-        <p className="text-sm text-paper-dim">
-          M0 — core libraries. The timeline renders in M1.
-        </p>
+      <main className="min-h-0 flex-1">
+        <TimelineView events={timeline.events} />
       </main>
     </div>
   );

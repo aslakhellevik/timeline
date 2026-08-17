@@ -1,12 +1,19 @@
 @import 'tailwindcss';
 
+/*
+ * Chart chrome and ink, dark surface. These are the same roles the canvas
+ * renderer draws with (see DARK_THEME) — kept in step so the page around the
+ * timeline and the timeline itself are one surface, not two.
+ */
 @theme {
-  --color-ink: #0d0f14;
-  --color-ink-soft: #161a22;
-  --color-line: #262c38;
-  --color-paper: #e8e6e1;
-  --color-paper-dim: #9aa0ad;
-  --color-accent: #d8a657;
+  --color-ink: #0d0d0d; /* page plane */
+  --color-surface: #1a1a19; /* chart surface */
+  --color-line: #383835; /* baseline / axis */
+  --color-grid: #2c2c2a; /* gridline hairline */
+  --color-paper: #ffffff; /* primary ink */
+  --color-paper-soft: #c3c2b7; /* secondary ink */
+  --color-paper-dim: #898781; /* muted: axis and labels */
+  --color-accent: #3987e5; /* sequential hue, dark step */
 }
 
 html,

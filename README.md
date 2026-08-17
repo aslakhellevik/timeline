@@ -181,11 +181,11 @@ src/ui/             React
 That boundary is the one architectural rule worth enforcing — see
 [D11](docs/design.md#1-decision-log).
 
-Build order: [docs/design.md §9](docs/design.md#9-build-order). **M0 complete** — the pure core
-is built and tested (314 tests); M1 is the canvas renderer.
+Build order: [docs/design.md §9](docs/design.md#9-build-order). **M0 and M1 complete** — the pure
+core and the canvas renderer, drawing the synthetic corpus. M2 is real storage and capture.
 
 ```
-npm run dev        # not much to see yet — M1 is the timeline itself
-npm test
+npm run dev        # the timeline, against a generated corpus
+npm test           # 323 tests
 npm run typecheck
 ```
