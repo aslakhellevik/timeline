@@ -1,7 +1,9 @@
-# Timeline
+# Årlinje
 
 A personal historical timeline: the events *you* have encountered — in books, conversations,
 news, lectures — placed on a shared axis of time, and connected to each other.
+
+*Årlinje* — year-line. The package and any ASCII-only contexts use `arlinje`.
 
 Most timelines are canonical and impersonal: someone else decided what belongs on them. This
 one is a record of an individual's accumulated historical knowledge. It grows as you read and
@@ -9,8 +11,11 @@ talk to people, and its shape says something about what you know and how you con
 
 ## Status
 
-Early idea stage. This repo currently holds the concept only — no implementation decisions
-made yet.
+Design stage. The concept below is settled; the technical decisions that follow from it live in
+[docs/design.md](docs/design.md). No code yet.
+
+**v1 scope:** single user, local-first, no accounts, no server. Events, connections, tags, eras,
+the density timeline. Everything else is deliberately deferred — see [Deferred](#deferred).
 
 ## Core concepts
 
@@ -23,6 +28,11 @@ tags.
 Events are entered by the user as they encounter them. The act of adding an event is the act
 of saying "I now know this happened."
 
+Which means an event carries two times: **when it happened**, and **when you learned it** — the
+latter alongside *where you learned it from*. Both are free to record now and impossible to
+reconstruct later, and they make the timeline replayable against your own life: not just what
+you know, but when each piece of it arrived and what brought it.
+
 ### Connections
 
 Two events can be connected. A connection is **an object in its own right**, not just an edge:
@@ -32,13 +42,15 @@ together. Some connections are causal, some thematic, some ironic, some purely p
 This is the part we think is actually novel. The interesting content of a personal timeline is
 not the events but the reasoning between them.
 
+Connections are free-form in v1 — no taxonomy, just a note. They are stored as an ordered pair
+so a later `caused` / `influenced` vocabulary can be directional without a migration.
+
 ### Tags
 
 Arbitrary user-defined tags, plus a set of premade ones:
 
 - **Continents / regions** — used for geographic display
 - **History of ideas** — philosophy, art, science
-- **AI-suggested tags** — proposed on event creation, accepted or rejected by the user
 
 Tags drive filtering and display: view the timeline as art history only, or as Asia only.
 
@@ -76,44 +88,104 @@ most visually striking thing on screen.
 **Tag-based display.** Filtering by tag changes what contributes mass, so switching from "all"
 to "history of ideas" visibly redistributes the weight of the timeline.
 
+Mass is a kernel density estimate whose bandwidth is measured in *pixels*, not years — so
+zooming in genuinely resolves clumps into structure instead of stretching the same curve, and
+uncertain events stay smeared while precise ones sharpen. The maths is in
+[docs/design.md](docs/design.md#3-mass-d3).
+
+## Starting from empty
+
+A new timeline is empty — that is the point. Canonical content is available as opt-in **packs**
+(the Second World War, the Cold War, …) which can be installed and uninstalled cleanly.
+
+Pack events are drawn desaturated and can be excluded from mass, because if canonical events are
+pre-loaded the density plot stops meaning "what I know". Editing or connecting a pack event
+adopts it as your own.
+
+## Deferred
+
+Not in v1. The data model is built so that none of these need a migration.
+
+### Social layer
+
+A **social network of timelines**. Timelines are personal, but they are interesting to compare:
+see a friend's timeline; see the union or intersection of yours and theirs; see which events
+they have that you don't; inherit or fork someone's connection with its explanation.
+
+Forking a connection is the most interesting of these, and it is cheap: copy with attribution.
+The design keeps records merge-ready (stable IDs, timestamps, soft deletes) without building any
+sync now. Open: public/followable or invite-only, and whether the unit of sharing is the whole
+timeline or a subset by tag.
+
+**Event identity** is settled for now by avoidance: all events are personal, there is no
+canonical registry. If two people both add "the fall of Constantinople", those are two events.
+Deduplication, if it ever matters, is a matching problem on top — not a schema problem.
+
 ### Spatial view
 
 Events also want to be shown in space, not only time: a world map with dots, driven by the
-geographic tag or an explicit location. Ideally coupled to the timeline — scrub through time
-and watch the map fill in.
+geographic tag or an explicit location. Ideally coupled to the timeline — scrub through time and
+watch the map fill in. Location is already in the schema. The hard part is not the map; it is
+that borders and place names move.
 
-## Social layer
+### AI
 
-A **social network of timelines**. Timelines are personal, but they are interesting to compare:
+- **AI-suggested tags** — proposed on event creation, accepted or rejected by the user. *(TODO)*
+- **Automatic generation** — consume content (book, PDF, Word doc), produce timeline points from
+  it. *(TODO)*
 
-- see a friend's timeline
-- see the union or intersection of yours and theirs
-- see which events they have that you don't
-- inherit or fork someone's connection with its explanation
+Both are why every record carries provenance from day one: manual, pack, import, or extracted.
 
-Open questions: is the social layer public/followable, or invite-only between friends? Is the
-unit of sharing the whole timeline, or a subset by tag?
+They also both break the privacy baseline — they mean sending your notes and reading history to
+someone else's API. That may be worth doing, but it is a decision to make deliberately against a
+stated default, not one to arrive at by accident inside a feature. See
+[docs/design.md §8.7](docs/design.md#87-privacy-d25).
 
-## Ideas for functionality
- - **Automatic generation** Consume content (book, pdf, word doc etc.), produce timeline points based on the content.
+## Decisions
 
-## Open questions
+Answered, with rationale in [docs/design.md](docs/design.md):
 
-- **Time representation.** Fuzzy, ranged and disputed dates are the norm in history, not the
-  exception. This has to be designed properly up front — it constrains everything else.
-- **Mass rendering.** What exactly is "mass" mathematically? A kernel density estimate over
-  events, with bandwidth tied to zoom level, is the obvious starting point.
-- **Event identity.** If two users both add "the fall of Constantinople", is that one canonical
-  event or two personal ones? Affects the whole social layer and any deduplication.
-- **Canonical seed data.** Do we ship a base set of events, or is an empty timeline the point?
-- **Connection types.** Free-form only, or a light taxonomy (caused / influenced / echoes /
-  contemporaneous / personal)?
-- **Platform.** Web, desktop, mobile. The zoom interaction is the hard part and drives this
-  choice.
-- **Local-first vs. server.** A personal knowledge store argues for local-first; the social
-  layer argues for a server.
+| Question | Decision |
+|---|---|
+| Time representation | One shape — a four-number fuzzy interval — with three input modes: instant (default), interval, fuzzy. Numeric axis is fractional days, proleptic Gregorian, float64 |
+| Mass rendering | Kernel density estimate, screen-space bandwidth, closed-form per event |
+| Event identity | All events personal; no canonical registry |
+| Seed data | Empty by default; canonical content as opt-in packs |
+| Connection types | Free-form only, stored as an ordered pair |
+| Platform | Web app: Vite + TypeScript + React + Tailwind, PWA, installable, desktop and mobile |
+| Local-first vs. server | Local-first; in-memory state, IndexedDB, versioned JSON export |
+| Data durability | Three layers: persisted storage, automatic file backup, manual export — all in v1 |
+| Views | Canvas and a searchable, keyboard-navigable list, over one shared filter |
+| Privacy | No telemetry, no analytics, no network traffic beyond loading the app |
+| Spatial view | v2; location stays in the schema from the start |
+| Licence / language | MIT; UK English |
+
+Nothing blocks implementation. What is deliberately left until there is something on screen:
+[docs/design.md §10](docs/design.md#10-deliberately-left-open).
 
 ## Repo layout
 
-Nothing here yet beyond this document. Structure will follow the first implementation
-decisions.
+```
+docs/design.md      technical design and decision log
+src/core/           pure, framework-free, fully tested
+  model/            entities, ids, the built-in tag set
+  time/             calendar, fuzzy intervals, parsing, formatting
+  density/          the kernel density estimator
+  testing/          seeded synthetic timeline generator
+src/render/         canvas renderer — no framework imports (D11)   [M1]
+src/store/          IndexedDB, export/import, backup               [M2]
+src/ui/             React
+```
+
+`src/core` never imports from `src/ui` or `src/render`, and `src/render` never imports React.
+That boundary is the one architectural rule worth enforcing — see
+[D11](docs/design.md#1-decision-log).
+
+Build order: [docs/design.md §9](docs/design.md#9-build-order). **M0 complete** — the pure core
+is built and tested (314 tests); M1 is the canvas renderer.
+
+```
+npm run dev        # not much to see yet — M1 is the timeline itself
+npm test
+npm run typecheck
+```
