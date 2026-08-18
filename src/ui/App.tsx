@@ -1,34 +1,188 @@
-import { useMemo } from 'react';
-import { generateTimeline } from '../core/testing';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import { applyFilter } from '../core/filter';
+import { backupStatus, createIndexedDbStore } from '../store';
+import type { BackupStatus } from '../store';
+import { useTimeline } from '../state/timeline-store';
+import { DataPanel } from './DataPanel';
+import { EventDetail } from './EventDetail';
+import { EventList } from './EventList';
+import { FirstRun } from './FirstRun';
+import { QuickAdd } from './QuickAdd';
 import { TimelineView } from './TimelineView';
+import { decodeUrlState, encodeUrlState } from './url-state';
+import type { UrlState } from './url-state';
 
-/**
- * M1: the renderer against the synthetic corpus (docs/design.md §9).
- *
- * No persistence and no chrome beyond a title — the question this milestone
- * exists to answer is whether the far view is striking, and everything else
- * would only get in the way of looking at it.
- */
 export function App() {
-  const timeline = useMemo(() => generateTimeline({ events: 2000, connections: 400 }), []);
+  const status = useTimeline((state) => state.status);
+  const isFirstRun = useTimeline((state) => state.isFirstRun);
+  const timeline = useTimeline((state) => state.timeline);
+  const filter = useTimeline((state) => state.filter);
+  const selectedId = useTimeline((state) => state.selectedId);
+  const select = useTimeline((state) => state.select);
+  const setFilter = useTimeline((state) => state.setFilter);
+  const undo = useTimeline((state) => state.undo);
+  const undoDepth = useTimeline((state) => state.undoStack.length);
+  const attach = useTimeline((state) => state.attach);
+  const flush = useTimeline((state) => state.flush);
+  const error = useTimeline((state) => state.error);
+
+  const initial = useMemo(() => decodeUrlState(window.location.hash), []);
+  const [view, setView] = useState<'timeline' | 'list'>(initial.view ?? 'timeline');
+  const viewportRef = useRef<{ centre: number; span: number } | null>(null);
+  const [dataOpen, setDataOpen] = useState(false);
+  const [backup, setBackup] = useState<BackupStatus | null>(null);
+
+  // Open the database and load whatever is there.
+  useEffect(() => {
+    let store: Awaited<ReturnType<typeof createIndexedDbStore>> | null = null;
+    void createIndexedDbStore().then((opened) => {
+      store = opened;
+      return attach(opened);
+    });
+    return () => store?.close();
+  }, [attach]);
+
+  // Restore the filter from the URL once the tags are known.
+  useEffect(() => {
+    if (initial.tags && initial.tags.length > 0) {
+      setFilter({ tags: initial.tags, includePacks: filter.includePacks });
+    }
+    if (initial.selectedId) select(initial.selectedId);
+    // Deliberately runs once, on mount: this restores a bookmark, it does not
+    // track later changes — those flow the other way, into the URL.
+  }, [initial, select, setFilter, filter.includePacks]);
+
+  // Anything still queued must reach disk before the tab goes away.
+  useEffect(() => {
+    const onHide = () => void flush();
+    window.addEventListener('pagehide', onHide);
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      window.removeEventListener('pagehide', onHide);
+      document.removeEventListener('visibilitychange', onHide);
+    };
+  }, [flush]);
+
+  // Mirror state into the hash. `replaceState`, not `pushState` — panning should
+  // not fill the back button with hundreds of entries.
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      const state: UrlState = {
+        ...(viewportRef.current ?? {}),
+        ...(selectedId ? { selectedId } : {}),
+        ...(filter.tags.length > 0 ? { tags: [...filter.tags] } : {}),
+        view,
+      };
+      history.replaceState(null, '', `${window.location.pathname}${encodeUrlState(state)}`);
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [selectedId, filter.tags, view]);
+
+  const onViewportChange = useCallback((viewport: { centre: number; span: number }) => {
+    viewportRef.current = viewport;
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'z') {
+        event.preventDefault();
+        undo();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [undo]);
+
+  // The "last backed up N days ago" indicator (§8.3, layer 3). Re-checked when
+  // the panel closes, since that is when it is most likely to have changed.
+  useEffect(() => {
+    if (status !== 'ready') return;
+    void backupStatus().then(setBackup);
+  }, [status, dataOpen]);
+
+  const visible = useMemo(() => applyFilter(timeline, filter), [timeline, filter]);
+
+  if (status === 'loading') {
+    return <Centred>opening your timeline…</Centred>;
+  }
+  if (status === 'error') {
+    return <Centred>could not open the database{error ? ` — ${error}` : ''}</Centred>;
+  }
 
   return (
     <div className="flex h-full flex-col bg-ink">
-      <header className="flex items-baseline justify-between gap-4 px-5 py-3">
-        <div className="flex items-baseline gap-3">
-          <h1 className="text-base font-semibold tracking-tight text-paper">Årlinje</h1>
-          <p className="text-xs text-paper-dim">
-            synthetic corpus · {timeline.events.length.toLocaleString('en-GB')} events
-          </p>
-        </div>
-        <p className="text-xs text-paper-dim">
-          scroll to zoom · drag to pan · arrows and +/− when focused
-        </p>
+      <header className="flex items-center gap-4 border-b border-line px-4 py-2">
+        <h1 className="shrink-0 text-base font-semibold tracking-tight text-paper">Årlinje</h1>
+        <QuickAdd />
+        <nav className="flex shrink-0 gap-1" aria-label="View">
+          {(['timeline', 'list'] as const).map((option) => (
+            <button
+              key={option}
+              onClick={() => setView(option)}
+              aria-pressed={view === option}
+              className={`rounded px-2 py-1 text-xs ${
+                view === option ? 'bg-line text-paper' : 'text-paper-dim hover:text-paper'
+              }`}
+            >
+              {option}
+            </button>
+          ))}
+        </nav>
       </header>
 
-      <main className="min-h-0 flex-1">
-        <TimelineView events={timeline.events} />
-      </main>
+      {isFirstRun ? (
+        <FirstRun />
+      ) : (
+        <div className="flex min-h-0 flex-1">
+          <main className="min-w-0 flex-1">
+            {view === 'timeline' ? (
+              <TimelineView
+                events={visible.events}
+                {...(initial.centre !== undefined && initial.span !== undefined
+                  ? { initialViewport: { centre: initial.centre, span: initial.span } }
+                  : {})}
+                onViewportChange={onViewportChange}
+              />
+            ) : (
+              <EventList />
+            )}
+          </main>
+          {selectedId && <EventDetail />}
+        </div>
+      )}
+
+      <footer className="flex items-center gap-4 border-t border-line px-4 py-1.5 text-xs text-paper-dim">
+        <span className="tabular-nums">
+          {visible.events.length.toLocaleString('en-GB')} events
+        </span>
+        {undoDepth > 0 && (
+          <button onClick={undo} className="hover:text-paper">
+            undo
+          </button>
+        )}
+        <button
+          onClick={() => setDataOpen(true)}
+          className={backup?.stale ? 'text-[#c98500] hover:underline' : 'hover:text-paper'}
+        >
+          {backup
+            ? backup.daysSinceBackup === null
+              ? 'never backed up'
+              : `backed up ${backup.daysSinceBackup === 0 ? 'today' : `${backup.daysSinceBackup}d ago`}`
+            : 'your data'}
+        </button>
+        {error && <span className="text-[#e66767]">{error}</span>}
+      </footer>
+
+      {dataOpen && <DataPanel onClose={() => setDataOpen(false)} />}
+    </div>
+  );
+}
+
+function Centred({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex h-full items-center justify-center bg-ink text-sm text-paper-dim">
+      {children}
     </div>
   );
 }

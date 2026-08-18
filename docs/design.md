@@ -482,8 +482,15 @@ Virtualised rows, so 50k events costs nothing.
 ### 6.3 Search
 
 Over the in-memory store: substring across `title`, `notes`, `learned_from` and tag names, plus
-fuzzy matching on `title`. At 50k records this is a linear scan per keystroke and still
-imperceptible — no index, no worker, until measurement says otherwise.
+fuzzy matching on `title`. A linear scan per keystroke — no index, no worker.
+
+**Measured**, since the original claim of "imperceptible at 50k" was a guess and turned out to
+be half right: about 1 ms at a few thousand events, and 16–21 ms at 50,000. Comfortable at any
+size a real personal timeline will reach for years, and roughly one frame at the stress ceiling.
+The cost is the scan itself, not the sorting or the fuzzy path — capping results barely moves it —
+so the next step, if it is ever needed, is an inverted index rather than a smarter scan. Folded
+text is cached against the event array, which is what keeps the scan to one pass over already-
+lowercased strings.
 
 Search doubles as the event picker in the connection flow (M3) and as the target for a command
 palette later.
@@ -603,7 +610,39 @@ the timeline stops being an experiment.
 An in-memory operation stack, plus soft deletes making destructive actions recoverable after the
 stack is gone. Cascading deletes (D21) are a single entry.
 
-### 8.7 Privacy (D25)
+### 8.7 Known limitations of the merge rule
+
+Found while building it, and worth writing down before the sync layer inherits them:
+
+- **`updated_at` is client wall-clock time.** One device with a wrong clock can stamp a record in
+  2035, and last-write-wins will then never overwrite it again. A logical clock is the real fix;
+  a guard on absurd future timestamps at import would be a cheap partial one. Neither is in v1
+  because both change merge semantics.
+- **Comparison must parse the instants, not the strings.** `+02:00` and `Z` forms of the same
+  moment sort differently as text, so a naive string compare silently loses edits across
+  timezones.
+- **Field-level concurrent edits vanish without trace.** Two tabs editing different fields of one
+  event: the older edit is simply gone. Acceptable for single-user v1; this is the seam the
+  deferred sync layer will tear at first.
+- **§5's pack rule is not literally implementable.** It says to skip a record whose `updated_at`
+  is later than *the install it came from*, but nothing records the installed version's
+  timestamp. The implementation compares against the incoming record instead. The two differ only
+  for a record edited without being adopted — which §5 says cannot happen — and closing the gap
+  properly needs a `pack_updated_at` on `Base`.
+- **An incoming document is a claim only about the records it contains, never the ones it omits.**
+  That is what makes restore safe, and it means merging can never uninstall a pack; uninstall has
+  to be its own operation.
+- **`replaceAll` broadcasts the union of removed and written ids**, since the change signal
+  carries ids only and a receiving tab must learn about removals too. The receiver's rule is
+  "re-read these ids, drop the ones that are gone".
+- **On iOS there is no layer 2 at all.** The plan reads as three layers; on the one platform with
+  a 7-day storage cap it is one and a half, and the home-screen prompt is the actual durability
+  mechanism rather than an onboarding nicety.
+- **The likeliest real data-loss path is the debounce window, not eviction.** A tab closed
+  mid-window loses the last edits, so the queue is flushed on `pagehide` and
+  `visibilitychange` — not `beforeunload`, which is unreliable on mobile.
+
+### 8.8 Privacy (D25)
 
 **No telemetry, no analytics, no error reporting, no network traffic beyond loading the app
 itself.** The app is static files; after first load it never talks to a server.
@@ -630,7 +669,7 @@ Ordered to put the risky, distinctive work first and the CRUD last.
 |---|---|
 | ~~**M0**~~ | ✅ Repo skeleton, TS + Vite. Time library: parser, fuzzy interval, formatting, calendar conversion. Density estimator. Synthetic data generator. Viewport and interaction maths. 314 tests. |
 | ~~**M1**~~ | ✅ Canvas renderer against synthetic data: linear axis, pan/zoom, density field, semantic zoom crossfade, calendar-correct ticks at every scale, selective labels, hover crosshair. The far view works — it reads as a picture of what someone knows, with the gaps legible at a glance. |
-| **M2** | Real store: IndexedDB, quick-add capture, event detail, the list view and search, export/import/backup, URL state, first run. |
+| ~~**M2**~~ | ✅ IndexedDB store with cross-tab sync, quick-add capture with a duplicate guard, event detail, the searchable list view, export/import/merge, the three durability layers, URL state, first run. |
 | **M3** | Connections: creation flow, arcs, Markdown note editor. Near-zoom labels. |
 | **M4** | Tags and filters with animated mass redistribution. Eras with lane layout. |
 | **M5** | Packs (WWII, Cold War, …). PWA, mobile polish. |

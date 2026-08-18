@@ -14,9 +14,21 @@ import type { TimeBounds } from '../render/viewport';
  * the tree sixty times a second for no benefit. The renderer owns the viewport;
  * this component owns only its lifecycle.
  */
-export function TimelineView({ events }: { events: readonly TimelineEvent[] }) {
+export interface TimelineViewProps {
+  events: readonly TimelineEvent[];
+  /** Restores a bookmarked position (D24). Applied once, on mount. */
+  initialViewport?: { centre: number; span: number };
+  onViewportChange?: (viewport: { centre: number; span: number }) => void;
+}
+
+export function TimelineView({ events, initialViewport, onViewportChange }: TimelineViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
+
+  // Kept in a ref so a changing callback does not tear down the renderer.
+  const reportRef = useRef(onViewportChange);
+  reportRef.current = onViewportChange;
+  const initialRef = useRef(initialViewport);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -31,17 +43,30 @@ export function TimelineView({ events }: { events: readonly TimelineEvent[] }) {
     const extent = renderer.getExtent() ?? { start: 0, end: 1 };
     const margin = (extent.end - extent.start) * 0.02;
     const bounds: TimeBounds = { min: extent.start - margin, max: extent.end + margin };
+    const width = host.getSize().width || 1000;
 
+    const restored = initialRef.current;
     renderer.setViewport(
-      fitTo(extent.start, extent.end, host.getSize().width || 1000, bounds, 0.01),
+      restored
+        ? fitTo(restored.centre - restored.span / 2, restored.centre + restored.span / 2, width, bounds, 0)
+        : fitTo(extent.start, extent.end, width, bounds, 0.01),
     );
     host.requestDraw();
+
+    const report = () => {
+      const viewport = renderer.getViewport();
+      reportRef.current?.({
+        centre: (viewport.start + viewport.end) / 2,
+        span: viewport.end - viewport.start,
+      });
+    };
 
     const detach = attachInteraction(frame, {
       getViewport: () => renderer.getViewport(),
       setViewport: (viewport) => {
         renderer.setViewport(viewport);
         host.requestDraw();
+        report();
       },
       getBounds: () => bounds,
     });

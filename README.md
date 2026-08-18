@@ -11,8 +11,9 @@ talk to people, and its shape says something about what you know and how you con
 
 ## Status
 
-Design stage. The concept below is settled; the technical decisions that follow from it live in
-[docs/design.md](docs/design.md). No code yet.
+**M0–M2 built**: the pure core, the canvas renderer, and real local-first storage with capture.
+The concept below is settled; the technical decisions that follow from it live in
+[docs/design.md](docs/design.md).
 
 **v1 scope:** single user, local-first, no accounts, no server. Events, connections, tags, eras,
 the density timeline. Everything else is deliberately deferred — see [Deferred](#deferred).
@@ -139,7 +140,7 @@ Both are why every record carries provenance from day one: manual, pack, import,
 They also both break the privacy baseline — they mean sending your notes and reading history to
 someone else's API. That may be worth doing, but it is a decision to make deliberately against a
 stated default, not one to arrive at by accident inside a feature. See
-[docs/design.md §8.7](docs/design.md#87-privacy-d25).
+[docs/design.md §8.8](docs/design.md#88-privacy-d25).
 
 ## Decisions
 
@@ -172,20 +173,25 @@ src/core/           pure, framework-free, fully tested
   time/             calendar, fuzzy intervals, parsing, formatting
   density/          the kernel density estimator
   testing/          seeded synthetic timeline generator
-src/render/         canvas renderer — no framework imports (D11)   [M1]
-src/store/          IndexedDB, export/import, backup               [M2]
+  filter.ts         the one filter predicate every view consumes
+  search.ts         search, and the capture-time duplicate guard
+  quick-add.ts      the capture grammar
+src/render/         canvas renderer — no framework imports (D11)
+src/state/          in-memory timeline, mutations, undo, persist queue
+src/store/          IndexedDB, merge, backup, durability
 src/ui/             React
+scripts/shot.mjs    screenshot the running app over CDP, for verification
 ```
 
 `src/core` never imports from `src/ui` or `src/render`, and `src/render` never imports React.
 That boundary is the one architectural rule worth enforcing — see
 [D11](docs/design.md#1-decision-log).
 
-Build order: [docs/design.md §9](docs/design.md#9-build-order). **M0 and M1 complete** — the pure
-core and the canvas renderer, drawing the synthetic corpus. M2 is real storage and capture.
+Build order: [docs/design.md §9](docs/design.md#9-build-order). **M0–M2 complete**. M3 is
+connections — the part the concept says is actually novel.
 
 ```
-npm run dev        # the timeline, against a generated corpus
-npm test           # 323 tests
+npm run dev        # your timeline; starts empty
+npm test           # 514 tests
 npm run typecheck
 ```

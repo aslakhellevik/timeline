@@ -317,7 +317,7 @@ export class TimelineRenderer {
     const rowCount = Math.max(1, Math.min(MAX_LABEL_ROWS, Math.floor(available / LABEL_ROW_HEIGHT)));
     const rowRight = new Array<number>(rowCount).fill(-Infinity);
 
-    const placements: { x: number; y: number; text: string; width: number }[] = [];
+    const placements: { x: number; textX: number; y: number; text: string; width: number }[] = [];
 
     for (let i = from; i < this.marks.length && placements.length < MAX_LABELS; i++) {
       const mark = this.marks[i] as Mark;
@@ -326,20 +326,35 @@ export class TimelineRenderer {
       const x = linearScale.toPx(mark.t, vp);
       const text = fitText(ctx, mark.event.title, MAX_LABEL_WIDTH);
       const width = ctx.measureText(text).width;
-      if (x + width + 6 > vp.width) continue;
+
+      // Labels run to the right of their mark, and fall back to the left when
+      // the right edge is too close. Without that fallback the events nearest
+      // "now" silently lose their labels at every zoom — which is precisely
+      // where a personal timeline is densest and least wants to go quiet.
+      const fitsRight = x + width + 6 <= vp.width;
+      const fitsLeft = x - width - 6 >= 0;
 
       let row = -1;
+      let textX = 0;
       for (let r = 0; r < rowCount; r++) {
-        if (x >= (rowRight[r] as number) + LABEL_GAP) {
+        const free = (rowRight[r] as number) + LABEL_GAP;
+        if (fitsRight && x >= free) {
           row = r;
+          textX = x + 4;
+          break;
+        }
+        if (!fitsRight && fitsLeft && x - width - 4 >= free) {
+          row = r;
+          textX = x - width - 4;
           break;
         }
       }
       if (row === -1) continue;
 
-      rowRight[row] = x + width;
+      rowRight[row] = textX + width;
       placements.push({
         x,
+        textX,
         y: baselineY - MARK_HEIGHT - 8 - row * LABEL_ROW_HEIGHT,
         text,
         width,
@@ -365,9 +380,9 @@ export class TimelineRenderer {
       // A chip of the surface colour keeps the text legible where a leader line
       // from somewhere else crosses behind it.
       ctx.fillStyle = this.theme.surface;
-      ctx.fillRect(p.x + 2, p.y - 9, p.width + 4, 12);
+      ctx.fillRect(p.textX - 2, p.y - 9, p.width + 4, 12);
       ctx.fillStyle = this.theme.inkSecondary;
-      ctx.fillText(p.text, p.x + 4, p.y);
+      ctx.fillText(p.text, p.textX, p.y);
     }
 
     ctx.restore();
