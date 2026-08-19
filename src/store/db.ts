@@ -12,14 +12,14 @@
  */
 
 import { deleteDB, openDB } from 'idb';
-import type { Connection, Era, Tag, TimelineEvent } from '../core/model/types';
+import type { Connection, Era, InstalledPack, Tag, TimelineEvent } from '../core/model/types';
 import type { RecordKind, Store, StoreChange } from './contract';
 import { RECORD_KINDS } from './serialise';
 
 export const DEFAULT_DB_NAME = 'arlinje';
 
 /** Bumped only when the object stores themselves change, not when the data schema does. */
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 /**
  * Opens (or creates) the store. `name` exists so tests, and any future
@@ -64,11 +64,12 @@ export async function createIndexedDbStore(name: string = DEFAULT_DB_NAME): Prom
   return {
     async load() {
       const tx = db.transaction(RECORD_KINDS, 'readonly');
-      const [events, connections, tags, eras] = await Promise.all([
+      const [events, connections, tags, eras, packs] = await Promise.all([
         tx.objectStore('events').getAll(),
         tx.objectStore('connections').getAll(),
         tx.objectStore('tags').getAll(),
         tx.objectStore('eras').getAll(),
+        tx.objectStore('packs').getAll(),
       ]);
       await tx.done;
 
@@ -79,6 +80,7 @@ export async function createIndexedDbStore(name: string = DEFAULT_DB_NAME): Prom
         connections: connections as Connection[],
         tags: tags as Tag[],
         eras: eras as Era[],
+        packs: packs as InstalledPack[],
       };
     },
 

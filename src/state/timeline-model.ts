@@ -18,6 +18,7 @@ import type {
   Timeline,
   TimelineEvent,
 } from '../core/model/types';
+import { BUILTIN_TAGS } from '../core/model/builtin-tags';
 import { nowIso, uuidv7 } from '../core/model/ids';
 import type { RecordKind } from '../store/contract';
 
@@ -40,7 +41,13 @@ export interface Mutation {
   label: string;
 }
 
-export const EMPTY_TIMELINE: Timeline = { events: [], connections: [], tags: [], eras: [] };
+export const EMPTY_TIMELINE: Timeline = {
+  events: [],
+  connections: [],
+  tags: [],
+  eras: [],
+  packs: [],
+};
 
 /**
  * The sort key from the conventions list: `b → a → title → id`, fully
@@ -315,6 +322,37 @@ export function ensureTags(
   };
 }
 
+/**
+ * Materialises the premade tag set as records (D14, D20).
+ *
+ * They exist as constants, but until they exist as *records* they cannot be
+ * filtered on, and — worse — `ensureTags` matches by name, so typing `#war` on a
+ * timeline without them invents a private "war" tag that no pack event shares.
+ * The vocabulary silently forks in two, which is exactly what fixed namespaced
+ * ids were supposed to prevent.
+ *
+ * Idempotent by id, so it is safe to run on every install and on first run.
+ */
+export function installBuiltinTags(timeline: Timeline, now: string = nowIso()): Mutation {
+  const known = new Set(timeline.tags.map((tag) => tag.id));
+  const created = BUILTIN_TAGS.filter((tag) => !known.has(tag.id)).map(
+    (tag): Tag => ({ ...tag, created_at: now, updated_at: now }),
+  );
+
+  if (created.length === 0) {
+    return { timeline, touched: [], undo: [], label: 'tags already present' };
+  }
+
+  return {
+    timeline: { ...timeline, tags: [...timeline.tags, ...created] },
+    touched: [{ kind: 'tags', records: created }],
+    // No undo: this is setup, not an edit, and undoing it would break every
+    // record that references one of these ids.
+    undo: [],
+    label: 'add the premade tags',
+  };
+}
+
 export interface EraDraft {
   name: string;
   when: TimeSpec;
@@ -443,6 +481,7 @@ export function applyUndo(
       connections: [...connections],
       tags: [...tags],
       eras: [...eras],
+      packs: timeline.packs,
     },
     touched,
     undo: [],

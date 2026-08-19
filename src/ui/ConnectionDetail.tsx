@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { formatTime } from '../core/time';
 import { useTimeline } from '../state/timeline-store';
+import { DetailPane } from './DetailPane';
 import { MarkdownEditor } from './MarkdownEditor';
 
 /**
@@ -39,20 +40,7 @@ export function ConnectionDetail() {
   const to = events.get(connection.to);
 
   return (
-    <aside
-      aria-label="Connection detail"
-      className="flex w-80 shrink-0 flex-col gap-4 overflow-y-auto border-l border-line px-4 py-3"
-    >
-      <div className="flex items-start justify-between gap-2">
-        <h2 className="text-xs uppercase tracking-wide text-paper-dim">connection</h2>
-        <button
-          onClick={() => selectConnection(null)}
-          aria-label="Close connection"
-          className="rounded px-1.5 text-paper-dim hover:text-paper"
-        >
-          ×
-        </button>
-      </div>
+    <DetailPane label="Connection" onClose={() => selectConnection(null)}>
 
       <div className="flex flex-col gap-1.5">
         {[from, to].map((event, index) => (
@@ -115,6 +103,6 @@ export function ConnectionDetail() {
       >
         delete connection
       </button>
-    </aside>
+    </DetailPane>
   );
 }

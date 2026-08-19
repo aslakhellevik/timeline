@@ -41,7 +41,7 @@ const usageOf = (timeline: Timeline, includePacks = true) =>
   new Map(tagUsage(timeline, includePacks).map((entry) => [entry.tag.id, entry]));
 
 function build(events: TimelineEvent[], tags: Tag[] = TAGS): Timeline {
-  return { events, connections: [], tags, eras: [] };
+  return { events, connections: [], tags, eras: [], packs: [] };
 }
 
 describe('tagUsage', () => {

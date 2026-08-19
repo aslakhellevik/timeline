@@ -24,7 +24,16 @@
  * which is the opposite of the truth.
  */
 
-import type { Connection, Days, Era, Id, Tag, TimelineEvent, Viewport } from '../core/model/types';
+import type {
+  Connection,
+  Days,
+  Era,
+  Id,
+  Tag,
+  TimeSpec,
+  TimelineEvent,
+  Viewport,
+} from '../core/model/types';
 import { computeDensity, farViewOpacity, heightFraction } from '../core/density';
 import type { DensityResult } from '../core/density';
 import { midpoint, toGregorian } from '../core/time';
@@ -87,6 +96,18 @@ export class DepthRenderer {
 
   private readonly transition = new MassTransition();
   private cache: { key: string; density: DensityResult } | null = null;
+  /**
+   * The same, over the user's own events only.
+   *
+   * The river is drawn twice: the total desaturated, and your own share solid
+   * inside it. With a pack installed, a wall of canonical events otherwise reads
+   * as knowledge — and the density stops meaning "what I know", which is the
+   * problem the whole pack design is arranged around (§5).
+   */
+  private readonly mineTransition = new MassTransition();
+  private mineCache: { key: string; density: DensityResult } | null = null;
+  private mineSpecs: TimeSpec[] = [];
+  private hasPackEvents = false;
 
   /** Events per day at which the river reaches its full width. */
   private rateRef = 1;
@@ -111,6 +132,8 @@ export class DepthRenderer {
       .map((event) => ({ t: midpoint(event.when), event }))
       .sort((a, b) => a.t - b.t);
     this.eventsById = new Map(events.map((event) => [event.id, event]));
+    this.mineSpecs = events.filter((event) => event.pack === undefined).map((event) => event.when);
+    this.hasPackEvents = this.mineSpecs.length !== events.length;
     this.tagColours = new Map(
       tags.flatMap((tag) => (tag.color ? [[tag.id, tag.color] as const] : [])),
     );
@@ -125,7 +148,9 @@ export class DepthRenderer {
     this.calibrationEvents = calibration;
 
     this.transition.begin();
+    this.mineTransition.begin();
     this.cache = null;
+    this.mineCache = null;
     if (recalibrate) this.rateRef = this.calibrate();
   }
 
@@ -235,12 +260,21 @@ export class DepthRenderer {
     );
 
     this.riverAt = this.riverWidths(projection, density, rows);
+    const mineAt = this.hasPackEvents
+      ? this.riverWidths(
+          projection,
+          this.mineTransition.resolve(this.mineDensity(projection), `${vp.start}:${vp.end}:${rows}`, performance.now())
+            .density,
+          rows,
+        )
+      : null;
 
     this.drawSky(ctx, geometry);
     this.drawGround(ctx, projection, geometry, vp);
     this.lanes = this.layoutEras(projection, rows);
     this.drawEras(ctx, projection);
-    this.drawRiver(ctx, projection, geometry, rows);
+    this.drawRiver(ctx, projection, geometry, rows, this.riverAt, mineAt !== null);
+    if (mineAt) this.drawRiver(ctx, projection, geometry, rows, mineAt, false);
 
     /*
      * The semantic zoom is **spatial here, not global**.
@@ -290,13 +324,28 @@ export class DepthRenderer {
     return widths;
   }
 
+  /** The corridor grid over the user's own events only. */
+  private mineDensity(projection: DepthProjection): DensityResult {
+    const { start, end } = this.viewport;
+    const rows = projection.depthPixels;
+    const key = `${start}:${end}:${rows}:${this.mineSpecs.length}`;
+    if (this.mineCache && this.mineCache.key === key) return this.mineCache.density;
+
+    const density = computeDensity(this.mineSpecs, { start, end, width: rows }, {
+      toPixel: (t) => projection.pixelAt(t),
+    });
+    this.mineCache = { key, density };
+    return density;
+  }
+
   private drawRiver(
     ctx: CanvasRenderingContext2D,
     projection: DepthProjection,
     geometry: DepthGeometryLike,
     rows: number,
+    widths: Float64Array | null,
+    muted: boolean,
   ): void {
-    const widths = this.riverAt;
     if (!widths || rows < 2) return;
 
     const baseY = projection.yAt(this.viewport.start);
@@ -325,15 +374,16 @@ export class DepthRenderer {
 
     // Brighter towards you: the near end is both what you know most about and
     // what the eye should land on first.
+    const hue = muted ? this.theme.muted : this.theme.mass;
     const fill = ctx.createLinearGradient(0, geometry.horizonY, 0, geometry.groundY);
-    fill.addColorStop(0, withAlpha(this.theme.mass, 0.22));
-    fill.addColorStop(1, withAlpha(this.theme.mass, 0.75));
+    fill.addColorStop(0, withAlpha(hue, muted ? 0.12 : 0.22));
+    fill.addColorStop(1, withAlpha(hue, muted ? 0.4 : 0.75));
     ctx.fillStyle = fill;
     ctx.fill();
 
-    ctx.strokeStyle = this.theme.massEdge;
-    ctx.lineWidth = 1.25;
-    ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = muted ? this.theme.muted : this.theme.massEdge;
+    ctx.lineWidth = muted ? 1 : 1.25;
+    ctx.globalAlpha = muted ? 0.5 : 0.85;
     ctx.lineJoin = 'round';
     ctx.beginPath();
     for (const [x, y] of left) ctx.lineTo(x, y);
@@ -557,7 +607,6 @@ export class DepthRenderer {
   ): void {
     const from = this.lowerBound(this.viewport.start);
     ctx.save();
-    ctx.strokeStyle = this.theme.mark;
     ctx.lineWidth = 1;
 
     for (let i = from; i < this.marks.length; i++) {
@@ -568,12 +617,17 @@ export class DepthRenderer {
       const resolved = 1 - farViewOpacity(this.localLambda(projection, density, mark.t));
       if (resolved < 0.03) continue;
 
+      // Pack events are drawn dimmer and shorter (§5). If installed content
+      // looks like your own, the density stops meaning "what I know".
+      const fromPack = mark.event.pack !== undefined;
       const y = projection.yAt(mark.t);
-      const w = this.riverLateralAt(projection, mark.t);
-      ctx.globalAlpha = resolved * Math.min(1, 0.25 + scale * 1.6);
+      const reach = this.riverLateralAt(projection, mark.t) + (fromPack ? 0.02 : 0.05);
+
+      ctx.strokeStyle = fromPack ? this.theme.muted : this.theme.mark;
+      ctx.globalAlpha = resolved * Math.min(1, 0.25 + scale * 1.6) * (fromPack ? 0.45 : 1);
       ctx.beginPath();
-      ctx.moveTo(projection.xAt(mark.t, -(w + 0.05)), y);
-      ctx.lineTo(projection.xAt(mark.t, w + 0.05), y);
+      ctx.moveTo(projection.xAt(mark.t, -reach), y);
+      ctx.lineTo(projection.xAt(mark.t, reach), y);
       ctx.stroke();
     }
 
@@ -642,7 +696,11 @@ export class DepthRenderer {
       ctx.fillStyle = this.theme.surface;
       ctx.fillRect(textX - 2, y - 7, width + 4, 14);
       ctx.fillStyle =
-        mark.event.id === this.selection.eventId ? this.theme.selection : this.theme.inkSecondary;
+        mark.event.id === this.selection.eventId
+          ? this.theme.selection
+          : mark.event.pack !== undefined
+            ? this.theme.muted
+            : this.theme.inkSecondary;
       ctx.fillText(text, textX, y);
 
       lastY[String(side)] = y;

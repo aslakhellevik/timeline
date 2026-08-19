@@ -105,6 +105,9 @@ export function applyFilter(timeline: Timeline, filter: Filter): Timeline {
     connections: timeline.connections.filter(predicates.connection),
     tags: timeline.tags.filter((tag) => !tag.deleted_at),
     eras: timeline.eras.filter(predicates.era),
+    // Installed packs are not filtered: which packs you have is a fact about the
+    // timeline, not a record on it.
+    packs: timeline.packs,
   };
 }
 

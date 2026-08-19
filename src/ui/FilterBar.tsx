@@ -29,6 +29,9 @@ export function FilterBar() {
   const setIncludePacks = useTimeline((state) => state.setIncludePacks);
 
   const [showUnused, setShowUnused] = useState(false);
+  // Collapsed on a phone, where thirty tags is five rows and most of the screen.
+  // Always open from `sm` up, where they cost one row and save a tap.
+  const [expanded, setExpanded] = useState(false);
 
   const usage = useMemo(
     () => tagUsage(timeline, filter.includePacks),
@@ -49,7 +52,19 @@ export function FilterBar() {
       aria-label="Filter by tag"
       className="flex items-start gap-3 border-b border-line px-4 py-1.5"
     >
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+      <button
+        onClick={() => setExpanded((current) => !current)}
+        aria-expanded={expanded}
+        className="shrink-0 text-[11px] text-paper-dim hover:text-paper sm:hidden"
+      >
+        {filter.tags.length > 0 ? `filters · ${filter.tags.length}` : 'filters'}
+      </button>
+
+      <div
+        className={`min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 sm:flex ${
+          expanded ? 'flex' : 'hidden'
+        }`}
+      >
         {GROUPS.map(({ kind, label }) => {
           const group = shown
             .filter((entry) => entry.tag.kind === kind)

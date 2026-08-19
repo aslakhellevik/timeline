@@ -15,7 +15,16 @@
  * a zoom-level counter, so nothing pops.
  */
 
-import type { Connection, Days, Era, Id, Tag, TimelineEvent, Viewport } from '../core/model/types';
+import type {
+  Connection,
+  Days,
+  Era,
+  Id,
+  Tag,
+  TimeSpec,
+  TimelineEvent,
+  Viewport,
+} from '../core/model/types';
 import { computeDensity, farViewOpacity, heightFraction } from '../core/density';
 import type { DensityResult } from '../core/density';
 import { midpoint, toGregorian } from '../core/time';
@@ -157,6 +166,20 @@ export class TimelineRenderer {
 
   /** The mass redistribution animation (§3.5), shared with the depth view. */
   private readonly transition = new MassTransition();
+  /**
+   * The same animation for the user's own share of the mass.
+   *
+   * Two curves rather than one, because `mine / mine + packs` as a toggle is not
+   * enough: with a pack installed and the toggle on, a wall of canonical events
+   * reads as knowledge. Drawing your own share solid *inside* the total, with the
+   * pack's contribution as a ghost behind it, says what the toggle only implies —
+   * that the density stops meaning "what I know" the moment content arrives
+   * pre-loaded (§5).
+   */
+  private readonly mineTransition = new MassTransition();
+  private mineSpecs: TimeSpec[] = [];
+  private hasPackEvents = false;
+  private mineCache: { key: string; density: DensityResult } | null = null;
 
   /**
    * The arcs of the last frame, kept so hit-testing runs against exactly what is
@@ -197,6 +220,9 @@ export class TimelineRenderer {
       .map((event) => ({ t: midpoint(event.when), event }))
       .sort((a, b) => a.t - b.t);
     this.eventsById = new Map(events.map((event) => [event.id, event]));
+    // Split once, so the mass can be drawn in two layers (§5).
+    this.mineSpecs = events.filter((event) => event.pack === undefined).map((event) => event.when);
+    this.hasPackEvents = this.mineSpecs.length !== events.length;
     this.tagColours = new Map(
       tags.flatMap((tag) => (tag.color ? [[tag.id, tag.color] as const] : [])),
     );
@@ -213,7 +239,9 @@ export class TimelineRenderer {
     // The old grid is still in the cache; the next draw compares it with the new
     // one and animates between them if the viewport has not moved.
     this.transition.begin();
+    this.mineTransition.begin();
     this.cache = null;
+    this.mineCache = null;
     // Only when the corpus itself changed. Doing it on every filter change is
     // exactly the renormalisation `TimelineData.calibration` exists to prevent.
     if (recalibrate) this.lambdaRef = this.calibrate();
@@ -330,6 +358,15 @@ export class TimelineRenderer {
     return density;
   }
 
+  /** The same grid over the user's own events only. */
+  private mineDensity(): DensityResult {
+    const key = `${this.viewportKey()}:${this.mineSpecs.length}`;
+    if (this.mineCache && this.mineCache.key === key) return this.mineCache.density;
+    const density = computeDensity(this.mineSpecs, this.viewport);
+    this.mineCache = { key, density };
+    return density;
+  }
+
   private displayDensity(now: number): { density: DensityResult; animating: boolean } {
     return this.transition.resolve(this.density(), this.viewportKey(), now);
   }
@@ -376,11 +413,20 @@ export class TimelineRenderer {
     const ticks = generateTicks(vp);
     this.drawGrid(ctx, ticks, massTop, baselineY);
 
-    const { density, animating } = this.displayDensity(performance.now());
+    const now = performance.now();
+    const { density, animating } = this.displayDensity(now);
     const massAlpha = farViewOpacity(density.lambdaMax);
 
     if (massAlpha > 0) {
-      this.drawMass(ctx, density, massTop, baselineY, massHeight, massAlpha);
+      if (this.hasPackEvents) {
+        // The total first, desaturated — the pack's contribution is whatever is
+        // visible outside the solid curve drawn over it.
+        this.drawMass(ctx, density, massTop, baselineY, massHeight, massAlpha * 0.55, true);
+        const mine = this.mineTransition.resolve(this.mineDensity(), this.viewportKey(), now);
+        this.drawMass(ctx, mine.density, massTop, baselineY, massHeight, massAlpha, false);
+      } else {
+        this.drawMass(ctx, density, massTop, baselineY, massHeight, massAlpha, false);
+      }
     }
 
     // Arcs over the mass and under the marks. The mass is the ground — what you
@@ -663,6 +709,7 @@ export class TimelineRenderer {
     baselineY: number,
     massHeight: number,
     alpha: number,
+    muted: boolean,
   ): void {
     const { lambda } = density;
     const n = lambda.length;
@@ -680,9 +727,10 @@ export class TimelineRenderer {
     ctx.lineTo(n - 1, baselineY);
     ctx.closePath();
 
+    const fill = muted ? this.theme.muted : this.theme.mass;
     const gradient = ctx.createLinearGradient(0, top, 0, baselineY);
-    gradient.addColorStop(0, withAlpha(this.theme.mass, 0.62));
-    gradient.addColorStop(1, withAlpha(this.theme.mass, 0.08));
+    gradient.addColorStop(0, withAlpha(fill, muted ? 0.34 : 0.62));
+    gradient.addColorStop(1, withAlpha(fill, 0.08));
     ctx.fillStyle = gradient;
     ctx.fill();
 
@@ -693,8 +741,8 @@ export class TimelineRenderer {
       if (i === 0) ctx.moveTo(i, yAt(i));
       else ctx.lineTo(i, yAt(i));
     }
-    ctx.strokeStyle = this.theme.massEdge;
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = muted ? this.theme.muted : this.theme.massEdge;
+    ctx.lineWidth = muted ? 1 : 2;
     ctx.lineJoin = 'round';
     ctx.stroke();
 
@@ -709,20 +757,34 @@ export class TimelineRenderer {
   ): void {
     const from = this.lowerBound(vp.start);
     ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.strokeStyle = this.theme.mark;
     ctx.lineWidth = 1;
-    ctx.beginPath();
 
-    for (let i = from; i < this.marks.length; i++) {
-      const mark = this.marks[i] as Mark;
-      if (mark.t > vp.end) break;
-      const x = Math.round(linearScale.toPx(mark.t, vp)) + 0.5;
-      ctx.moveTo(x, baselineY);
-      ctx.lineTo(x, baselineY - MARK_HEIGHT);
+    /*
+     * Two passes, so pack events can be drawn desaturated (§5).
+     *
+     * The distinction is not decoration. If installed content looks like your
+     * own, the density plot stops meaning "what I know" — which is the semantic
+     * problem the whole pack design is arranged around. Drawn shorter as well as
+     * dimmer, because colour alone is not a distinction everyone can see.
+     */
+    for (const pack of [false, true]) {
+      ctx.globalAlpha = alpha * (pack ? 0.4 : 1);
+      ctx.strokeStyle = pack ? this.theme.muted : this.theme.mark;
+      const height = pack ? MARK_HEIGHT * 0.6 : MARK_HEIGHT;
+      ctx.beginPath();
+
+      for (let i = from; i < this.marks.length; i++) {
+        const mark = this.marks[i] as Mark;
+        if (mark.t > vp.end) break;
+        if ((mark.event.pack !== undefined) !== pack) continue;
+        const x = Math.round(linearScale.toPx(mark.t, vp)) + 0.5;
+        ctx.moveTo(x, baselineY);
+        ctx.lineTo(x, baselineY - height);
+      }
+
+      ctx.stroke();
     }
 
-    ctx.stroke();
     ctx.restore();
   }
 
@@ -748,7 +810,14 @@ export class TimelineRenderer {
     const rowCount = Math.max(1, Math.min(MAX_LABEL_ROWS, Math.floor(available / LABEL_ROW_HEIGHT)));
     const rowRight = new Array<number>(rowCount).fill(-Infinity);
 
-    const placements: { x: number; textX: number; y: number; text: string; width: number }[] = [];
+    const placements: {
+      x: number;
+      textX: number;
+      y: number;
+      text: string;
+      width: number;
+      pack: boolean;
+    }[] = [];
 
     for (let i = from; i < this.marks.length && placements.length < MAX_LABELS; i++) {
       const mark = this.marks[i] as Mark;
@@ -789,6 +858,7 @@ export class TimelineRenderer {
         y: baselineY - MARK_HEIGHT - 8 - row * LABEL_ROW_HEIGHT,
         text,
         width,
+        pack: mark.event.pack !== undefined,
       });
     }
 
@@ -812,7 +882,7 @@ export class TimelineRenderer {
       // from somewhere else crosses behind it.
       ctx.fillStyle = this.theme.surface;
       ctx.fillRect(p.textX - 2, p.y - 9, p.width + 4, 12);
-      ctx.fillStyle = this.theme.inkSecondary;
+      ctx.fillStyle = p.pack ? this.theme.muted : this.theme.inkSecondary;
       ctx.fillText(p.text, p.textX, p.y);
     }
 

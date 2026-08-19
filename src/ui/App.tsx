@@ -15,6 +15,7 @@ import { EventDetail } from './EventDetail';
 import { EventList } from './EventList';
 import { FilterBar } from './FilterBar';
 import { FirstRun } from './FirstRun';
+import { PackPanel } from './PackPanel';
 import { QuickAdd } from './QuickAdd';
 import { TimelineView } from './TimelineView';
 import { decodeUrlState, encodeUrlState } from './url-state';
@@ -47,6 +48,10 @@ export function App() {
   const [view, setView] = useState<'timeline' | 'depth' | 'list'>(initial.view ?? 'timeline');
   const viewportRef = useRef<{ centre: number; span: number } | null>(null);
   const [dataOpen, setDataOpen] = useState(false);
+  const [packsOpen, setPacksOpen] = useState(false);
+  // Held separately from `isFirstRun`, which flips as soon as the birth year is
+  // answered — the pack offer that follows it has to survive that.
+  const [onboarding, setOnboarding] = useState(false);
   const [backup, setBackup] = useState<BackupStatus | null>(null);
 
   // Open the database and load whatever is there.
@@ -157,6 +162,10 @@ export function App() {
     void backupStatus().then(setBackup);
   }, [status, dataOpen]);
 
+  useEffect(() => {
+    if (status === 'ready' && isFirstRun) setOnboarding(true);
+  }, [status, isFirstRun]);
+
   const visible = useMemo(() => applyFilter(timeline, filter), [timeline, filter]);
 
   if (status === 'loading') {
@@ -204,8 +213,8 @@ export function App() {
         </div>
       )}
 
-      {isFirstRun ? (
-        <FirstRun />
+      {onboarding ? (
+        <FirstRun onDone={() => setOnboarding(false)} />
       ) : (
         <div className="flex min-h-0 flex-1">
           <main className="min-w-0 flex-1">
@@ -276,6 +285,11 @@ export function App() {
             undo
           </button>
         )}
+        <button onClick={() => setPacksOpen(true)} className="hover:text-paper">
+          {timeline.packs.length > 0
+            ? `${timeline.packs.length} pack${timeline.packs.length === 1 ? '' : 's'}`
+            : 'packs'}
+        </button>
         <button
           onClick={() => setDataOpen(true)}
           className={backup?.stale ? 'text-[#c98500] hover:underline' : 'hover:text-paper'}
@@ -290,6 +304,7 @@ export function App() {
       </footer>
 
       {dataOpen && <DataPanel onClose={() => setDataOpen(false)} />}
+      {packsOpen && <PackPanel onClose={() => setPacksOpen(false)} />}
       {pickerOpen && <ConnectPicker />}
     </div>
   );

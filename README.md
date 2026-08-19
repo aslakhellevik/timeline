@@ -11,9 +11,9 @@ talk to people, and its shape says something about what you know and how you con
 
 ## Status
 
-**M0–M4 built**, plus a second canvas view. The pure core, the renderer, real local-first storage
-with capture, connections — the arcs, the creation flow and the note that carries the argument —
-and tag filtering that visibly redistributes the mass, with eras in lanes below the axis.
+**v1 is built** — M0 to M5, plus a second canvas view. The pure core, both renderers, local-first
+storage with capture, connections and their notes, tag filtering that redistributes the mass,
+eras in lanes, installable packs, and an offline-capable PWA that works on a phone.
 The concept below is settled; the technical decisions that follow from it live in
 [docs/design.md](docs/design.md).
 
@@ -110,12 +110,14 @@ view is better for reading; this one is better for seeing the shape of what you 
 
 ## Starting from empty
 
-A new timeline is empty — that is the point. Canonical content is available as opt-in **packs**
-(the Second World War, the Cold War, …) which can be installed and uninstalled cleanly.
+A new timeline is empty — that is the point. Canonical content is available as opt-in **packs**;
+two ship with the app, the Second World War and the Cold War, and both install and uninstall
+cleanly.
 
 Pack events are drawn desaturated and can be excluded from mass, because if canonical events are
-pre-loaded the density plot stops meaning "what I know". Editing or connecting a pack event
-adopts it as your own.
+pre-loaded the density plot stops meaning "what I know". The mass is drawn in two layers for the
+same reason — the total in grey, your own share solid inside it. Editing or connecting a pack
+event adopts it as your own, and adopted events survive both an uninstall and a pack update.
 
 ## Deferred
 
@@ -190,8 +192,10 @@ src/core/           pure, framework-free, fully tested
   filter.ts         the one filter predicate every view consumes
   search.ts         search, and the capture-time duplicate guard
   quick-add.ts      the capture grammar
+  packs.ts          install, upgrade, adoption, uninstall
   markdown.ts       a small Markdown subset, escape-first (D27)
-src/render/         canvas renderer — no framework imports (D11)
+src/packs/          the bundled packs — WWII, the Cold War
+src/render/         canvas renderers — no framework imports (D11)
   arcs.ts           connection arc geometry, colour and hit-testing
   lanes.ts          era lane allocation and bar geometry
   projection.ts     the perspective axis behind the depth view
@@ -199,6 +203,7 @@ src/render/         canvas renderer — no framework imports (D11)
 src/state/          in-memory timeline, mutations, undo, persist queue
 src/store/          IndexedDB, merge, backup, durability
 src/ui/             React
+scripts/pwa-plugin.ts  emits the manifest and service worker at build time
 scripts/shot.mjs    screenshot the running app over CDP, for verification
 ```
 
@@ -206,11 +211,11 @@ scripts/shot.mjs    screenshot the running app over CDP, for verification
 That boundary is the one architectural rule worth enforcing — see
 [D11](docs/design.md#1-decision-log).
 
-Build order: [docs/design.md §9](docs/design.md#9-build-order). **M0–M4 complete**. M5 is packs —
-installable canonical content — plus the PWA and mobile polish.
+Build order: [docs/design.md §9](docs/design.md#9-build-order). **M0–M5 complete** — that is all
+of v1. What comes next is deliberately deferred: the map, AI, and the social layer.
 
 ```
 npm run dev        # your timeline; starts empty
-npm test           # 661 tests
+npm test           # 687 tests
 npm run typecheck
 ```

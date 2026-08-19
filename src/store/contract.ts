@@ -7,12 +7,19 @@
  * are the same operation and must not drift apart.
  */
 
-import type { Connection, Era, Tag, Timeline, TimelineEvent } from '../core/model/types';
+import type {
+  Connection,
+  Era,
+  InstalledPack,
+  Tag,
+  Timeline,
+  TimelineEvent,
+} from '../core/model/types';
 
 /** Bump when a released schema changes, and add a migration for it. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
-export type RecordKind = 'events' | 'connections' | 'tags' | 'eras';
+export type RecordKind = 'events' | 'connections' | 'tags' | 'eras' | 'packs';
 
 export interface TimelineDocument {
   schema_version: number;
@@ -23,6 +30,8 @@ export interface TimelineDocument {
   connections: Connection[];
   tags: Tag[];
   eras: Era[];
+  /** Which packs are installed (§5). Travels with an export, like everything else. */
+  packs: InstalledPack[];
 }
 
 /** A change originating in another tab, delivered so this one can catch up. */

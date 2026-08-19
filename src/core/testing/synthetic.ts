@@ -1254,5 +1254,5 @@ export function generateTimeline(options: SyntheticOptions = {}): Timeline {
   const connections = generateConnections(rng, events, drafts, connectionCount);
   const eras = generateEras(rng, eraCount);
 
-  return { events, connections, tags, eras };
+  return { events, connections, tags, eras, packs: [] };
 }

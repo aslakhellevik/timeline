@@ -24,6 +24,7 @@ function doc(partial: Partial<TimelineDocument> = {}): TimelineDocument {
     connections: [],
     tags: [],
     eras: [],
+    packs: [],
     ...partial,
   };
 }

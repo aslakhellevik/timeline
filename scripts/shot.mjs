@@ -22,7 +22,7 @@ const PORT = Number(process.env.CDP_PORT ?? 9333);
 
 const [url, out] = process.argv.slice(2);
 if (!url || !out) {
-  console.error('usage: shot.mjs <url> <out.png> [--wait sel] [--eval js|--eval-file f] [--ms n]');
+  console.error('usage: shot.mjs <url> <out.png> [--wait sel] [--eval js|--eval-file f] [--ms n] [--offline]');
   process.exit(2);
 }
 const arg = (name, fallback) => {
@@ -40,6 +40,7 @@ const height = Number(arg('--h', 850));
 
 const profile = mkdtempSync(join(tmpdir(), 'arlinje-shot-'));
 const keepProfile = process.argv.includes('--keep-profile');
+const offline = process.argv.includes('--offline');
 const profileDir = arg('--profile', profile);
 
 const chrome = spawn(CHROME, [
@@ -113,6 +114,21 @@ try {
 
   await rpc(ws, 'Runtime.enable');
   await rpc(ws, 'Page.enable');
+
+  // `--offline` cuts the network and reloads, which is the only honest way to
+  // test a service worker: stopping the server instead races Chrome's own
+  // start-up and fails for reasons that have nothing to do with the worker.
+  if (offline) {
+    await rpc(ws, 'Network.enable');
+    await rpc(ws, 'Network.emulateNetworkConditions', {
+      offline: true,
+      latency: 0,
+      downloadThroughput: -1,
+      uploadThroughput: -1,
+    });
+    await rpc(ws, 'Page.reload', { ignoreCache: false });
+    await sleep(1500);
+  }
 
   if (waitFor) {
     const deadline = Date.now() + timeoutMs;

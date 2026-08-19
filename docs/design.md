@@ -47,6 +47,11 @@ map are deferred — but the data model is shaped so that none of them require a
 | D33 | The depth view is a **projection, not a camera** — the viewport stays one-dimensional |
 | D34 | In the depth view mass is **width**, measured as a rate, not the density grid's per-row count |
 | D35 | The depth view's semantic zoom is **per row**, not one number for the frame |
+| D36 | Pack record ids are derived from the pack id and the author's key, which is what makes an upgrade an upgrade |
+| D37 | Uninstalling a pack **hard-removes** its content — the one exception to D9's tombstones |
+| D38 | With a pack installed the mass is drawn in **two layers**: the total desaturated, your own share solid inside it |
+| D39 | The premade tags are materialised as records on first run, so a typed `#war` attaches to the built-in id |
+| D40 | The service worker is written here rather than taken as a dependency: network-first shell, cache-first fingerprinted assets |
 
 Conventions, settled and not worth further discussion:
 
@@ -454,6 +459,46 @@ how you end up with two Europes and a filter that quietly shows half of what it 
 
 Pack install and data import share one code path.
 
+### 5.1 As built (M5)
+
+Two packs ship in the app: the Second World War and the Cold War, forty-odd events each with
+their own connections and eras. **Skeletons, not chronicles** — a pack that tried to be complete
+would bury the user's own events under it, which is the failure this section exists to avoid.
+They are statically imported so installing one makes no network request (D25) and works offline.
+
+**Record ids are `<pack id>/<author key>` (D36).** That is what makes an upgrade an upgrade:
+version two produces the same ids as version one, so the merge rule updates records in place
+instead of installing a second copy of everything. Records arrive from the bundle without ids or
+timestamps and the installer stamps them, so a pack author cannot forge a timestamp newer than
+the user's work.
+
+**Adoption happens on edit, and that simplifies the upgrade rule.** §5 above asks a pack upgrade
+to skip any record whose `pack` has been cleared *or* whose `updated_at` is later than the
+install it came from. Because editing or connecting a pack record clears `pack`, the second
+condition can never hold without the first — so the merge needs no install timestamps to be safe,
+and `mergeDocument`'s single clause covers it.
+
+**Uninstall hard-removes (D37).** The one place D9's "never delete, sync needs tombstones" does
+not apply, and not by oversight: pack content is not the user's data and is re-derivable from the
+bundle, while a tombstone would carry a newer `updated_at` than the bundle and make reinstalling
+restore nothing. The user's own connections *into* a departing event go too — the alternative is
+an arc into a hole.
+
+**The mass is drawn in two layers (D38).** The `mine / mine + packs` toggle turned out not to be
+enough on its own: with a pack installed and the toggle on, a wall of canonical events simply
+reads as knowledge. So the total is drawn desaturated and the user's own share solid inside it,
+in both views — the flat one as two filled curves, the depth one as a blue river inside a grey
+one. That says what the toggle only implies. Marks and labels are dimmed and shortened for pack
+records on the same reasoning, and shorter as well as dimmer because colour alone is not a
+distinction everyone can see.
+
+**The premade tags are materialised as records (D39).** They existed only as constants, and
+`ensureTags` matches by name — so on a timeline that had never created them, typing `#war`
+invented a private tag beside the one every pack event carried, and the vocabulary forked in two.
+Exactly what fixed namespaced ids were meant to prevent. First run now creates them, and a pack
+brings the ones it references, emitted without `pack` since they are shared and an uninstall must
+not take away a tag the user's own events also carry.
+
 **Pack upgrades must not overwrite your work.** Merge-by-`id` on a newer pack version would
 otherwise clobber an event you adopted and rewrote, since the pack's `updated_at` is newer. Rule:
 a pack upgrade skips any record whose `pack` has been cleared, or whose `updated_at` is later
@@ -737,6 +782,49 @@ the same canvas, simplified chrome. The honest risk: the far-zoom density view o
 screen may simply not be legible — test this early, and be willing to give mobile a different
 default view.
 
+### 7.1 As built (M5)
+
+**Two changes carry the mobile layout**, both below Tailwind's `sm`. The detail pane becomes a
+bottom sheet rather than a column, because a fixed 320 px sidebar leaves a 390 px screen with
+fifty pixels of canvas — and a sheet rather than a full-screen takeover, since the point of
+selecting something is to see it *in context*. The filter bar collapses behind a single
+`filters` control, because thirty tags is five rows and most of the screen. Above `sm` both
+behave exactly as before.
+
+The density view does turn out to be legible at 390 px, which was the stated risk. It has less to
+say at that size, but the shape of the corpus survives.
+
+### 7.2 The service worker (D40)
+
+Written in `scripts/pwa-plugin.ts` rather than taken as a dependency, for the reason the Markdown
+renderer was (D27): it is forty lines, and one aspect has to be exactly right. Workbox would do
+this well, but it is a large dependency whose caching strategy nobody here had read.
+
+- **The HTML shell is network-first**, falling back to the cache. Its URL is the only stable one,
+  so it is the only file that can go stale — and a local-first app running last week's code
+  against this week's database is worth a round-trip to avoid.
+- **Fingerprinted assets are cache-first**, exactly because Vite fingerprints them.
+- **The precache list comes from the bundle itself** at build time, so it cannot drift from what
+  was actually built. That is the thing a hand-written service worker usually gets wrong.
+
+Two bugs found by testing it rather than assuming, both worth recording because both were silent:
+
+**`cache.addAll` is atomic**, so one entry failing threw the whole precache away, the install
+never completed, and there was no offline support at all — while the app looked fine online.
+Replaced with an entry-by-entry fetch-and-put that tolerates individual failures, which is the
+right trade for offline-first anyway: four files out of five is worth having.
+
+**`Vary: Origin` defeated every cache lookup.** The worker precaches without an `Origin` header;
+the page then requests the same files with `crossorigin`, which sends one. Under default Cache
+API matching those are different entries, so the app precached itself perfectly and then failed
+to load offline — the shell was served and nothing else was. Lookups now pass `ignoreVary`, which
+is correct rather than a workaround: `Vary: Origin` is a statement about CORS, and a fingerprinted
+URL is one immutable body whoever asks.
+
+Verified by cutting the network through the DevTools protocol and reloading — `scripts/shot.mjs
+--offline` — rather than by stopping the server, which races Chrome's own start-up and fails for
+reasons unrelated to the worker.
+
 ---
 
 ## 8. Storage, durability and privacy (D8, D16, D25)
@@ -882,7 +970,7 @@ Ordered to put the risky, distinctive work first and the CRUD last.
 | ~~**M2**~~ | ✅ IndexedDB store with cross-tab sync, quick-add capture with a duplicate guard, event detail, the searchable list view, export/import/merge, the three durability layers, URL state, first run. |
 | ~~**M3**~~ | ✅ Connections: the creation flow from both the picker and the canvas, arcs with tag colour and additive blending, hit-testing and selection on the canvas, the Markdown subset and the note editor, connections in the event pane. 598 tests. |
 | ~~**M4**~~ | ✅ Tag filtering with rolled-up counts and the packs toggle, animated mass redistribution, era lanes below the axis, era creation and editing. 635 tests. |
-| **M5** | Packs (WWII, Cold War, …). PWA, mobile polish. |
+| ~~**M5**~~ | ✅ Two bundled packs with install, upgrade, adoption and uninstall; the two-layer mass; the premade tags as records; a hand-rolled service worker with verified offline loading; the mobile layout. 687 tests. |
 | **Later** | Map view · AI-suggested tags · document ingestion · social layer and sync. |
 
 **M1 is the decision point.** Everything before it is cheap; everything after it assumes the

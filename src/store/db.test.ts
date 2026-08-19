@@ -26,7 +26,7 @@ afterEach(() => {
 describe('createIndexedDbStore', () => {
   it('starts empty', async () => {
     const db = await store();
-    expect(await db.load()).toEqual({ events: [], connections: [], tags: [], eras: [] });
+    expect(await db.load()).toEqual({ events: [], connections: [], tags: [], eras: [], packs: [] });
   });
 
   it('writes a timeline and hands it back after a reload', async () => {
@@ -94,7 +94,7 @@ describe('createIndexedDbStore', () => {
   it('replaces everything, dropping records the new timeline does not have', async () => {
     const db = await store();
     await db.put('events', [event('old-1'), event('old-2')]);
-    await db.replaceAll({ events: [event('new-1')], connections: [], tags: [], eras: [] });
+    await db.replaceAll({ events: [event('new-1')], connections: [], tags: [], eras: [], packs: [] });
 
     const loaded = await db.load();
     expect(loaded.events.map((e) => e.id)).toEqual(['new-1']);
@@ -204,7 +204,7 @@ describe.skipIf(!hasChannel)('cross-tab notification', () => {
 
     const tabB = await store(name);
     const delivered = nextChange(tabB);
-    await tabA.replaceAll({ events: [event('kept')], connections: [], tags: [], eras: [] });
+    await tabA.replaceAll({ events: [event('kept')], connections: [], tags: [], eras: [], packs: [] });
 
     const change = await delivered;
     expect(change.kind).toBe('events');

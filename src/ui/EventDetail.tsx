@@ -3,6 +3,7 @@ import { markdownExcerpt } from '../core/markdown';
 import { formatTime } from '../core/time';
 import { connectionsFor } from '../state/timeline-model';
 import { useTimeline } from '../state/timeline-store';
+import { DetailPane } from './DetailPane';
 import { MarkdownEditor } from './MarkdownEditor';
 
 /** The selected event, with the fields the concept actually cares about. */
@@ -38,22 +39,15 @@ export function EventDetail() {
   if (!event) return null;
 
   return (
-    <aside
-      aria-label="Event detail"
-      className="flex w-80 shrink-0 flex-col gap-4 overflow-y-auto border-l border-line px-4 py-3"
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <h2 className="text-sm font-semibold text-paper">{event.title}</h2>
-          <p className="mt-0.5 text-xs tabular-nums text-paper-dim">{formatTime(event.when)}</p>
-        </div>
-        <button
-          onClick={() => select(null)}
-          aria-label="Close detail"
-          className="rounded px-1.5 text-paper-dim hover:text-paper"
-        >
-          ×
-        </button>
+    <DetailPane label="Event" onClose={() => select(null)}>
+      <div>
+        <h2 className="text-sm font-semibold text-paper">{event.title}</h2>
+        <p className="mt-0.5 text-xs tabular-nums text-paper-dim">{formatTime(event.when)}</p>
+        {event.pack && (
+          <p className="mt-1 text-[11px] text-paper-dim">
+            from a pack — editing or connecting it makes it yours
+          </p>
+        )}
       </div>
 
       {event.tags.length > 0 && (
@@ -163,6 +157,6 @@ export function EventDetail() {
           ? ` (and ${connections.length} connection${connections.length === 1 ? '' : 's'})`
           : ''}
       </button>
-    </aside>
+    </DetailPane>
   );
 }

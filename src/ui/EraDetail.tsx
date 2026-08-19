@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { formatTime, parseTime } from '../core/time';
 import { useTimeline } from '../state/timeline-store';
+import { DetailPane } from './DetailPane';
 import { MarkdownEditor } from './MarkdownEditor';
 
 /**
@@ -57,20 +58,7 @@ export function EraDetail() {
   };
 
   return (
-    <aside
-      aria-label="Era detail"
-      className="flex w-80 shrink-0 flex-col gap-4 overflow-y-auto border-l border-line px-4 py-3"
-    >
-      <div className="flex items-start justify-between gap-2">
-        <h2 className="text-xs uppercase tracking-wide text-paper-dim">era</h2>
-        <button
-          onClick={() => selectEra(null)}
-          aria-label="Close era"
-          className="rounded px-1.5 text-paper-dim hover:text-paper"
-        >
-          ×
-        </button>
-      </div>
+    <DetailPane label="Era" onClose={() => selectEra(null)}>
 
       <label className="flex flex-col gap-1 text-xs text-paper-dim">
         name
@@ -141,6 +129,6 @@ export function EraDetail() {
       >
         delete era
       </button>
-    </aside>
+    </DetailPane>
   );
 }

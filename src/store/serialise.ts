@@ -13,8 +13,14 @@ import type { Timeline } from '../core/model/types';
 import type { MergeResult, MergeStats, RecordKind, TimelineDocument } from './contract';
 import { SCHEMA_VERSION } from './contract';
 
-/** The four record kinds, in a stable order. */
-export const RECORD_KINDS: readonly RecordKind[] = ['events', 'connections', 'tags', 'eras'];
+/** Every record kind, in a stable order. */
+export const RECORD_KINDS: readonly RecordKind[] = [
+  'events',
+  'connections',
+  'tags',
+  'eras',
+  'packs',
+];
 
 /** Written into `generator` so a stale export can be traced to what wrote it. */
 export const GENERATOR = 'arlinje/0.0.0';
@@ -65,7 +71,11 @@ export type Migration = (doc: TimelineDocument) => TimelineDocument;
  * line here plus the bump of `SCHEMA_VERSION` in `contract.ts`; `migrate` fails
  * loudly if the two ever disagree.
  */
-export const MIGRATIONS: readonly Migration[] = [];
+export const MIGRATIONS: readonly Migration[] = [
+  // 1 → 2: packs became records of their own (§5). A document written before
+  // them simply has none installed; nothing else about it changes.
+  (doc) => ({ ...doc, packs: [] }),
+];
 
 /**
  * Runs the chain from whatever version the document declares up to
@@ -124,6 +134,7 @@ export function toDocument(timeline: Timeline, options: ToDocumentOptions = {}):
     connections: timeline.connections.slice(),
     tags: timeline.tags.slice(),
     eras: timeline.eras.slice(),
+    packs: timeline.packs.slice(),
   };
 }
 
@@ -135,6 +146,7 @@ export function fromDocument(doc: TimelineDocument): Timeline {
     connections: asArray(migrated.connections),
     tags: asArray(migrated.tags),
     eras: asArray(migrated.eras),
+    packs: asArray(migrated.packs),
   };
 }
 
@@ -181,6 +193,7 @@ export function asDocument(raw: unknown): TimelineDocument {
     connections: asArray(source.connections),
     tags: asArray(source.tags),
     eras: asArray(source.eras),
+    packs: asArray(source.packs),
   };
   if (typeof source.generator === 'string') doc.generator = source.generator;
   return doc;
@@ -224,6 +237,7 @@ export function mergeDocument(current: Timeline, incoming: TimelineDocument): Me
   const connections = mergeKind(current.connections, asArray(doc.connections));
   const tags = mergeKind(current.tags, asArray(doc.tags));
   const eras = mergeKind(current.eras, asArray(doc.eras));
+  const packs = mergeKind(current.packs, asArray(doc.packs));
 
   return {
     timeline: {
@@ -231,12 +245,14 @@ export function mergeDocument(current: Timeline, incoming: TimelineDocument): Me
       connections: connections.records,
       tags: tags.records,
       eras: eras.records,
+      packs: packs.records,
     },
     stats: {
       events: events.stats,
       connections: connections.stats,
       tags: tags.stats,
       eras: eras.stats,
+      packs: packs.stats,
     },
   };
 }
