@@ -341,6 +341,46 @@ export function createEra(timeline: Timeline, draft: EraDraft, now: string = now
   };
 }
 
+export function editEra(
+  timeline: Timeline,
+  id: Id,
+  patch: Partial<Omit<Era, keyof Base>>,
+  now: string = nowIso(),
+): Mutation | null {
+  const existing = timeline.eras.find((era) => era.id === id);
+  if (!existing) return null;
+
+  const updated: Era = { ...existing, ...patch, updated_at: now };
+
+  return {
+    timeline: { ...timeline, eras: timeline.eras.map((e) => (e.id === id ? updated : e)) },
+    touched: [{ kind: 'eras', records: [updated] }],
+    undo: [{ kind: 'eras', id, record: existing }],
+    label: 'edit era',
+  };
+}
+
+/**
+ * Soft-deletes an era.
+ *
+ * No cascade, unlike an event (D21): an era is a frame the timeline is read
+ * against, not something events belong to. Deleting "the Cold War" removes a
+ * label, not the events that happened during it.
+ */
+export function removeEra(timeline: Timeline, id: Id, now: string = nowIso()): Mutation | null {
+  const existing = timeline.eras.find((era) => era.id === id);
+  if (!existing || existing.deleted_at) return null;
+
+  const deleted: Era = { ...existing, deleted_at: now, updated_at: now };
+
+  return {
+    timeline: { ...timeline, eras: timeline.eras.map((e) => (e.id === id ? deleted : e)) },
+    touched: [{ kind: 'eras', records: [deleted] }],
+    undo: [{ kind: 'eras', id, record: existing }],
+    label: 'delete era',
+  };
+}
+
 /**
  * Applies undo steps, returning the restored timeline and what to persist.
  *

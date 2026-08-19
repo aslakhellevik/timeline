@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import type { TimelineEvent } from '../core/model/types';
 import { applyFilter } from '../core/filter';
+import { interval } from '../core/time';
 import { backupStatus, createIndexedDbStore } from '../store';
 import type { BackupStatus } from '../store';
 import { useTimeline } from '../state/timeline-store';
 import { ConnectPicker } from './ConnectPicker';
 import { ConnectionDetail } from './ConnectionDetail';
 import { DataPanel } from './DataPanel';
+import { EraDetail } from './EraDetail';
 import { EventDetail } from './EventDetail';
 import { EventList } from './EventList';
+import { FilterBar } from './FilterBar';
 import { FirstRun } from './FirstRun';
 import { QuickAdd } from './QuickAdd';
 import { TimelineView } from './TimelineView';
@@ -22,6 +26,9 @@ export function App() {
   const filter = useTimeline((state) => state.filter);
   const selectedId = useTimeline((state) => state.selectedId);
   const selectedConnectionId = useTimeline((state) => state.selectedConnectionId);
+  const selectedEraId = useTimeline((state) => state.selectedEraId);
+  const selectEra = useTimeline((state) => state.selectEra);
+  const addEra = useTimeline((state) => state.addEra);
   const connectFrom = useTimeline((state) => state.connectFrom);
   const pickerOpen = useTimeline((state) => state.pickerOpen);
   const cancelConnect = useTimeline((state) => state.cancelConnect);
@@ -91,6 +98,27 @@ export function App() {
     viewportRef.current = viewport;
   }, []);
 
+  /**
+   * A new era over the middle half of what is on screen.
+   *
+   * Deriving the span from the viewport rather than opening an empty date field
+   * is the whole trick: you zoom to the period you mean and press the button, so
+   * the common case needs no typing. The name and the exact edges are then
+   * adjusted in the pane, which opens selected.
+   */
+  const addEraHere = useCallback(() => {
+    const viewport = viewportRef.current;
+    const extent = viewport
+      ? { centre: viewport.centre, span: viewport.span }
+      : spanOf(timeline.events);
+    if (!extent) return;
+    addEra({
+      name: 'new era',
+      when: interval(extent.centre - extent.span / 4, extent.centre + extent.span / 4),
+      kind: 'personal',
+    });
+  }, [addEra, timeline.events]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key === 'z') {
@@ -158,6 +186,8 @@ export function App() {
         </nav>
       </header>
 
+      <FilterBar />
+
       {/*
         The pick stays armed while the picker is dismissed, so the app needs to
         say so somewhere other than inside the modal that is no longer there.
@@ -183,11 +213,15 @@ export function App() {
                 events={visible.events}
                 connections={visible.connections}
                 tags={visible.tags}
+                eras={visible.eras}
+                allEvents={timeline.events}
                 selectedId={selectedId}
                 selectedConnectionId={selectedConnectionId}
+                selectedEraId={selectedEraId}
                 connectFrom={connectFrom}
                 onSelectEvent={select}
                 onSelectConnection={selectConnection}
+                onSelectEra={selectEra}
                 {...(initial.centre !== undefined && initial.span !== undefined
                   ? { initialViewport: { centre: initial.centre, span: initial.span } }
                   : {})}
@@ -199,6 +233,8 @@ export function App() {
           </main>
           {selectedConnectionId ? (
             <ConnectionDetail />
+          ) : selectedEraId ? (
+            <EraDetail />
           ) : (
             selectedId && <EventDetail />
           )}
@@ -210,7 +246,11 @@ export function App() {
           {visible.events.length.toLocaleString('en-GB')} events
           {visible.connections.length > 0 &&
             ` · ${visible.connections.length.toLocaleString('en-GB')} connections`}
+          {visible.eras.length > 0 && ` · ${visible.eras.length.toLocaleString('en-GB')} eras`}
         </span>
+        <button onClick={addEraHere} className="hover:text-paper">
+          + era
+        </button>
         {undoDepth > 0 && (
           <button onClick={undo} className="hover:text-paper">
             undo
@@ -233,6 +273,18 @@ export function App() {
       {pickerOpen && <ConnectPicker />}
     </div>
   );
+}
+
+/** Centre and span of the whole corpus, for an era added before any panning. */
+function spanOf(events: readonly TimelineEvent[]): { centre: number; span: number } | null {
+  if (events.length === 0) return null;
+  let min = Infinity;
+  let max = -Infinity;
+  for (const event of events) {
+    if (event.when.a < min) min = event.when.a;
+    if (event.when.d > max) max = event.when.d;
+  }
+  return { centre: (min + max) / 2, span: Math.max(max - min, 365) };
 }
 
 function Centred({ children }: { children: ReactNode }) {

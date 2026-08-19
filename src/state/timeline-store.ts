@@ -7,7 +7,7 @@
  */
 
 import { create } from 'zustand';
-import type { Filter, Id, Timeline, TimelineEvent } from '../core/model/types';
+import type { Era, Filter, Id, Timeline, TimelineEvent } from '../core/model/types';
 import { NO_FILTER } from '../core/filter';
 import { parseQuickAdd } from '../core/quick-add';
 import { findPossibleDuplicates } from '../core/search';
@@ -21,14 +21,16 @@ import {
   createEra,
   createEvent,
   editConnection,
+  editEra,
   editEvent,
   ensureTags,
   findConnectionBetween,
   removeConnection,
+  removeEra,
   removeEvent,
   sortEvents,
 } from './timeline-model';
-import type { ConnectionDraft, EventDraft, Mutation, UndoStep } from './timeline-model';
+import type { ConnectionDraft, EraDraft, EventDraft, Mutation, UndoStep } from './timeline-model';
 
 /** How many undo steps to keep. Beyond this, soft deletes are the safety net. */
 const UNDO_DEPTH = 50;
@@ -48,6 +50,8 @@ interface TimelineStoreState {
   selectedId: Id | null;
   /** The connection whose document the detail pane is showing, if any. */
   selectedConnectionId: Id | null;
+  /** The era whose detail the pane is showing, if any. */
+  selectedEraId: Id | null;
   /**
    * The first endpoint of a connection being made. While this is set the whole
    * app is in "pick a second event" mode: the canvas draws a pending arc to the
@@ -85,10 +89,19 @@ interface TimelineStoreState {
   updateConnection(id: Id, patch: { note?: string; tags?: Id[] }): void;
   deleteConnection(id: Id): void;
 
+  addEra(draft: EraDraft): Id | null;
+  updateEra(id: Id, patch: Partial<Omit<Era, 'id' | 'created_at' | 'updated_at'>>): void;
+  deleteEra(id: Id): void;
+  selectEra(id: Id | null): void;
+
   seedLife(birthYear: number): void;
   replaceTimeline(timeline: Timeline): void;
 
   setFilter(filter: Filter): void;
+  /** Adds or removes one tag, leaving the rest of the filter alone. */
+  toggleTag(id: Id): void;
+  clearTags(): void;
+  setIncludePacks(includePacks: boolean): void;
   setQuery(query: string): void;
   select(id: Id | null): void;
   selectConnection(id: Id | null): void;
@@ -118,6 +131,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
     filter: NO_FILTER,
     selectedId: null,
     selectedConnectionId: null,
+    selectedEraId: null,
     connectFrom: null,
     pickerOpen: false,
     query: '',
@@ -285,6 +299,27 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
       if (get().selectedConnectionId === id) set({ selectedConnectionId: null });
     },
 
+    addEra(draft) {
+      const mutation = createEra(get().timeline, draft);
+      commit(mutation);
+      const id = mutation.undo[0]?.id ?? null;
+      if (id) set({ selectedEraId: id, selectedId: null, selectedConnectionId: null });
+      return id;
+    },
+
+    updateEra(id, patch) {
+      commit(editEra(get().timeline, id, patch));
+    },
+
+    deleteEra(id) {
+      commit(removeEra(get().timeline, id));
+      if (get().selectedEraId === id) set({ selectedEraId: null });
+    },
+
+    selectEra(id) {
+      set({ selectedEraId: id, selectedId: null, selectedConnectionId: null, connectFrom: null });
+    },
+
     /**
      * First run (D26): one question, and the timeline is never blank — the
      * personal frame of reference exists before the user has added anything.
@@ -309,6 +344,33 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
     setFilter(filter) {
       set({ filter });
     },
+
+    /**
+     * Tags compose as a union: an event passes if it carries *any* selected tag.
+     *
+     * Intersection would be the other reasonable choice and is the wrong one
+     * here. The premade set mixes regions with themes, so the obvious pair to
+     * pick — Europe and philosophy — would mean "European philosophy" under
+     * intersection and show almost nothing, since an event tagged *philosophy*
+     * is rarely also tagged with its region. Union makes selecting more tags
+     * show more, which is what the sizes next to them promise.
+     */
+    toggleTag(id) {
+      const { filter } = get();
+      const tags = filter.tags.includes(id)
+        ? filter.tags.filter((tag) => tag !== id)
+        : [...filter.tags, id];
+      set({ filter: { ...filter, tags } });
+    },
+
+    clearTags() {
+      set({ filter: { ...get().filter, tags: [] } });
+    },
+
+    setIncludePacks(includePacks) {
+      set({ filter: { ...get().filter, includePacks } });
+    },
+
     setQuery(query) {
       set({ query });
     },
@@ -324,11 +386,11 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
         get().connectTo(id);
         return;
       }
-      set({ selectedId: id, selectedConnectionId: null });
+      set({ selectedId: id, selectedConnectionId: null, selectedEraId: null });
     },
 
     selectConnection(id) {
-      set({ selectedConnectionId: id, connectFrom: null, pickerOpen: false });
+      set({ selectedConnectionId: id, selectedEraId: null, connectFrom: null, pickerOpen: false });
     },
   };
 });

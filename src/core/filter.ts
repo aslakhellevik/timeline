@@ -109,3 +109,48 @@ export function applyFilter(timeline: Timeline, filter: Filter): Timeline {
 }
 
 export const NO_FILTER: Filter = { tags: [], includePacks: true };
+
+export interface TagUsage {
+  tag: Tag;
+  /** Events carrying this tag directly. */
+  own: number;
+  /** Events this tag would select, counting descendants — what filtering shows. */
+  total: number;
+}
+
+/**
+ * How much each tag actually covers, for the filter UI.
+ *
+ * `total` rolls up through `parent` (D14), because that is what selecting the
+ * tag does: filtering by Europe shows an event tagged only Norway, so offering
+ * "Europe · 3" when it would reveal thirty is a lie the UI would tell every
+ * time. An event is counted once per tag no matter how many of that tag's
+ * descendants it carries.
+ *
+ * Tombstoned tags are dropped; unused ones are kept with a zero count, since the
+ * caller is better placed to decide whether an empty premade tag is worth
+ * showing than this function is.
+ */
+export function tagUsage(timeline: Timeline, includePacks = true): TagUsage[] {
+  const ancestry = buildAncestry(timeline.tags);
+  const own = new Map<Id, number>();
+  const total = new Map<Id, number>();
+
+  for (const event of timeline.events) {
+    if (event.deleted_at) continue;
+    if (event.pack && !includePacks) continue;
+
+    // Deduped across the event's tags: something tagged both Norway and Europe
+    // must not count twice towards Europe.
+    const rolled = new Set<Id>();
+    for (const tag of event.tags) {
+      own.set(tag, (own.get(tag) ?? 0) + 1);
+      for (const ancestor of ancestry.get(tag) ?? [tag]) rolled.add(ancestor);
+    }
+    for (const tag of rolled) total.set(tag, (total.get(tag) ?? 0) + 1);
+  }
+
+  return timeline.tags
+    .filter((tag) => !tag.deleted_at)
+    .map((tag) => ({ tag, own: own.get(tag.id) ?? 0, total: total.get(tag.id) ?? 0 }));
+}

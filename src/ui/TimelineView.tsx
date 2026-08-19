@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { Connection, Id, Tag, TimelineEvent } from '../core/model/types';
+import type { Connection, Era, Id, Tag, TimelineEvent } from '../core/model/types';
 import { CanvasHost } from '../render/canvas-host';
 import { attachInteraction } from '../render/interaction';
 import { TimelineRenderer } from '../render/timeline-renderer';
@@ -18,11 +18,16 @@ export interface TimelineViewProps {
   events: readonly TimelineEvent[];
   connections: readonly Connection[];
   tags: readonly Tag[];
+  eras: readonly Era[];
+  /** The unfiltered corpus — sets the mass scale and the extent, see TimelineData. */
+  allEvents: readonly TimelineEvent[];
   selectedId: Id | null;
   selectedConnectionId: Id | null;
+  selectedEraId: Id | null;
   connectFrom: Id | null;
   onSelectEvent: (id: Id) => void;
   onSelectConnection: (id: Id) => void;
+  onSelectEra: (id: Id) => void;
   /** Restores a bookmarked position (D24). Applied once, on mount. */
   initialViewport?: { centre: number; span: number };
   onViewportChange?: (viewport: { centre: number; span: number }) => void;
@@ -32,11 +37,15 @@ export function TimelineView({
   events,
   connections,
   tags,
+  eras,
+  allEvents,
   selectedId,
   selectedConnectionId,
+  selectedEraId,
   connectFrom,
   onSelectEvent,
   onSelectConnection,
+  onSelectEra,
   initialViewport,
   onViewportChange,
 }: TimelineViewProps) {
@@ -54,6 +63,8 @@ export function TimelineView({
   selectEventRef.current = onSelectEvent;
   const selectConnectionRef = useRef(onSelectConnection);
   selectConnectionRef.current = onSelectConnection;
+  const selectEraRef = useRef(onSelectEra);
+  selectEraRef.current = onSelectEra;
   const initialRef = useRef(initialViewport);
 
   useEffect(() => {
@@ -63,7 +74,7 @@ export function TimelineView({
 
     const renderer = new TimelineRenderer();
     rendererRef.current = renderer;
-    renderer.setData(events, connections, tags);
+    renderer.setData({ events, connections, tags, eras, calibration: allEvents });
 
     const host = new CanvasHost(canvas, (ctx, size) => renderer.draw(ctx, size));
     hostRef.current = host;
@@ -138,6 +149,7 @@ export function TimelineView({
       const target = renderer.hitTest(x, y);
       if (target?.kind === 'event') selectEventRef.current(target.id);
       else if (target?.kind === 'connection') selectConnectionRef.current(target.id);
+      else if (target?.kind === 'era') selectEraRef.current(target.id);
     };
 
     frame.addEventListener('pointermove', onMove);
@@ -176,7 +188,7 @@ export function TimelineView({
     if (!renderer || !host) return;
 
     const before = renderer.getExtent();
-    renderer.setData(events, connections, tags);
+    renderer.setData({ events, connections, tags, eras, calibration: allEvents });
     const after = renderer.getExtent();
 
     if (after) {
@@ -187,16 +199,17 @@ export function TimelineView({
       }
     }
     host.requestDraw();
-  }, [events, connections, tags]);
+  }, [events, connections, tags, eras, allEvents]);
 
   useEffect(() => {
     rendererRef.current?.setSelection({
       eventId: selectedId,
       connectionId: selectedConnectionId,
+      eraId: selectedEraId,
       connectFrom,
     });
     hostRef.current?.requestDraw();
-  }, [selectedId, selectedConnectionId, connectFrom]);
+  }, [selectedId, selectedConnectionId, selectedEraId, connectFrom]);
 
   return (
     <div

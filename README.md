@@ -11,8 +11,9 @@ talk to people, and its shape says something about what you know and how you con
 
 ## Status
 
-**M0–M3 built**: the pure core, the canvas renderer, real local-first storage with capture, and
-connections — the arcs, the creation flow and the note that carries the argument.
+**M0–M4 built**: the pure core, the canvas renderer, real local-first storage with capture,
+connections — the arcs, the creation flow and the note that carries the argument — and tag
+filtering that visibly redistributes the mass, with eras in lanes below the axis.
 The concept below is settled; the technical decisions that follow from it live in
 [docs/design.md](docs/design.md).
 
@@ -180,6 +181,7 @@ src/core/           pure, framework-free, fully tested
   markdown.ts       a small Markdown subset, escape-first (D27)
 src/render/         canvas renderer — no framework imports (D11)
   arcs.ts           connection arc geometry, colour and hit-testing
+  lanes.ts          era lane allocation and bar geometry
 src/state/          in-memory timeline, mutations, undo, persist queue
 src/store/          IndexedDB, merge, backup, durability
 src/ui/             React
@@ -190,11 +192,11 @@ scripts/shot.mjs    screenshot the running app over CDP, for verification
 That boundary is the one architectural rule worth enforcing — see
 [D11](docs/design.md#1-decision-log).
 
-Build order: [docs/design.md §9](docs/design.md#9-build-order). **M0–M3 complete**. M4 is tags
-and filters with animated mass redistribution, and eras in lanes below the axis.
+Build order: [docs/design.md §9](docs/design.md#9-build-order). **M0–M4 complete**. M5 is packs —
+installable canonical content — plus the PWA and mobile polish.
 
 ```
 npm run dev        # your timeline; starts empty
-npm test           # 598 tests
+npm test           # 635 tests
 npm run typecheck
 ```

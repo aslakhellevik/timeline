@@ -41,6 +41,9 @@ map are deferred — but the data model is shaped so that none of them require a
 | D27 | Markdown is a small subset rendered in-house, escape-first, with no raw HTML path — not a library plus a sanitiser |
 | D28 | Arc geometry is precomputed into an index on data change; the per-frame path touches no event store and resolves no colours |
 | D29 | Arcs per frame are capped, and the cap keeps the longest — culling cannot bound the far view because long arcs cross any viewport |
+| D30 | Selected tags compose as a **union**, not an intersection |
+| D31 | The mass scale is calibrated on the **unfiltered** corpus, so filtering removes weight rather than renormalising it |
+| D32 | Personal eras take priority in lane allocation, but do not reserve lanes along the whole axis |
 
 Conventions, settled and not worth further discussion:
 
@@ -278,11 +281,35 @@ everything:
 
 Offer auto-ranging as a toggle, off by default.
 
-### 3.5 Filtering (D22)
+### 3.5 Filtering (D22, D30, D31)
 
-Tag filters recompute ρ over the subset. Animate by interpolating the two density grids over
-~300 ms — that is `W` floats, free — so switching "all" → "history of ideas" visibly
-redistributes weight, as the concept asks.
+Tag filters recompute ρ over the subset, and the two density grids are interpolated over 300 ms
+with an ease at both ends — `W` floats, free — so switching "all" → "history of ideas" visibly
+redistributes weight, as the concept asks. Built in M4 and **measured** rather than assumed: the
+blue ink above the axis falls monotonically across the 300 ms and then holds, instead of stepping
+once. Linear interpolation reads as a mechanical wipe; the ease is what makes the same arithmetic
+read as weight settling. A pan or zoom mid-transition abandons it, since the grids then describe
+different windows and there is nothing meaningful to blend.
+
+**The mass scale is calibrated on the unfiltered corpus (D31).** This is what makes a filter mean
+anything. Recalibrating against the filtered subset would redraw "philosophy" at the same height
+as everything, so filtering would change the shape of the curve but never its weight — and weight
+is the whole claim of the view. Against the whole corpus, filtering 2,400 events down to 97
+leaves visibly about a fifth of the ink, and the semantic-zoom crossfade resolves what remains
+into marks rather than letting it become an unreadable smear. The pannable extent comes from the
+same unfiltered set, so the view does not jump when a filter changes under it.
+
+**Selected tags compose as a union (D30).** An event passes if it carries *any* of them.
+Intersection is the other reasonable choice and is the wrong one here: the premade set mixes
+regions with themes, so the obvious pair to pick — Europe and philosophy — would mean "European
+philosophy" under intersection and show almost nothing, since an event tagged *philosophy* is
+rarely also tagged with its region. Union makes selecting more tags show more, which is what the
+counts beside them promise.
+
+Those counts are **rolled up** through `parent` (D14), because that is what selecting the tag
+does: filtering by Europe shows an event tagged only Norway, so offering "Europe · 3" when it
+would reveal thirty is a lie told every time. An event counts once per tag however many of that
+tag's descendants it carries.
 
 One filter predicate, evaluated once per frame, consumed by every view (canvas, list, and the
 map in v2). Its rules:
@@ -499,8 +526,34 @@ wastes work and invites the classic bug where the hit target has drifted a frame
 screen. Marks win ties against arcs: an arc is a wide, forgiving target and a mark is a hairline,
 so the other way round makes events near a busy bundle unselectable.
 
-**Eras** occupy lanes below the axis; lane allocation is interval-graph greedy colouring, with
-personal eras pinned to the lanes nearest the axis.
+**Eras** occupy lanes below the axis (`src/render/lanes.ts`, built in M4). Lane allocation is
+greedy interval-graph colouring — walk them in start order, drop each into the lowest row it
+clears — which is optimal for interval graphs: it uses exactly as many rows as the deepest
+overlap. The axis sits above the band, so its height moves as the number of rows changes with the
+viewport.
+
+Bars are drawn between `b` and `c` with the flanks `a`→`b` and `c`→`d` as gradient ramps to
+transparent. That is the only honest rendering of "the years I was reading Russian novels": an era
+whose `a`≠`b` has no first day, and a crisp edge would claim it does. The ramps are part of the
+hit target, because they are part of the era.
+
+A gap is required between two bars in the same row. Not cosmetic: "the Cold War" running straight
+into "the Nineties" would render as one continuous bar, which is a false statement about the
+world.
+
+**Personal eras are allocated first, but do not reserve lanes (D32).** The original rule gave
+them the lanes nearest the axis outright, and that was wrong in a way only visible against a real
+corpus: a life, a schooling and two reading periods all overlap inside the last two decades, so
+four rows were held clear across four thousand years for bars twenty pixels wide — which pushed
+every canonical era down four rows and dropped the ones that then did not fit. Placing personal
+eras first still gives them the lowest row wherever they exist, and a canonical era may share row
+0 with "my life" when the two are millennia apart, which nobody can misread.
+
+That fix needed the allocator to track the *intervals* taken in each row rather than just the
+rightmost edge. The cheap version is only correct when eras arrive in start order, and they no
+longer do.
+
+Eras beyond the row cap are dropped and counted, rather than shrinking every row.
 
 **Interaction.** Wheel = zoom at cursor, drag = pan, pinch on touch, double-click = zoom in,
 arrow keys pan / `+`/`-` zoom. Zoom is continuous in log-scale space, animated with a short
@@ -760,7 +813,7 @@ Ordered to put the risky, distinctive work first and the CRUD last.
 | ~~**M1**~~ | ✅ Canvas renderer against synthetic data: linear axis, pan/zoom, density field, semantic zoom crossfade, calendar-correct ticks at every scale, selective labels, hover crosshair. The far view works — it reads as a picture of what someone knows, with the gaps legible at a glance. |
 | ~~**M2**~~ | ✅ IndexedDB store with cross-tab sync, quick-add capture with a duplicate guard, event detail, the searchable list view, export/import/merge, the three durability layers, URL state, first run. |
 | ~~**M3**~~ | ✅ Connections: the creation flow from both the picker and the canvas, arcs with tag colour and additive blending, hit-testing and selection on the canvas, the Markdown subset and the note editor, connections in the event pane. 598 tests. |
-| **M4** | Tags and filters with animated mass redistribution. Eras with lane layout. |
+| ~~**M4**~~ | ✅ Tag filtering with rolled-up counts and the packs toggle, animated mass redistribution, era lanes below the axis, era creation and editing. 635 tests. |
 | **M5** | Packs (WWII, Cold War, …). PWA, mobile polish. |
 | **Later** | Map view · AI-suggested tags · document ingestion · social layer and sync. |
 

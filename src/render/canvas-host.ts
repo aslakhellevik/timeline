@@ -14,7 +14,12 @@ export interface CanvasSize {
   dpr: number;
 }
 
-export type DrawFn = (ctx: CanvasRenderingContext2D, size: CanvasSize) => void;
+/**
+ * Paints one frame. Returning `true` asks for another — that is how an animation
+ * runs without the renderer owning a timer of its own, which would keep firing
+ * after the canvas was destroyed.
+ */
+export type DrawFn = (ctx: CanvasRenderingContext2D, size: CanvasSize) => boolean | void;
 
 export class CanvasHost {
   private readonly canvas: HTMLCanvasElement;
@@ -80,6 +85,6 @@ export class CanvasHost {
     const { width, height, dpr } = this.size;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.ctx.clearRect(0, 0, width, height);
-    this.draw(this.ctx, this.size);
+    if (this.draw(this.ctx, this.size) === true) this.requestDraw();
   }
 }
