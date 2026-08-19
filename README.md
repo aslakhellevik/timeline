@@ -11,7 +11,8 @@ talk to people, and its shape says something about what you know and how you con
 
 ## Status
 
-**M0–M2 built**: the pure core, the canvas renderer, and real local-first storage with capture.
+**M0–M3 built**: the pure core, the canvas renderer, real local-first storage with capture, and
+connections — the arcs, the creation flow and the note that carries the argument.
 The concept below is settled; the technical decisions that follow from it live in
 [docs/design.md](docs/design.md).
 
@@ -176,7 +177,9 @@ src/core/           pure, framework-free, fully tested
   filter.ts         the one filter predicate every view consumes
   search.ts         search, and the capture-time duplicate guard
   quick-add.ts      the capture grammar
+  markdown.ts       a small Markdown subset, escape-first (D27)
 src/render/         canvas renderer — no framework imports (D11)
+  arcs.ts           connection arc geometry, colour and hit-testing
 src/state/          in-memory timeline, mutations, undo, persist queue
 src/store/          IndexedDB, merge, backup, durability
 src/ui/             React
@@ -187,11 +190,11 @@ scripts/shot.mjs    screenshot the running app over CDP, for verification
 That boundary is the one architectural rule worth enforcing — see
 [D11](docs/design.md#1-decision-log).
 
-Build order: [docs/design.md §9](docs/design.md#9-build-order). **M0–M2 complete**. M3 is
-connections — the part the concept says is actually novel.
+Build order: [docs/design.md §9](docs/design.md#9-build-order). **M0–M3 complete**. M4 is tags
+and filters with animated mass redistribution, and eras in lanes below the axis.
 
 ```
 npm run dev        # your timeline; starts empty
-npm test           # 514 tests
+npm test           # 598 tests
 npm run typecheck
 ```

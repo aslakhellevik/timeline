@@ -14,6 +14,7 @@
   --color-paper-soft: #c3c2b7; /* secondary ink */
   --color-paper-dim: #898781; /* muted: axis and labels */
   --color-accent: #3987e5; /* sequential hue, dark step */
+  --color-connection: #ffd43b; /* selection, and the pending connection arc */
 }
 
 html,
@@ -28,4 +29,116 @@ body {
   font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
+}
+
+/*
+ * Rendered notes and connection arguments.
+ *
+ * Written out rather than pulled from a typography plugin: the tag set is fixed
+ * and small — core/markdown.ts emits exactly these — so the whole stylesheet for
+ * it fits in one block, and a note is read in a 300px column where a general
+ * prose scale is wrong anyway.
+ */
+.prose-note > :first-child {
+  margin-top: 0;
+}
+
+.prose-note > :last-child {
+  margin-bottom: 0;
+}
+
+.prose-note p,
+.prose-note ul,
+.prose-note ol,
+.prose-note blockquote,
+.prose-note pre {
+  margin: 0.6em 0;
+}
+
+.prose-note h1,
+.prose-note h2,
+.prose-note h3,
+.prose-note h4,
+.prose-note h5,
+.prose-note h6 {
+  margin: 1em 0 0.4em;
+  font-weight: 600;
+  color: var(--color-paper);
+  line-height: 1.3;
+}
+
+.prose-note h1 {
+  font-size: 1.15em;
+}
+.prose-note h2 {
+  font-size: 1.05em;
+}
+.prose-note h3,
+.prose-note h4,
+.prose-note h5,
+.prose-note h6 {
+  font-size: 1em;
+}
+
+.prose-note ul,
+.prose-note ol {
+  padding-left: 1.2em;
+}
+
+.prose-note ul {
+  list-style: disc;
+}
+.prose-note ol {
+  list-style: decimal;
+}
+
+.prose-note li {
+  margin: 0.2em 0;
+}
+
+.prose-note strong {
+  font-weight: 600;
+  color: var(--color-paper);
+}
+
+.prose-note em {
+  font-style: italic;
+}
+
+.prose-note a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.prose-note code {
+  font-family: ui-monospace, SFMono-Regular, 'Cascadia Mono', Menlo, monospace;
+  font-size: 0.9em;
+  background: var(--color-grid);
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+}
+
+.prose-note pre {
+  background: var(--color-grid);
+  border-radius: 4px;
+  padding: 0.6em 0.7em;
+  overflow-x: auto;
+}
+
+.prose-note pre code {
+  background: none;
+  padding: 0;
+}
+
+.prose-note blockquote {
+  border-left: 2px solid var(--color-line);
+  padding-left: 0.7em;
+  color: var(--color-paper-dim);
+}
+
+.prose-note hr {
+  border: 0;
+  border-top: 1px solid var(--color-line);
+  margin: 1em 0;
 }

@@ -1,12 +1,17 @@
 import { useMemo } from 'react';
+import { markdownExcerpt } from '../core/markdown';
 import { formatTime } from '../core/time';
+import { connectionsFor } from '../state/timeline-model';
 import { useTimeline } from '../state/timeline-store';
+import { MarkdownEditor } from './MarkdownEditor';
 
 /** The selected event, with the fields the concept actually cares about. */
 export function EventDetail() {
   const timeline = useTimeline((state) => state.timeline);
   const selectedId = useTimeline((state) => state.selectedId);
   const select = useTimeline((state) => state.select);
+  const selectConnection = useTimeline((state) => state.selectConnection);
+  const beginConnect = useTimeline((state) => state.beginConnect);
   const updateEvent = useTimeline((state) => state.updateEvent);
   const deleteEvent = useTimeline((state) => state.deleteEvent);
 
@@ -20,12 +25,17 @@ export function EventDetail() {
     [timeline.tags],
   );
 
-  if (!event) return null;
+  const titles = useMemo(
+    () => new Map(timeline.events.map((candidate) => [candidate.id, candidate.title])),
+    [timeline.events],
+  );
 
-  const connectionCount = timeline.connections.filter(
-    (connection) =>
-      !connection.deleted_at && (connection.from === event.id || connection.to === event.id),
-  ).length;
+  const connections = useMemo(
+    () => (event ? connectionsFor(timeline, event.id) : []),
+    [timeline, event],
+  );
+
+  if (!event) return null;
 
   return (
     <aside
@@ -56,16 +66,61 @@ export function EventDetail() {
         </div>
       )}
 
-      <label className="flex flex-col gap-1 text-xs text-paper-dim">
-        notes
-        <textarea
-          value={event.notes ?? ''}
-          onChange={(change) => updateEvent(event.id, { notes: change.target.value })}
-          rows={6}
-          className="resize-none rounded border border-line bg-surface px-2 py-1.5 text-sm
-                     text-paper focus:border-accent focus:outline-none"
-        />
-      </label>
+      {/*
+        Connections come before the notes field. An event's own notes are the
+        ordinary half of this panel; its connections are the half the project
+        exists for, and burying them under a textarea says the opposite.
+      */}
+      <section className="flex flex-col gap-1.5">
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className="text-xs text-paper-dim">
+            connections{connections.length > 0 ? ` (${connections.length})` : ''}
+          </h3>
+          <button
+            onClick={() => beginConnect(event.id)}
+            className="rounded border border-line px-1.5 py-0.5 text-[11px] text-paper-soft
+                       hover:border-accent hover:text-paper"
+          >
+            connect…
+          </button>
+        </div>
+
+        {connections.length === 0 ? (
+          <p className="text-xs text-paper-dim/80">
+            nothing yet — a connection carries its own argument for why two events belong together
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {connections.map((connection) => {
+              const otherId = connection.from === event.id ? connection.to : connection.from;
+              const excerpt = markdownExcerpt(connection.note, 70);
+              return (
+                <li key={connection.id}>
+                  <button
+                    onClick={() => selectConnection(connection.id)}
+                    className="w-full rounded border border-line/60 px-2 py-1.5 text-left
+                               hover:border-line hover:bg-line/20"
+                  >
+                    <span className="block truncate text-xs text-paper-soft">
+                      {titles.get(otherId) ?? '(missing event)'}
+                    </span>
+                    <span className="block truncate text-[11px] text-paper-dim">
+                      {excerpt.length > 0 ? excerpt : 'no note yet'}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      <MarkdownEditor
+        label="notes"
+        value={event.notes ?? ''}
+        onChange={(notes) => updateEvent(event.id, { notes })}
+        rows={6}
+      />
 
       {/*
         D10: when and from where you learned it. Half the point of the project —
@@ -90,10 +145,6 @@ export function EventDetail() {
             <dd className="tabular-nums">{event.learned_at.slice(0, 10)}</dd>
           </div>
         )}
-        <div className="flex justify-between gap-2">
-          <dt>connections</dt>
-          <dd className="tabular-nums">{connectionCount}</dd>
-        </div>
         {event.pack && (
           <div className="flex justify-between gap-2">
             <dt>from pack</dt>
@@ -107,7 +158,10 @@ export function EventDetail() {
         className="mt-auto self-start rounded border border-line px-2 py-1 text-xs
                    text-paper-dim hover:border-[#e66767] hover:text-[#e66767]"
       >
-        delete{connectionCount > 0 ? ` (and ${connectionCount} connection${connectionCount === 1 ? '' : 's'})` : ''}
+        delete
+        {connections.length > 0
+          ? ` (and ${connections.length} connection${connections.length === 1 ? '' : 's'})`
+          : ''}
       </button>
     </aside>
   );

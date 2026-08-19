@@ -17,14 +17,18 @@ import { PersistQueue } from './persist-queue';
 import {
   EMPTY_TIMELINE,
   applyUndo,
+  createConnection,
   createEra,
   createEvent,
+  editConnection,
   editEvent,
   ensureTags,
+  findConnectionBetween,
+  removeConnection,
   removeEvent,
   sortEvents,
 } from './timeline-model';
-import type { EventDraft, Mutation, UndoStep } from './timeline-model';
+import type { ConnectionDraft, EventDraft, Mutation, UndoStep } from './timeline-model';
 
 /** How many undo steps to keep. Beyond this, soft deletes are the safety net. */
 const UNDO_DEPTH = 50;
@@ -42,6 +46,20 @@ interface TimelineStoreState {
   timeline: Timeline;
   filter: Filter;
   selectedId: Id | null;
+  /** The connection whose document the detail pane is showing, if any. */
+  selectedConnectionId: Id | null;
+  /**
+   * The first endpoint of a connection being made. While this is set the whole
+   * app is in "pick a second event" mode: the canvas draws a pending arc to the
+   * cursor, and a click anywhere that selects an event completes it instead.
+   */
+  connectFrom: Id | null;
+  /**
+   * Whether the search picker is showing. Separate from `connectFrom` so that
+   * dismissing the picker can leave the pick armed — the "pick on the timeline
+   * instead" escape hatch, which is the only way the canvas route is reachable.
+   */
+  pickerOpen: boolean;
   query: string;
   undoStack: UndoStep[][];
   error: string | null;
@@ -57,12 +75,23 @@ interface TimelineStoreState {
   deleteEvent(id: Id): void;
   undo(): void;
 
+  beginConnect(from: Id): void;
+  cancelConnect(): void;
+  /** Hides the picker, leaving the pick armed for a canvas or list click. */
+  closePicker(): void;
+  /** Completes the pending connection. Returns the connection id, or null. */
+  connectTo(to: Id): Id | null;
+  addConnection(draft: ConnectionDraft): Id | null;
+  updateConnection(id: Id, patch: { note?: string; tags?: Id[] }): void;
+  deleteConnection(id: Id): void;
+
   seedLife(birthYear: number): void;
   replaceTimeline(timeline: Timeline): void;
 
   setFilter(filter: Filter): void;
   setQuery(query: string): void;
   select(id: Id | null): void;
+  selectConnection(id: Id | null): void;
 }
 
 let backing: Store | null = null;
@@ -88,6 +117,9 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
     timeline: EMPTY_TIMELINE,
     filter: NO_FILTER,
     selectedId: null,
+    selectedConnectionId: null,
+    connectFrom: null,
+    pickerOpen: false,
     query: '',
     undoStack: [],
     error: null,
@@ -170,8 +202,24 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
     },
 
     deleteEvent(id) {
+      // Read the doomed connections before the mutation, so a connection the
+      // cascade (D21) is about to tombstone does not stay open in the pane.
+      const orphaned = new Set(
+        get()
+          .timeline.connections.filter((c) => c.from === id || c.to === id)
+          .map((c) => c.id),
+      );
+
       commit(removeEvent(get().timeline, id));
-      if (get().selectedId === id) set({ selectedId: null });
+
+      const state = get();
+      set({
+        ...(state.selectedId === id ? { selectedId: null } : {}),
+        ...(state.selectedConnectionId && orphaned.has(state.selectedConnectionId)
+          ? { selectedConnectionId: null }
+          : {}),
+        ...(state.connectFrom === id ? { connectFrom: null, pickerOpen: false } : {}),
+      });
     },
 
     undo() {
@@ -182,6 +230,59 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
       const mutation = applyUndo(get().timeline, steps);
       queue?.enqueue(mutation.touched);
       set({ timeline: mutation.timeline, undoStack: stack.slice(0, -1) });
+    },
+
+    beginConnect(from) {
+      set({ connectFrom: from, pickerOpen: true, selectedId: from, selectedConnectionId: null });
+    },
+
+    cancelConnect() {
+      set({ connectFrom: null, pickerOpen: false });
+    },
+
+    closePicker() {
+      set({ pickerOpen: false });
+    },
+
+    /**
+     * Completes the pending connection and opens its note.
+     *
+     * The note is the point — "the interesting content of a personal timeline is
+     * not the events but the reasoning between them" — so finishing the pick
+     * lands the user in the editor rather than back on the timeline.
+     */
+    connectTo(to) {
+      const from = get().connectFrom;
+      if (!from) return null;
+      const id = get().addConnection({ from, to });
+      set({
+        connectFrom: null,
+        pickerOpen: false,
+        ...(id ? { selectedConnectionId: id, selectedId: to } : {}),
+      });
+      return id;
+    },
+
+    addConnection(draft) {
+      // Already connected: select the existing one rather than reporting an
+      // error. Wanting to connect two events that are already connected almost
+      // always means wanting to read what you wrote last time.
+      const existing = findConnectionBetween(get().timeline, draft.from, draft.to);
+      if (existing) return existing.id;
+
+      const mutation = createConnection(get().timeline, draft);
+      if (!mutation) return null;
+      commit(mutation);
+      return mutation.undo[0]?.id ?? null;
+    },
+
+    updateConnection(id, patch) {
+      commit(editConnection(get().timeline, id, patch));
+    },
+
+    deleteConnection(id) {
+      commit(removeConnection(get().timeline, id));
+      if (get().selectedConnectionId === id) set({ selectedConnectionId: null });
     },
 
     /**
@@ -211,8 +312,23 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
     setQuery(query) {
       set({ query });
     },
+    /**
+     * Selecting an event while a connection is pending completes it instead.
+     * Every path to a second event — a canvas click, a list row, the picker —
+     * goes through here, so the connect flow works from all of them without any
+     * of them knowing about it.
+     */
     select(id) {
-      set({ selectedId: id });
+      const pending = get().connectFrom;
+      if (pending && id && id !== pending) {
+        get().connectTo(id);
+        return;
+      }
+      set({ selectedId: id, selectedConnectionId: null });
+    },
+
+    selectConnection(id) {
+      set({ selectedConnectionId: id, connectFrom: null, pickerOpen: false });
     },
   };
 });

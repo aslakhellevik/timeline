@@ -158,6 +158,124 @@ export function removeEvent(timeline: Timeline, id: Id, now: string = nowIso()):
   };
 }
 
+// ---------------------------------------------------------------------------
+// Connections (§4, D6)
+// ---------------------------------------------------------------------------
+
+export interface ConnectionDraft {
+  from: Id;
+  to: Id;
+  /** Markdown — the argument for why these two belong together. */
+  note?: string;
+  tags?: Id[];
+}
+
+/**
+ * The live connection between two events, in either direction.
+ *
+ * Stored as an ordered pair so a later `caused` / `influenced` vocabulary can be
+ * directional without a migration (D6) — but v1 reads them as undirected, so
+ * lookup has to ignore the order or the same pair gets connected twice.
+ */
+export function findConnectionBetween(
+  timeline: Timeline,
+  a: Id,
+  b: Id,
+): Connection | undefined {
+  return timeline.connections.find(
+    (candidate) =>
+      !candidate.deleted_at &&
+      ((candidate.from === a && candidate.to === b) || (candidate.from === b && candidate.to === a)),
+  );
+}
+
+/** Every live connection touching an event, for the detail panel. */
+export function connectionsFor(timeline: Timeline, id: Id): Connection[] {
+  return timeline.connections.filter(
+    (candidate) => !candidate.deleted_at && (candidate.from === id || candidate.to === id),
+  );
+}
+
+/**
+ * Creates a connection, or refuses.
+ *
+ * `null` means the pair is not connectable: an event joined to itself, an
+ * endpoint that does not exist or has been deleted, or a pair already connected.
+ * The caller decides what to do about it — the store selects the existing
+ * connection rather than reporting an error, since wanting to connect two events
+ * that are already connected almost always means wanting to read the note.
+ */
+export function createConnection(
+  timeline: Timeline,
+  draft: ConnectionDraft,
+  now: string = nowIso(),
+): Mutation | null {
+  if (draft.from === draft.to) return null;
+
+  const live = (id: Id) => timeline.events.some((e) => e.id === id && !e.deleted_at);
+  if (!live(draft.from) || !live(draft.to)) return null;
+  if (findConnectionBetween(timeline, draft.from, draft.to)) return null;
+
+  const connection: Connection = {
+    ...baseFields(now),
+    from: draft.from,
+    to: draft.to,
+    note: draft.note ?? '',
+    tags: draft.tags ?? [],
+    provenance: { kind: 'manual' },
+  };
+
+  return {
+    timeline: { ...timeline, connections: [...timeline.connections, connection] },
+    touched: [{ kind: 'connections', records: [connection] }],
+    undo: [{ kind: 'connections', id: connection.id, record: null }],
+    label: 'add connection',
+  };
+}
+
+export function editConnection(
+  timeline: Timeline,
+  id: Id,
+  patch: Partial<Omit<Connection, keyof Base>>,
+  now: string = nowIso(),
+): Mutation | null {
+  const existing = timeline.connections.find((candidate) => candidate.id === id);
+  if (!existing) return null;
+
+  const updated: Connection = { ...existing, ...patch, updated_at: now };
+
+  return {
+    timeline: {
+      ...timeline,
+      connections: timeline.connections.map((c) => (c.id === id ? updated : c)),
+    },
+    touched: [{ kind: 'connections', records: [updated] }],
+    undo: [{ kind: 'connections', id, record: existing }],
+    label: 'edit connection',
+  };
+}
+
+export function removeConnection(
+  timeline: Timeline,
+  id: Id,
+  now: string = nowIso(),
+): Mutation | null {
+  const existing = timeline.connections.find((candidate) => candidate.id === id);
+  if (!existing || existing.deleted_at) return null;
+
+  const deleted: Connection = { ...existing, deleted_at: now, updated_at: now };
+
+  return {
+    timeline: {
+      ...timeline,
+      connections: timeline.connections.map((c) => (c.id === id ? deleted : c)),
+    },
+    touched: [{ kind: 'connections', records: [deleted] }],
+    undo: [{ kind: 'connections', id, record: existing }],
+    label: 'delete connection',
+  };
+}
+
 /**
  * Resolves tag names to ids, creating any that do not exist. Matching is
  * case-insensitive so `#war` typed twice does not become two tags — the quiet

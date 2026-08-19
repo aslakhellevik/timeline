@@ -4,6 +4,8 @@ import { applyFilter } from '../core/filter';
 import { backupStatus, createIndexedDbStore } from '../store';
 import type { BackupStatus } from '../store';
 import { useTimeline } from '../state/timeline-store';
+import { ConnectPicker } from './ConnectPicker';
+import { ConnectionDetail } from './ConnectionDetail';
 import { DataPanel } from './DataPanel';
 import { EventDetail } from './EventDetail';
 import { EventList } from './EventList';
@@ -19,7 +21,13 @@ export function App() {
   const timeline = useTimeline((state) => state.timeline);
   const filter = useTimeline((state) => state.filter);
   const selectedId = useTimeline((state) => state.selectedId);
+  const selectedConnectionId = useTimeline((state) => state.selectedConnectionId);
+  const connectFrom = useTimeline((state) => state.connectFrom);
+  const pickerOpen = useTimeline((state) => state.pickerOpen);
+  const cancelConnect = useTimeline((state) => state.cancelConnect);
+  const beginConnect = useTimeline((state) => state.beginConnect);
   const select = useTimeline((state) => state.select);
+  const selectConnection = useTimeline((state) => state.selectConnection);
   const setFilter = useTimeline((state) => state.setFilter);
   const undo = useTimeline((state) => state.undo);
   const undoDepth = useTimeline((state) => state.undoStack.length);
@@ -88,11 +96,30 @@ export function App() {
       if ((event.ctrlKey || event.metaKey) && event.key === 'z') {
         event.preventDefault();
         undo();
+        return;
+      }
+      if (event.key === 'Escape' && connectFrom) {
+        event.preventDefault();
+        cancelConnect();
+        return;
+      }
+
+      // `c` connects the selected event, but only when nothing is being typed
+      // into — a single-letter shortcut that fires inside quick-add would make
+      // capture, the thing the app is built around, impossible.
+      const target = event.target as HTMLElement | null;
+      const typing =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target?.isContentEditable === true;
+      if (event.key === 'c' && !typing && !event.ctrlKey && !event.metaKey && selectedId) {
+        event.preventDefault();
+        beginConnect(selectedId);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [undo]);
+  }, [undo, connectFrom, cancelConnect, selectedId, beginConnect]);
 
   // The "last backed up N days ago" indicator (§8.3, layer 3). Re-checked when
   // the panel closes, since that is when it is most likely to have changed.
@@ -131,6 +158,21 @@ export function App() {
         </nav>
       </header>
 
+      {/*
+        The pick stays armed while the picker is dismissed, so the app needs to
+        say so somewhere other than inside the modal that is no longer there.
+      */}
+      {connectFrom && !pickerOpen && (
+        <div className="flex items-center gap-3 border-b border-[#ffd43b]/40 bg-[#ffd43b]/10 px-4 py-1.5 text-xs text-paper">
+          <span>
+            pick the other event — click a mark on the timeline, or a row in the list
+          </span>
+          <button onClick={cancelConnect} className="text-paper-dim hover:text-paper">
+            cancel (esc)
+          </button>
+        </div>
+      )}
+
       {isFirstRun ? (
         <FirstRun />
       ) : (
@@ -139,6 +181,13 @@ export function App() {
             {view === 'timeline' ? (
               <TimelineView
                 events={visible.events}
+                connections={visible.connections}
+                tags={visible.tags}
+                selectedId={selectedId}
+                selectedConnectionId={selectedConnectionId}
+                connectFrom={connectFrom}
+                onSelectEvent={select}
+                onSelectConnection={selectConnection}
                 {...(initial.centre !== undefined && initial.span !== undefined
                   ? { initialViewport: { centre: initial.centre, span: initial.span } }
                   : {})}
@@ -148,13 +197,19 @@ export function App() {
               <EventList />
             )}
           </main>
-          {selectedId && <EventDetail />}
+          {selectedConnectionId ? (
+            <ConnectionDetail />
+          ) : (
+            selectedId && <EventDetail />
+          )}
         </div>
       )}
 
       <footer className="flex items-center gap-4 border-t border-line px-4 py-1.5 text-xs text-paper-dim">
         <span className="tabular-nums">
           {visible.events.length.toLocaleString('en-GB')} events
+          {visible.connections.length > 0 &&
+            ` · ${visible.connections.length.toLocaleString('en-GB')} connections`}
         </span>
         {undoDepth > 0 && (
           <button onClick={undo} className="hover:text-paper">
@@ -175,6 +230,7 @@ export function App() {
       </footer>
 
       {dataOpen && <DataPanel onClose={() => setDataOpen(false)} />}
+      {pickerOpen && <ConnectPicker />}
     </div>
   );
 }

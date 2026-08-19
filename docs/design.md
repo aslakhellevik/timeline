@@ -38,6 +38,9 @@ map are deferred — but the data model is shaped so that none of them require a
 | D24 | Viewport and selection live in the URL hash |
 | D25 | No telemetry, no analytics, no network traffic beyond loading the app |
 | D26 | First run asks for a birth year and creates the "my life" era |
+| D27 | Markdown is a small subset rendered in-house, escape-first, with no raw HTML path — not a library plus a sanitiser |
+| D28 | Arc geometry is precomputed into an index on data change; the per-frame path touches no event store and resolves no colours |
+| D29 | Arcs per frame are capped, and the cap keeps the longest — culling cannot bound the far view because long arcs cross any viewport |
 
 Conventions, settled and not worth further discussion:
 
@@ -449,10 +452,52 @@ eras, viewport, filters)`. No framework imports. This is the one architectural r
 enforcing: the renderer is the part of this project with real value, and it should survive any
 UI framework decision.
 
-**Connection arcs.** Quadratic Béziers above the axis, control height ∝ `√(pixel distance)`,
-capped so long arcs flatten rather than leaving the screen. Additive alpha so overlapping arcs
-build visible structure. Cull arcs with both endpoints off-screen on the same side. Colour by
-the connection's dominant tag; palette chosen at implementation time.
+**Connection arcs** (`src/render/arcs.ts`, built in M3). Quadratic Béziers above the axis, over
+the mass and under the marks: the mass is the ground — what you know — and the connections are
+the figure on it.
+
+Apex height is `minApex + (maxApex − minApex)·√(min(1, d/width))` where `d` is the horizontal
+distance in pixels. Sub-linear and saturating at one viewport width, so long arcs flatten rather
+than leaving the screen. The useful signal is the *ordering* of spans, not their ratio: linear
+height would put a millennium-spanning arc off the top while a decade-spanning one lay flat on
+the axis. The control point sits at twice the apex, since a quadratic Bézier reaches halfway to
+its control at `t = 0.5`.
+
+Strokes composite with `lighter`. That is what makes a bundle read as structure rather than as
+one thick line — where several arcs cross, the crossing brightens in proportion to how many.
+Normal alpha compositing saturates after three or four overlaps and the information is gone.
+
+**Colour** falls back in the order the concept cares about: the connection's own tags, then a
+tag both endpoints share (two events tagged *philosophy* make a philosophy connection whether or
+not anyone said so), then either endpoint, then a neutral default.
+
+**Selecting an event dims every arc it does not touch**, which turns the canvas into an answer
+to "what does this connect to" without introducing a mode — but only when the event actually has
+arcs, or selecting an unconnected event blanks the whole structure to emphasise nothing.
+
+**Two costs are hoisted out of the frame (D28).** `buildArcIndex` reduces each connection to two
+times and a colour when the data changes; `layoutArcs` then does arithmetic only. Resolving
+colours and looking up endpoint events per frame cost about ten times as much — the measured
+figures are in `arcs.perf.test.ts`, and at the stated budget the layout is **0.3 ms** a frame
+at full extent and **0.5 ms** zoomed in, against 3–9 ms before.
+
+**Culling is exact but insufficient (D29).** An arc with both endpoints off the same side cannot
+be visible, because the convex hull of a quadratic Bézier contains the curve — but an arc with
+one endpoint on each side crosses the viewport however far you zoom in, and with ten thousand
+connections thousands of them do. A per-frame cap is what actually bounds the work. The index is
+ordered longest-first so the cap keeps the arcs carrying the large-scale structure, and keeps the
+same ones each frame, which is what stops it flickering.
+
+Coordinates are clamped to eight screen widths. An arc between events ten thousand years apart,
+viewed at a span of one day, puts an endpoint billions of pixels away; the curve through that
+point is indistinguishable on screen from the curve through a point eight screens away, and only
+one of the two survives being flattened by the rasteriser.
+
+**Hit-testing** samples the curve at a fixed resolution rather than solving the cubic, and runs
+against the previous frame's layout — recomputing one to answer "what is under the cursor" both
+wastes work and invites the classic bug where the hit target has drifted a frame from what is on
+screen. Marks win ties against arcs: an arc is a wide, forgiving target and a mark is a hairline,
+so the other way round makes events near a busy bundle unselectable.
 
 **Eras** occupy lanes below the axis; lane allocation is interval-graph greedy colouring, with
 personal eras pinned to the lanes nearest the axis.
@@ -499,7 +544,51 @@ palette later.
 interval. Adding the Battle of Lepanto twice six months apart is the obvious failure mode of a
 capture-optimised tool, and it corrupts the density quietly.
 
-### 6.4 URL state (D24)
+### 6.4 Making a connection (M3)
+
+Two routes, one state. `connectFrom` holds the first endpoint, and while it is set, *every* path
+that would select an event completes the connection instead — a canvas click, a list row, the
+picker. That is one rule in the store rather than a connect-aware branch in three components.
+
+The **search picker** is the default route, for the reason §6.2 gives: picking a second event by
+scrubbing a density plot is absurd. It can be dismissed without disarming the pick ("pick on the
+timeline instead"), which is the only way to reach the canvas route; a banner then says so,
+because the pick is still armed and the modal that explained it is gone. `Escape` cancels, and
+`c` connects the selected event when focus is not in a text field — a bare letter shortcut that
+fired inside quick-add would break capture, which the app is built around.
+
+Events already connected to the source stay in the picker's results, marked. Their absence would
+read as a search failure, and choosing one is reasonable: it opens what you already wrote about
+the pair. For the same reason, connecting an already-connected pair selects the existing
+connection rather than reporting an error.
+
+Finishing the pick lands in the note editor with the cursor in it. The note is the point.
+
+### 6.5 Notes and Markdown (D27)
+
+Event notes and connection arguments are Markdown. The renderer is a subset written in
+`core/markdown.ts` rather than a library plus a sanitiser, for one reason that outweighs the
+convenience: **raw HTML is never passed through.** Input is escaped before any parsing happens
+and the output is assembled from a fixed set of tags the module emits itself, so there is no code
+path from input text to live markup and nothing for a sanitiser to get wrong later.
+
+That matters more than it looks. The social layer plans to let someone "inherit or fork someone's
+connection with its explanation", which makes a note untrusted text the moment it ships; pack
+content is untrusted already. Escaping first makes that safe by construction rather than by
+remembering to sanitise at each boundary. Link `href`s are checked against an allowlist of
+schemes, not a `javascript:` denylist — the ways to smuggle a script URL past a denylist are
+numerous and well catalogued, and the ways to write a legitimate link are three.
+
+Supported: headings, paragraphs, emphasis, code, links, fenced and indented code, blockquotes,
+lists, rules. Absent: tables, footnotes, images, reference links, inline HTML — because notes do
+not need them, not because they are hard. Where the parser differs from CommonMark it renders
+something plainer, never something unsafe.
+
+The editor is write/read tabs rather than a live side-by-side preview, because the pane is three
+hundred pixels wide and half of that is not an editor. It opens on whichever mode the content
+implies: an empty note wants a cursor, a written one wants to be read.
+
+### 6.6 URL state (D24)
 
 Viewport (centre and span) and selection live in the URL hash. Cheap now, awkward to retrofit
 once React state and the renderer's viewport have grown into each other. It buys bookmarkable
@@ -670,7 +759,7 @@ Ordered to put the risky, distinctive work first and the CRUD last.
 | ~~**M0**~~ | ✅ Repo skeleton, TS + Vite. Time library: parser, fuzzy interval, formatting, calendar conversion. Density estimator. Synthetic data generator. Viewport and interaction maths. 314 tests. |
 | ~~**M1**~~ | ✅ Canvas renderer against synthetic data: linear axis, pan/zoom, density field, semantic zoom crossfade, calendar-correct ticks at every scale, selective labels, hover crosshair. The far view works — it reads as a picture of what someone knows, with the gaps legible at a glance. |
 | ~~**M2**~~ | ✅ IndexedDB store with cross-tab sync, quick-add capture with a duplicate guard, event detail, the searchable list view, export/import/merge, the three durability layers, URL state, first run. |
-| **M3** | Connections: creation flow, arcs, Markdown note editor. Near-zoom labels. |
+| ~~**M3**~~ | ✅ Connections: the creation flow from both the picker and the canvas, arcs with tag colour and additive blending, hit-testing and selection on the canvas, the Markdown subset and the note editor, connections in the event pane. 598 tests. |
 | **M4** | Tags and filters with animated mass redistribution. Eras with lane layout. |
 | **M5** | Packs (WWII, Cold War, …). PWA, mobile polish. |
 | **Later** | Map view · AI-suggested tags · document ingestion · social layer and sync. |

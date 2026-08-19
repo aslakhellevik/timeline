@@ -1,5 +1,5 @@
 /**
- * Viewport, selection and filter in the URL hash (docs/design.md §6.4, D24).
+ * Viewport, selection and filter in the URL hash (docs/design.md §6.6, D24).
  *
  * Cheap now, awkward to retrofit once React state and the renderer's viewport
  * have grown into each other. It buys bookmarkable periods immediately — "the

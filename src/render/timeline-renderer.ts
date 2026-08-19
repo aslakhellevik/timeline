@@ -15,10 +15,12 @@
  * a zoom-level counter, so nothing pops.
  */
 
-import type { Days, TimelineEvent, Viewport } from '../core/model/types';
+import type { Connection, Days, Id, Tag, TimelineEvent, Viewport } from '../core/model/types';
 import { computeDensity, farViewOpacity, heightFraction } from '../core/density';
 import type { DensityResult } from '../core/density';
 import { midpoint, toGregorian } from '../core/time';
+import { arcPointAt, buildArcIndex, hitTestArc, layoutArcs } from './arcs';
+import type { ArcLayout, ArcSource } from './arcs';
 import { linearScale } from './scale';
 import { generateTicks } from './ticks';
 import { formatYear } from './ticks';
@@ -41,6 +43,10 @@ export interface TimelineTheme {
   mass: string;
   massEdge: string;
   mark: string;
+  /** Arcs whose connection carries no tag colour of its own. */
+  connection: string;
+  /** The selected event and the arcs leaving it. */
+  selection: string;
 }
 
 export const DARK_THEME: TimelineTheme = {
@@ -54,6 +60,8 @@ export const DARK_THEME: TimelineTheme = {
   mass: '#3987e5',
   massEdge: '#86b6ef',
   mark: '#86b6ef',
+  connection: '#c3c2b7',
+  selection: '#ffd43b',
 };
 
 const AXIS_HEIGHT = 30;
@@ -73,9 +81,26 @@ const MAX_LABELS = 160;
  */
 const MAX_LABEL_WIDTH = 240;
 
+/** Fraction of the space above the axis that the tallest arc may occupy. */
+const ARC_BAND = 0.92;
+/** How close the cursor must come to a mark to select it. */
+const MARK_TOLERANCE = 7;
+
 interface Mark {
   t: Days;
   event: TimelineEvent;
+}
+
+/** What the cursor is over. */
+export type Target =
+  | { kind: 'event'; id: Id; event: TimelineEvent }
+  | { kind: 'connection'; id: Id; connection: Connection };
+
+export interface Selection {
+  eventId?: Id | null;
+  connectionId?: Id | null;
+  /** First endpoint of a connection being drawn; the second follows the cursor. */
+  connectFrom?: Id | null;
 }
 
 export class TimelineRenderer {
@@ -84,6 +109,21 @@ export class TimelineRenderer {
   private marks: Mark[] = [];
   private viewport: Viewport = { start: 0, end: 1, width: 1 };
   private hoverX: number | null = null;
+  private hoverY: number | null = null;
+
+  private eventsById: Map<Id, TimelineEvent> = new Map();
+  /** Connections reduced to times and colours, rebuilt only when the data changes. */
+  private arcIndex: ArcSource[] = [];
+  private selection: Selection = {};
+
+  /**
+   * The arcs of the last frame, kept so hit-testing runs against exactly what is
+   * on screen. Recomputing a layout to answer "what is under the cursor" is both
+   * wasteful and a source of the classic bug where the hit target has drifted a
+   * frame away from the thing the user can see.
+   */
+  private arcs: ArcLayout[] = [];
+  private baselineY = 0;
 
   /**
    * Events per pixel that counts as full height, calibrated once per corpus
@@ -103,11 +143,23 @@ export class TimelineRenderer {
     this.theme = theme;
   }
 
-  setData(events: readonly TimelineEvent[]): void {
+  setData(
+    events: readonly TimelineEvent[],
+    connections: readonly Connection[] = [],
+    tags: readonly Tag[] = [],
+  ): void {
     this.events = events;
     this.marks = events
       .map((event) => ({ t: midpoint(event.when), event }))
       .sort((a, b) => a.t - b.t);
+    this.eventsById = new Map(events.map((event) => [event.id, event]));
+    this.arcIndex = buildArcIndex(
+      connections,
+      this.eventsById,
+      (event) => midpoint(event.when),
+      new Map(tags.flatMap((tag) => (tag.color ? [[tag.id, tag.color] as const] : []))),
+      this.theme.connection,
+    );
     this.cache = null;
     this.lambdaRef = this.calibrate();
   }
@@ -116,8 +168,51 @@ export class TimelineRenderer {
     this.viewport = viewport;
   }
 
-  setHover(x: number | null): void {
+  setHover(x: number | null, y: number | null = null): void {
     this.hoverX = x;
+    this.hoverY = y;
+  }
+
+  setSelection(selection: Selection): void {
+    this.selection = selection;
+  }
+
+  /**
+   * What is under a point: a mark first, then an arc.
+   *
+   * Marks win ties because they are the smaller target and the one the user is
+   * usually reaching for — an arc is wide and forgiving, a mark is a hairline,
+   * and having the arc steal a click near the axis makes events near a busy
+   * bundle unselectable.
+   */
+  hitTest(x: number, y: number): Target | null {
+    const event = this.eventAt(x, y);
+    if (event) return { kind: 'event', id: event.id, event };
+
+    const arc = hitTestArc(this.arcs, x, y, this.baselineY);
+    return arc ? { kind: 'connection', id: arc.connection.id, connection: arc.connection } : null;
+  }
+
+  /** The nearest mark to `x`, if the point is in the mark band and close enough. */
+  eventAt(x: number, y: number): TimelineEvent | null {
+    // Generous above the marks and below the axis: the tick is 14px tall and
+    // aiming at a hairline is not a reasonable thing to ask of anyone.
+    if (y < this.baselineY - MARK_HEIGHT - 8 || y > this.baselineY + 10) return null;
+
+    const t = linearScale.toTime(x, this.viewport);
+    const index = this.lowerBound(t);
+    let best: TimelineEvent | null = null;
+    let bestDistance = MARK_TOLERANCE;
+
+    for (const candidate of [this.marks[index - 1], this.marks[index]]) {
+      if (!candidate) continue;
+      const distance = Math.abs(linearScale.toPx(candidate.t, this.viewport) - x);
+      if (distance <= bestDistance) {
+        bestDistance = distance;
+        best = candidate.event;
+      }
+    }
+    return best;
   }
 
   getViewport(): Viewport {
@@ -182,6 +277,7 @@ export class TimelineRenderer {
     const baselineY = height - AXIS_HEIGHT;
     const massTop = TOP_PADDING;
     const massHeight = baselineY - massTop;
+    this.baselineY = baselineY;
 
     const vp = { ...this.viewport, width };
     this.viewport = vp;
@@ -195,6 +291,14 @@ export class TimelineRenderer {
     if (massAlpha > 0) {
       this.drawMass(ctx, density, massTop, baselineY, massHeight, massAlpha);
     }
+
+    // Arcs over the mass and under the marks. The mass is the ground — what you
+    // know — and the connections are the figure on it, which is the reading the
+    // concept asks for: zoomed out, the connection structure should be the most
+    // visually striking thing on screen.
+    this.arcs = this.layout(vp, baselineY, massHeight);
+    this.drawArcs(ctx, baselineY);
+
     if (massAlpha < 1) {
       this.drawMarks(ctx, vp, baselineY, 1 - massAlpha);
     }
@@ -202,8 +306,167 @@ export class TimelineRenderer {
       this.drawLabels(ctx, vp, massTop, baselineY, 1 - massAlpha / 0.35);
     }
 
+    this.drawSelection(ctx, vp, baselineY, massTop);
+    this.drawPendingArc(ctx, vp, baselineY, massHeight);
     this.drawAxis(ctx, ticks, vp, baselineY, width, height);
     this.drawCrosshair(ctx, vp, massTop, baselineY);
+  }
+
+  private layout(vp: Viewport, baselineY: number, massHeight: number): ArcLayout[] {
+    if (this.arcIndex.length === 0) return [];
+    return layoutArcs(this.arcIndex, (t) => linearScale.toPx(t, vp), vp.width, {
+      baselineY,
+      maxApex: massHeight * ARC_BAND,
+    });
+  }
+
+  /**
+   * Strokes the arcs additively.
+   *
+   * `lighter` is what makes a bundle of connections read as structure rather
+   * than as one thick line: where several arcs cross, the crossing brightens in
+   * proportion to how many, so the busiest regions of someone's thinking show up
+   * without anything having to count them. Normal alpha compositing saturates
+   * after three or four overlaps and the information is gone.
+   */
+  private drawArcs(ctx: CanvasRenderingContext2D, baselineY: number): void {
+    if (this.arcs.length === 0) return;
+
+    const selected = this.selection.connectionId ?? null;
+    const hovered =
+      this.hoverX !== null && this.hoverY !== null
+        ? hitTestArc(this.arcs, this.hoverX, this.hoverY, baselineY)
+        : null;
+
+    // Only an event that has arcs is worth dimming the others for. Selecting an
+    // unconnected event would otherwise blank the whole structure to emphasise
+    // nothing at all, which is how the canvas looked before this line existed.
+    const candidate = this.selection.eventId ?? null;
+    const focus =
+      candidate !== null &&
+      this.arcs.some((arc) => arc.connection.from === candidate || arc.connection.to === candidate)
+        ? candidate
+        : null;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+
+    for (const arc of this.arcs) {
+      const touchesFocus =
+        focus !== null && (arc.connection.from === focus || arc.connection.to === focus);
+      const emphasised = arc.connection.id === selected || arc === hovered;
+
+      // Selecting an event dims everything it does not touch, which turns the
+      // canvas into an answer to "what does this connect to" without a mode.
+      ctx.globalAlpha = emphasised || touchesFocus
+        ? 0.95
+        : focus !== null
+          ? 0.12
+          : arc.whole
+            ? 0.5
+            : 0.28;
+      ctx.lineWidth = emphasised ? 2.4 : touchesFocus ? 1.8 : 1.1;
+      ctx.strokeStyle = arc.connection.id === selected ? this.theme.selection : arc.colour;
+
+      ctx.beginPath();
+      ctx.moveTo(arc.x1, baselineY);
+      ctx.quadraticCurveTo(arc.cx, arc.cy, arc.x2, baselineY);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+
+    // The note at the apex, for the one arc under the cursor. A connection whose
+    // reasoning is invisible until you click it is just an edge, and the whole
+    // claim of the project is that the reasoning is the content.
+    const labelled = hovered ?? this.arcs.find((arc) => arc.connection.id === selected) ?? null;
+    if (labelled) this.drawArcNote(ctx, labelled, baselineY);
+  }
+
+  private drawArcNote(ctx: CanvasRenderingContext2D, arc: ArcLayout, baselineY: number): void {
+    const note = arc.connection.note.trim();
+    if (note.length === 0) return;
+
+    const apex = arcPointAt(arc, 0.5, baselineY);
+    ctx.save();
+    ctx.font = LABEL_FONT;
+    const text = fitText(ctx, firstLine(note), MAX_LABEL_WIDTH * 1.4);
+    const width = ctx.measureText(text).width;
+    const x = Math.min(Math.max(apex.x - width / 2, 6), this.viewport.width - width - 6);
+    const y = Math.max(12, apex.y - 8);
+
+    ctx.fillStyle = this.theme.surface;
+    ctx.globalAlpha = 0.92;
+    ctx.beginPath();
+    ctx.roundRect(x - 5, y - 11, width + 10, 16, 3);
+    ctx.fill();
+
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = this.theme.ink;
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(text, x, y);
+    ctx.restore();
+  }
+
+  /** The arc being drawn: from the first endpoint to wherever the cursor is. */
+  private drawPendingArc(
+    ctx: CanvasRenderingContext2D,
+    vp: Viewport,
+    baselineY: number,
+    massHeight: number,
+  ): void {
+    const from = this.selection.connectFrom;
+    if (!from || this.hoverX === null) return;
+    const source = this.eventsById.get(from);
+    if (!source) return;
+
+    const x1 = linearScale.toPx(midpoint(source.when), vp);
+    const x2 = this.hoverX;
+    const apex = Math.min(massHeight * ARC_BAND, 10 + Math.sqrt(Math.abs(x2 - x1)) * 6);
+
+    ctx.save();
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = this.theme.selection;
+    ctx.globalAlpha = 0.85;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x1, baselineY);
+    ctx.quadraticCurveTo((x1 + x2) / 2, baselineY - 2 * apex, x2, baselineY);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** A ring on the selected event's mark, so the pane and the canvas agree. */
+  private drawSelection(
+    ctx: CanvasRenderingContext2D,
+    vp: Viewport,
+    baselineY: number,
+    top: number,
+  ): void {
+    const id = this.selection.eventId;
+    if (!id) return;
+    const event = this.eventsById.get(id);
+    if (!event) return;
+
+    const x = linearScale.toPx(midpoint(event.when), vp);
+    if (x < -20 || x > vp.width + 20) return;
+
+    ctx.save();
+    ctx.strokeStyle = this.theme.selection;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(Math.round(x) + 0.5, baselineY);
+    ctx.lineTo(Math.round(x) + 0.5, top);
+    ctx.globalAlpha = 0.35;
+    ctx.stroke();
+
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.arc(x, baselineY - MARK_HEIGHT, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = this.theme.selection;
+    ctx.fill();
+    ctx.restore();
   }
 
   private drawGrid(
@@ -480,6 +743,21 @@ export function formatMoment(t: Days, spanDays: number): string {
   if (spanYears > 24) return formatYear(year);
   if (spanYears > 2) return `${MONTHS[month - 1]} ${formatYear(year)}`;
   return `${day} ${MONTHS[month - 1]} ${formatYear(year)}`;
+}
+
+/**
+ * The first meaningful line of a Markdown note, for the arc label.
+ *
+ * Deliberately not the Markdown renderer: this wants one line of plain text for
+ * a canvas, and pulling `renderMarkdown` in here to then strip its tags would be
+ * both slower and a worse answer.
+ */
+function firstLine(note: string): string {
+  for (const line of note.split('\n')) {
+    const plain = line.replace(/^[\s>#*+-]+/, '').replace(/[*_`]/g, '').trim();
+    if (plain.length > 0) return plain;
+  }
+  return '';
 }
 
 /** Truncates to `maxWidth`, appending an ellipsis only when it actually cuts. */

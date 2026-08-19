@@ -8,10 +8,11 @@
  *
  * No dependencies — Node's built-in WebSocket does the talking.
  *
- *   node scripts/shot.mjs <url> <out.png> [--wait <selector>] [--eval <js>] [--ms <timeout>]
+ *   node scripts/shot.mjs <url> <out.png> [--wait <selector>]
+ *        [--eval <js> | --eval-file <path>] [--ms <timeout>] [--profile <dir>]
  */
 import { spawn } from 'node:child_process';
-import { writeFileSync, rmSync, mkdtempSync } from 'node:fs';
+import { readFileSync, writeFileSync, rmSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -21,7 +22,7 @@ const PORT = Number(process.env.CDP_PORT ?? 9333);
 
 const [url, out] = process.argv.slice(2);
 if (!url || !out) {
-  console.error('usage: shot.mjs <url> <out.png> [--wait sel] [--eval js] [--ms n]');
+  console.error('usage: shot.mjs <url> <out.png> [--wait sel] [--eval js|--eval-file f] [--ms n]');
   process.exit(2);
 }
 const arg = (name, fallback) => {
@@ -29,7 +30,10 @@ const arg = (name, fallback) => {
   return i === -1 ? fallback : process.argv[i + 1];
 };
 const waitFor = arg('--wait', null);
-const evalJs = arg('--eval', null);
+// `--eval-file` because seeding a store means shipping the data with the script,
+// and a corpus large enough to be worth looking at exceeds the command line.
+const evalFile = arg('--eval-file', null);
+const evalJs = evalFile ? readFileSync(evalFile, 'utf8') : arg('--eval', null);
 const timeoutMs = Number(arg('--ms', 15000));
 const width = Number(arg('--w', 1400));
 const height = Number(arg('--h', 850));
@@ -130,12 +134,16 @@ try {
   }
 
   if (evalJs) {
-    const { exceptionDetails } = await rpc(ws, 'Runtime.evaluate', {
+    const { result, exceptionDetails } = await rpc(ws, 'Runtime.evaluate', {
       expression: evalJs,
       awaitPromise: true,
       returnByValue: true,
     });
-    if (exceptionDetails) logs.push(`eval: ${exceptionDetails.text}`);
+    if (exceptionDetails) {
+      logs.push(`eval: ${exceptionDetails.exception?.description ?? exceptionDetails.text}`);
+    } else if (result?.value !== undefined) {
+      console.log(`eval → ${JSON.stringify(result.value)}`);
+    }
     await sleep(600);
   }
 
