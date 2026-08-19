@@ -23,6 +23,7 @@ import { arcPointAt, buildArcIndex, hitTestArc, layoutArcs } from './arcs';
 import type { ArcLayout, ArcSource } from './arcs';
 import { hitTestLanes, layoutLanes } from './lanes';
 import type { LaneLayout } from './lanes';
+import { MassTransition, clamp01 } from './mass-transition';
 import { linearScale } from './scale';
 import { generateTicks } from './ticks';
 import { formatYear } from './ticks';
@@ -137,9 +138,6 @@ export interface TimelineData {
   calibration?: readonly TimelineEvent[];
 }
 
-/** How long the mass takes to redistribute when the filter changes (§3.5). */
-const TRANSITION_MS = 300;
-
 export class TimelineRenderer {
   private theme: TimelineTheme;
   private events: readonly TimelineEvent[] = [];
@@ -157,25 +155,8 @@ export class TimelineRenderer {
   /** The unfiltered corpus. Sets the mass scale and the extent — see `TimelineData`. */
   private calibrationEvents: readonly TimelineEvent[] = [];
 
-  /**
-   * A mass redistribution in flight (§3.5).
-   *
-   * Interpolating the two density grids is what makes a filter read as weight
-   * moving rather than as one picture being swapped for another. It is `W`
-   * floats and costs nothing.
-   */
-  private transition: {
-    from: Float64Array;
-    fromMax: number;
-    start: number;
-    /** The viewport the grids were computed for; a pan or zoom invalidates it. */
-    key: string;
-  } | null = null;
-  /** Set by `setData`, consumed by the next draw, which has the grids to compare. */
-  private pendingTransition = false;
-  /** What the last frame actually put on screen — the start point of the next blend. */
-  private lastDrawn: Float64Array | null = null;
-  private lastDrawnMax = 0;
+  /** The mass redistribution animation (§3.5), shared with the depth view. */
+  private readonly transition = new MassTransition();
 
   /**
    * The arcs of the last frame, kept so hit-testing runs against exactly what is
@@ -231,7 +212,7 @@ export class TimelineRenderer {
 
     // The old grid is still in the cache; the next draw compares it with the new
     // one and animates between them if the viewport has not moved.
-    this.pendingTransition = this.cache !== null;
+    this.transition.begin();
     this.cache = null;
     // Only when the corpus itself changed. Doing it on every filter change is
     // exactly the renormalisation `TimelineData.calibration` exists to prevent.
@@ -349,61 +330,8 @@ export class TimelineRenderer {
     return density;
   }
 
-  /**
-   * The grid to draw: the target, or a blend towards it while a filter change
-   * is redistributing (§3.5).
-   *
-   * Returns whether another frame is needed, so the host keeps drawing without
-   * the renderer owning a timer — it has no business scheduling frames, and a
-   * timer it owned would keep running after the canvas was destroyed.
-   */
   private displayDensity(now: number): { density: DensityResult; animating: boolean } {
-    const target = this.density();
-    const key = this.viewportKey();
-
-    if (this.pendingTransition) {
-      this.pendingTransition = false;
-      const previous = this.transition;
-      // Mid-transition, blend from where it currently *looks*, not from where it
-      // started — otherwise a second filter change snaps back before moving on.
-      const from = previous && previous.key === key
-        ? blend(previous.from, target.lambda, eased((now - previous.start) / TRANSITION_MS))
-        : this.lastDrawn;
-      if (from && from.length === target.lambda.length) {
-        this.transition = {
-          from,
-          fromMax: this.lastDrawnMax,
-          start: now,
-          key,
-        };
-      } else {
-        this.transition = null;
-      }
-    }
-
-    const active = this.transition;
-    // A pan or zoom recomputes the grid against a different window, so there is
-    // nothing meaningful to interpolate and the transition is abandoned.
-    if (!active || active.key !== key) {
-      this.transition = null;
-      this.lastDrawn = target.lambda;
-      this.lastDrawnMax = target.lambdaMax;
-      return { density: target, animating: false };
-    }
-
-    const t = eased((now - active.start) / TRANSITION_MS);
-    if (t >= 1) {
-      this.transition = null;
-      this.lastDrawn = target.lambda;
-      this.lastDrawnMax = target.lambdaMax;
-      return { density: target, animating: false };
-    }
-
-    const lambda = blend(active.from, target.lambda, t);
-    const lambdaMax = active.fromMax + (target.lambdaMax - active.fromMax) * t;
-    this.lastDrawn = lambda;
-    this.lastDrawnMax = lambdaMax;
-    return { density: { ...target, lambda, lambdaMax }, animating: true };
+    return this.transition.resolve(this.density(), this.viewportKey(), now);
   }
 
   /** First mark at or after `t`. */
@@ -1012,31 +940,6 @@ function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number):
     else hi = mid - 1;
   }
   return `${text.slice(0, lo).trimEnd()}…`;
-}
-
-function clamp01(x: number): number {
-  return x < 0 ? 0 : x > 1 ? 1 : x;
-}
-
-/**
- * Ease-in-out on the transition clock.
- *
- * Linear interpolation between two density grids reads as a mechanical wipe;
- * easing the ends makes the same arithmetic read as weight settling.
- */
-function eased(t: number): number {
-  const clamped = clamp01(t);
-  return clamped < 0.5 ? 2 * clamped * clamped : 1 - (-2 * clamped + 2) ** 2 / 2;
-}
-
-/** Linear blend of two density grids of equal length. */
-function blend(from: Float64Array, to: Float64Array, t: number): Float64Array {
-  const out = new Float64Array(from.length);
-  for (let i = 0; i < out.length; i++) {
-    const a = from[i] as number;
-    out[i] = a + ((to[i] as number) - a) * t;
-  }
-  return out;
 }
 
 /** Hex to rgba, so one palette entry can serve both the fill ramp and the edge. */

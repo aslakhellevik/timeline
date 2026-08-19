@@ -44,6 +44,9 @@ map are deferred — but the data model is shaped so that none of them require a
 | D30 | Selected tags compose as a **union**, not an intersection |
 | D31 | The mass scale is calibrated on the **unfiltered** corpus, so filtering removes weight rather than renormalising it |
 | D32 | Personal eras take priority in lane allocation, but do not reserve lanes along the whole axis |
+| D33 | The depth view is a **projection, not a camera** — the viewport stays one-dimensional |
+| D34 | In the depth view mass is **width**, measured as a rate, not the density grid's per-row count |
+| D35 | The depth view's semantic zoom is **per row**, not one number for the frame |
 
 Conventions, settled and not worth further discussion:
 
@@ -647,6 +650,71 @@ Viewport (centre and span) and selection live in the URL hash. Cheap now, awkwar
 once React state and the renderer's viewport have grown into each other. It buys bookmarkable
 periods immediately — "the 1840s, art history only" is a link — and shareable links for free when
 the social layer arrives.
+### 6.7 The depth view (D33–D35)
+
+A second view of the same data, in which time runs *into* the screen: you stand at the newest
+moment in the window and look back down a corridor to a horizon. Not a replacement for the flat
+view — that one is better for reading — but it says something the flat view cannot.
+
+**It is a legibility argument, not an atmospheric one.** A perspective projection allocates
+screen space as `1/z`, which is roughly how a personal corpus thins out with age: most of what
+anyone knows is recent, and near means large means room for it. That makes it a principled
+version of the density-equalised axis §2.4 leaves open.
+
+**A projection, not a camera (D33).** The viewport is still `(start, end)` — the window is mapped
+onto the corridor, with the newest edge at `z = 1` and the oldest at `zFar = 9`, linearly in
+time. Pan, zoom, the pan bounds and the URL round-trip therefore work unchanged, and switching
+views keeps the period you were looking at. This is the single largest cost the design avoids,
+and it is why the view took hours rather than the week a real 3-D camera would have.
+
+D12 made this cheap by anticipating it: the scale function was pluggable from the start.
+`arcs.ts` and `lanes.ts` already took a `toPx` callback and needed no changes at all.
+
+**The density needed one line.** `computeDensity` has exactly one place where time meets pixels,
+and everything after it — deposit, the double prefix sum, the blur, the column sums — already
+worked in screen space. `DensityOptions.toPixel` composes there. Two properties survive any
+monotone mapping and both are load-bearing: each event still carries exactly unit mass, because
+the trapezoid's height is derived from its width *in cells*; and the kernel bandwidth stays β
+**pixels**, which is the property §3.1 rests on. The approximation introduced is that a
+trapezoid's ramps are straight in cell space and a warp curves them — corners and mass stay
+exact, so only the interior of a very wide fuzzy event is affected.
+
+**Mass is width, and width is a rate (D34).** The corridor holds a river whose half-width is the
+density. A river's width is a property of the river and not of where you stand, so it is measured
+in events per unit *time* and then shrunk by the projection like everything else. That conversion
+is the one piece of arithmetic this view cannot skip: the grid counts events per pixel *row*, and
+rows differ by a factor of `z²` in how much time they cover, so drawing the raw grid would render
+a compressed stretch of antiquity as wide as a genuinely dense century — the opposite of the
+truth. `DepthProjection.rowsPerTime` is the analytic derivative that undoes it, and it is tested
+against a numerical one.
+
+**The semantic zoom is spatial (D35).** The flat view crossfades on one λ for the whole frame,
+which is right when every column covers the same span. A corridor's rows do not, so a single
+number is always dominated by the far end and marks would never appear at any zoom — they did
+not, until each event was tested against the density at *its own* row. Now individual events
+resolve as they come towards you and dissolve back into mass as they recede, which is what the
+projection was for.
+
+**Arcs vault over the corridor and into the sky.** Their height comes from how much of the window
+a connection spans, not from how far apart its ends look — those are the same thing in the flat
+view and wildly different here, where a century is four hundred pixels at your feet and four at
+the horizon. Every arc is rooted on the same centre line, since the corridor has only one, so
+they are also swept sideways in proportion to reach: long connections swing wide and become the
+visible structure, local ones stay a thread down the middle. Endpoints are clamped into the
+window before projecting, because past the far plane the depth approaches zero and an unclamped
+endpoint turns its arc into a straight line across the sky.
+
+**Eras use both sides** — personal to the left, canonical to the right. The corridor has two
+flanks where the flat view has one stack of rows, so this is the one place the depth view can
+show something the flat view cannot: your own frame of reference and the canonical one sit
+opposite each other instead of competing for space.
+
+**Dragging grabs the ground.** The time under the cursor when the drag began stays under the
+cursor. A constant pixels-to-time factor is meaningless when a pixel near the horizon is worth
+eighty at your feet, which is why `depth-interaction.ts` exists rather than a flag on
+`interaction.ts`. Zoom still goes through `zoomAt` by converting the cursor's height to the
+equivalent position on a linear axis.
+
 
 ---
 

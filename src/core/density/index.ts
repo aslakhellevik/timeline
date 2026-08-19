@@ -107,6 +107,8 @@ export function computeDensity(
     return { lambda, lambdaMax: 0, total: 0 };
   }
 
+  const project = options?.toPixel;
+
   // Pad by the kernel's reach so nothing just outside the window is lost, and so
   // the zero boundary in the blur never bites inside the visible span.
   const padPx = Math.ceil(4 * beta) + 1;
@@ -116,7 +118,11 @@ export function computeDensity(
   const slopeChanges = new Float64Array(cells);
   const points = new Float64Array(cells);
 
-  const toCell = (t: Days) => ((t - viewport.start) / dt + padPx) * supersample;
+  // The one place time meets pixels. A nonlinear axis composes here and nowhere
+  // else — see `DensityOptions.toPixel` for why that is enough.
+  const toCell = project
+    ? (t: Days) => (project(t) + padPx) * supersample
+    : (t: Days) => ((t - viewport.start) / dt + padPx) * supersample;
 
   for (const spec of specs) {
     const a = toCell(spec.a);

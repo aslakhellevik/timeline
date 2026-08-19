@@ -9,6 +9,7 @@ import { useTimeline } from '../state/timeline-store';
 import { ConnectPicker } from './ConnectPicker';
 import { ConnectionDetail } from './ConnectionDetail';
 import { DataPanel } from './DataPanel';
+import { DepthView } from './DepthView';
 import { EraDetail } from './EraDetail';
 import { EventDetail } from './EventDetail';
 import { EventList } from './EventList';
@@ -43,7 +44,7 @@ export function App() {
   const error = useTimeline((state) => state.error);
 
   const initial = useMemo(() => decodeUrlState(window.location.hash), []);
-  const [view, setView] = useState<'timeline' | 'list'>(initial.view ?? 'timeline');
+  const [view, setView] = useState<'timeline' | 'depth' | 'list'>(initial.view ?? 'timeline');
   const viewportRef = useRef<{ centre: number; span: number } | null>(null);
   const [dataOpen, setDataOpen] = useState(false);
   const [backup, setBackup] = useState<BackupStatus | null>(null);
@@ -171,7 +172,7 @@ export function App() {
         <h1 className="shrink-0 text-base font-semibold tracking-tight text-paper">Årlinje</h1>
         <QuickAdd />
         <nav className="flex shrink-0 gap-1" aria-label="View">
-          {(['timeline', 'list'] as const).map((option) => (
+          {(['timeline', 'depth', 'list'] as const).map((option) => (
             <button
               key={option}
               onClick={() => setView(option)}
@@ -210,6 +211,25 @@ export function App() {
           <main className="min-w-0 flex-1">
             {view === 'timeline' ? (
               <TimelineView
+                events={visible.events}
+                connections={visible.connections}
+                tags={visible.tags}
+                eras={visible.eras}
+                allEvents={timeline.events}
+                selectedId={selectedId}
+                selectedConnectionId={selectedConnectionId}
+                selectedEraId={selectedEraId}
+                connectFrom={connectFrom}
+                onSelectEvent={select}
+                onSelectConnection={selectConnection}
+                onSelectEra={selectEra}
+                {...(initial.centre !== undefined && initial.span !== undefined
+                  ? { initialViewport: { centre: initial.centre, span: initial.span } }
+                  : {})}
+                onViewportChange={onViewportChange}
+              />
+            ) : view === 'depth' ? (
+              <DepthView
                 events={visible.events}
                 connections={visible.connections}
                 tags={visible.tags}

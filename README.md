@@ -11,9 +11,9 @@ talk to people, and its shape says something about what you know and how you con
 
 ## Status
 
-**M0–M4 built**: the pure core, the canvas renderer, real local-first storage with capture,
-connections — the arcs, the creation flow and the note that carries the argument — and tag
-filtering that visibly redistributes the mass, with eras in lanes below the axis.
+**M0–M4 built**, plus a second canvas view. The pure core, the renderer, real local-first storage
+with capture, connections — the arcs, the creation flow and the note that carries the argument —
+and tag filtering that visibly redistributes the mass, with eras in lanes below the axis.
 The concept below is settled; the technical decisions that follow from it live in
 [docs/design.md](docs/design.md).
 
@@ -96,6 +96,18 @@ zooming in genuinely resolves clumps into structure instead of stretching the sa
 uncertain events stay smeared while precise ones sharpen. The maths is in
 [docs/design.md](docs/design.md#3-mass-d3).
 
+### The depth view
+
+A second view of the same timeline, in which time runs *into* the screen: you stand at the newest
+moment and look back down a corridor to a horizon. Knowledge is a river flowing towards you —
+wide where you know a lot — with connections vaulting over it and eras running along both banks.
+
+It is not decoration. A perspective axis gives screen space as `1/z`, which is roughly how a
+personal corpus thins out with age: most of what anyone knows is recent, and near means large
+means room for it. Individual events resolve as they come towards you and dissolve back into mass
+as they recede, so the semantic zoom becomes a matter of distance rather than a setting. The flat
+view is better for reading; this one is better for seeing the shape of what you know.
+
 ## Starting from empty
 
 A new timeline is empty — that is the point. Canonical content is available as opt-in **packs**
@@ -158,7 +170,7 @@ Answered, with rationale in [docs/design.md](docs/design.md):
 | Platform | Web app: Vite + TypeScript + React + Tailwind, PWA, installable, desktop and mobile |
 | Local-first vs. server | Local-first; in-memory state, IndexedDB, versioned JSON export |
 | Data durability | Three layers: persisted storage, automatic file backup, manual export — all in v1 |
-| Views | Canvas and a searchable, keyboard-navigable list, over one shared filter |
+| Views | Two canvases — flat and a perspective corridor — plus a searchable, keyboard-navigable list, over one shared filter |
 | Privacy | No telemetry, no analytics, no network traffic beyond loading the app |
 | Spatial view | v2; location stays in the schema from the start |
 | Licence / language | MIT; UK English |
@@ -182,6 +194,8 @@ src/core/           pure, framework-free, fully tested
 src/render/         canvas renderer — no framework imports (D11)
   arcs.ts           connection arc geometry, colour and hit-testing
   lanes.ts          era lane allocation and bar geometry
+  projection.ts     the perspective axis behind the depth view
+  depth-renderer.ts the corridor: time running into the screen
 src/state/          in-memory timeline, mutations, undo, persist queue
 src/store/          IndexedDB, merge, backup, durability
 src/ui/             React
@@ -197,6 +211,6 @@ installable canonical content — plus the PWA and mobile polish.
 
 ```
 npm run dev        # your timeline; starts empty
-npm test           # 635 tests
+npm test           # 661 tests
 npm run typecheck
 ```

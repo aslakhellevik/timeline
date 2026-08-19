@@ -16,7 +16,7 @@ export interface UrlState {
   span?: number;
   selectedId?: string;
   tags?: string[];
-  view?: 'timeline' | 'list';
+  view?: 'timeline' | 'depth' | 'list';
 }
 
 export function encodeUrlState(state: UrlState): string {
@@ -51,7 +51,8 @@ export function decodeUrlState(hash: string): UrlState {
     if (list.length > 0) state.tags = list;
   }
 
-  if (parts.get('v') === 'list') state.view = 'list';
+  const view = parts.get('v');
+  if (view === 'list' || view === 'depth') state.view = view;
 
   return state;
 }
