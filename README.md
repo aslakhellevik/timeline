@@ -11,9 +11,9 @@ talk to people, and its shape says something about what you know and how you con
 
 ## Status
 
-**v1 is built** — M0 to M5, plus a second canvas view. The pure core, both renderers, local-first
-storage with capture, connections and their notes, tag filtering that redistributes the mass,
-eras in lanes, installable packs, and an offline-capable PWA that works on a phone.
+**v1 is built**, and the map with it. The pure core, three canvas views, local-first storage with
+capture, connections and their notes, tag filtering that redistributes the mass, eras in lanes,
+installable packs, and an offline-capable PWA that works on a phone.
 The concept below is settled; the technical decisions that follow from it live in
 [docs/design.md](docs/design.md).
 
@@ -96,6 +96,20 @@ zooming in genuinely resolves clumps into structure instead of stretching the sa
 uncertain events stay smeared while precise ones sharpen. The maths is in
 [docs/design.md](docs/design.md#3-mass-d3).
 
+### The map
+
+The same events in space, not only time: a world map with a dot wherever something you know
+happened. It is **coupled to the timeline** — a scrubber along the bottom moves the window, and
+the dots fill in and drain away as you sweep through the centuries.
+
+Two things it is careful about. It draws **coastlines, not borders**, because a timeline running
+from the Bronze Age to last week cannot honestly lay the frontiers of 2026 across itself. And
+most events are placed by their region tag rather than by coordinates, so each dot carries a halo
+at its true radius — an event tagged only *Asia* is a soft disc two thousand kilometres across,
+because that is all that is really known about where it happened.
+
+The projection is equal-area (Equal Earth), since the question the map answers is *how much*.
+
 ### The depth view
 
 A second view of the same timeline, in which time runs *into* the screen: you stand at the newest
@@ -138,13 +152,6 @@ timeline or a subset by tag.
 canonical registry. If two people both add "the fall of Constantinople", those are two events.
 Deduplication, if it ever matters, is a matching problem on top — not a schema problem.
 
-### Spatial view
-
-Events also want to be shown in space, not only time: a world map with dots, driven by the
-geographic tag or an explicit location. Ideally coupled to the timeline — scrub through time and
-watch the map fill in. Location is already in the schema. The hard part is not the map; it is
-that borders and place names move.
-
 ### AI
 
 - **AI-suggested tags** — proposed on event creation, accepted or rejected by the user. *(TODO)*
@@ -174,7 +181,7 @@ Answered, with rationale in [docs/design.md](docs/design.md):
 | Data durability | Three layers: persisted storage, automatic file backup, manual export — all in v1 |
 | Views | Two canvases — flat and a perspective corridor — plus a searchable, keyboard-navigable list, over one shared filter |
 | Privacy | No telemetry, no analytics, no network traffic beyond loading the app |
-| Spatial view | v2; location stays in the schema from the start |
+| Spatial view | Built: Equal Earth, coastlines rather than borders, coupled to the time window |
 | Licence / language | MIT; UK English |
 
 Nothing blocks implementation. What is deliberately left until there is something on screen:
@@ -193,6 +200,7 @@ src/core/           pure, framework-free, fully tested
   search.ts         search, and the capture-time duplicate guard
   quick-add.ts      the capture grammar
   packs.ts          install, upgrade, adoption, uninstall
+  geo/              projection, coastlines, region placement, clustering
   markdown.ts       a small Markdown subset, escape-first (D27)
 src/packs/          the bundled packs — WWII, the Cold War
 src/render/         canvas renderers — no framework imports (D11)
@@ -200,6 +208,7 @@ src/render/         canvas renderers — no framework imports (D11)
   lanes.ts          era lane allocation and bar geometry
   projection.ts     the perspective axis behind the depth view
   depth-renderer.ts the corridor: time running into the screen
+  map-renderer.ts   the world map and its time scrubber
 src/state/          in-memory timeline, mutations, undo, persist queue
 src/store/          IndexedDB, merge, backup, durability
 src/ui/             React
@@ -216,6 +225,6 @@ of v1. What comes next is deliberately deferred: the map, AI, and the social lay
 
 ```
 npm run dev        # your timeline; starts empty
-npm test           # 687 tests
+npm test           # 719 tests
 npm run typecheck
 ```

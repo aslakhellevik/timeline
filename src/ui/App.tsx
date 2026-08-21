@@ -15,6 +15,7 @@ import { EventDetail } from './EventDetail';
 import { EventList } from './EventList';
 import { FilterBar } from './FilterBar';
 import { FirstRun } from './FirstRun';
+import { MapView } from './MapView';
 import { PackPanel } from './PackPanel';
 import { QuickAdd } from './QuickAdd';
 import { TimelineView } from './TimelineView';
@@ -45,8 +46,22 @@ export function App() {
   const error = useTimeline((state) => state.error);
 
   const initial = useMemo(() => decodeUrlState(window.location.hash), []);
-  const [view, setView] = useState<'timeline' | 'depth' | 'list'>(initial.view ?? 'timeline');
-  const viewportRef = useRef<{ centre: number; span: number } | null>(null);
+  const [view, setView] = useState<'timeline' | 'depth' | 'map' | 'list'>(
+    initial.view ?? 'timeline',
+  );
+  /*
+   * Seeded from the URL, not left null.
+   *
+   * The views only report a viewport once the user moves one, so on a fresh load
+   * this stayed null until the first interaction — and the effect below then
+   * rewrote the hash *without* `c` and `s`, destroying the bookmark that had just
+   * been used to restore the view. Bookmarkable periods are the whole of D24.
+   */
+  const viewportRef = useRef<{ centre: number; span: number } | null>(
+    initial.centre !== undefined && initial.span !== undefined
+      ? { centre: initial.centre, span: initial.span }
+      : null,
+  );
   const [dataOpen, setDataOpen] = useState(false);
   const [packsOpen, setPacksOpen] = useState(false);
   // Held separately from `isFirstRun`, which flips as soon as the birth year is
@@ -181,7 +196,7 @@ export function App() {
         <h1 className="shrink-0 text-base font-semibold tracking-tight text-paper">Årlinje</h1>
         <QuickAdd />
         <nav className="flex shrink-0 gap-1" aria-label="View">
-          {(['timeline', 'depth', 'list'] as const).map((option) => (
+          {(['timeline', 'depth', 'map', 'list'] as const).map((option) => (
             <button
               key={option}
               onClick={() => setView(option)}
@@ -251,6 +266,18 @@ export function App() {
                 onSelectEvent={select}
                 onSelectConnection={selectConnection}
                 onSelectEra={selectEra}
+                {...(initial.centre !== undefined && initial.span !== undefined
+                  ? { initialViewport: { centre: initial.centre, span: initial.span } }
+                  : {})}
+                onViewportChange={onViewportChange}
+              />
+            ) : view === 'map' ? (
+              <MapView
+                events={visible.events}
+                tags={visible.tags}
+                allEvents={timeline.events}
+                selectedId={selectedId}
+                onSelectEvent={select}
                 {...(initial.centre !== undefined && initial.span !== undefined
                   ? { initialViewport: { centre: initial.centre, span: initial.span } }
                   : {})}

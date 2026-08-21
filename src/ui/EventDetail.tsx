@@ -5,6 +5,7 @@ import { connectionsFor } from '../state/timeline-model';
 import { useTimeline } from '../state/timeline-store';
 import { DetailPane } from './DetailPane';
 import { MarkdownEditor } from './MarkdownEditor';
+import { PlaceField } from './PlaceField';
 
 /** The selected event, with the fields the concept actually cares about. */
 export function EventDetail() {
@@ -115,6 +116,8 @@ export function EventDetail() {
         onChange={(notes) => updateEvent(event.id, { notes })}
         rows={6}
       />
+
+      <PlaceField event={event} />
 
       {/*
         D10: when and from where you learned it. Half the point of the project —

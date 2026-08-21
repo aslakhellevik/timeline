@@ -52,6 +52,9 @@ map are deferred — but the data model is shaped so that none of them require a
 | D38 | With a pack installed the mass is drawn in **two layers**: the total desaturated, your own share solid inside it |
 | D39 | The premade tags are materialised as records on first run, so a typed `#war` attaches to the built-in id |
 | D40 | The service worker is written here rather than taken as a dependency: network-first shell, cache-first fingerprinted assets |
+| D41 | The map uses **Equal Earth** — equal-area, because the view is about how much |
+| D42 | The map draws **coastlines, not borders**: borders move on the timescale the timeline covers, coastlines do not |
+| D43 | Events with no coordinates are placed by their **region tag**, drawn with a halo at the region's true radius |
 
 Conventions, settled and not worth further discussion:
 
@@ -1021,3 +1024,73 @@ Outside the design: the app is called **Årlinje**, provisionally — the name m
 it out of module names and types. `arlinje` is the ASCII form, used for the package and anywhere
 a diacritic would be hostile. It still needs somewhere to live (`arlinje.aslakhellevik.no`, or
 its own domain); neither blocks anything.
+
+---
+
+## 11. The spatial view (D17, D41–D43)
+
+Built after v1, ahead of schedule, because §5's packs gave the corpus enough geography to make it
+worth looking at. The README always described it: "a world map with dots, driven by the geographic
+tag or an explicit location. Ideally coupled to the timeline — scrub through time and watch the
+map fill in."
+
+### 11.1 Coupled to time, which is the point
+
+A static map of everything says where you have read about, not what happened when — and the
+timeline already answers the first question better. So the map draws only what overlaps the
+current window, and carries a scrubber along the bottom: a density strip of the whole corpus with
+the window as a lit band. Drag it and the dots fill in and drain away.
+
+The window is the same `(start, end)` the other views use, so switching views keeps your place.
+An event counts as present if its span *overlaps* the window rather than if its midpoint falls
+inside: the Second World War belongs on the map for every year of it, not only for 1942.
+
+The canvas has two regions and each has exactly one meaning — the map pans and zooms in space,
+the scrubber moves and resizes the window in time. Two interaction models sharing one surface is
+a surface nobody can predict.
+
+### 11.2 Equal Earth (D41)
+
+Equal-area, and not for looks. The map answers "where do I know about", which is a question about
+*how much*, and Mercator inflates Greenland to the size of Africa — a view whose whole point is
+comparing quantities cannot sit on a projection that distorts them by an order of magnitude at
+the latitudes a European user cares most about. Equal Earth (Šavrič, Patterson & Jenny, 2018) has
+a closed-form forward, an inverse by Newton iteration, and looks like a world map rather than a
+diagram. The equal-area property is asserted by a test rather than assumed.
+
+### 11.3 Coastlines, not borders (D42)
+
+The data could as easily have been countries, and borders would look richer. They would also be a
+lie on this particular map: a timeline running from the Bronze Age to last week cannot draw the
+frontiers of 2026 across it and call the result a picture of anything. The README says as much —
+"the hard part is not the map; it is that borders and place names move". Coastlines move too, but
+over millennia rather than decades, so one outline is an honest backdrop for the whole span.
+
+Natural Earth's 110m land outline, public domain, committed to the repo rather than pulled from a
+package — 55 kB of TopoJSON, decoded by twenty lines written here. A runtime dependency for that
+much arithmetic is not a trade worth making, and the data now cannot change underneath the app.
+
+### 11.4 Vagueness is drawn (D43)
+
+Almost no event has coordinates, and asking users to geocode everything they read about would
+make capture slow — which is the stated top product risk. So an event with no `place` is located
+by its **most specific region tag**, read straight off the radius so adding a region needs no
+ordering table.
+
+Those are representative points *with a radius*, not centroids, and each dot carries a halo at
+its true size. An event tagged only *Asia* is a soft disc two thousand kilometres across, because
+that is genuinely all that is known about where it happened. Drawing it as a neat dot would be
+the same lie the time model refuses to tell about dates. A centroid would be worse than useless
+here: the centroid of Europe's landmass is in Belarus.
+
+Clustering happens in **screen space**, on the same reasoning as the density's screen-space
+bandwidth (§3.1) — what matters is whether two dots would overlap where they are drawn. Zooming
+in therefore separates a cluster into its parts, exactly as zooming the timeline resolves mass
+into events. Dot area is proportional to count, and a cluster is anchored by its *best*-placed
+member, so one precise event among fifty vague ones is not drawn as continent-sized.
+
+Coordinates can be typed as `59.91, 10.75` — the same choice as the era span field, since a
+map-picker for a field almost nobody fills in is a lot of interface for very little. Impossible
+pairs are rejected rather than clamped: a latitude of 200 is a typo or a swapped pair, and
+quietly moving it to the pole hides the mistake in the one place it would look plausible.
+

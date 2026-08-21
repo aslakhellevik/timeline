@@ -66,6 +66,43 @@ export function sortEvents(events: readonly TimelineEvent[]): TimelineEvent[] {
   return [...events].sort(compareEvents);
 }
 
+/**
+ * A patch: any field may be changed, and an **optional** field may be cleared by
+ * passing `undefined`.
+ *
+ * `Partial<T>` cannot express the second half under `exactOptionalPropertyTypes`
+ * — it permits the key to be absent but not present-and-undefined, so there is
+ * no way to say "remove the place from this event". Naively admitting undefined
+ * everywhere is worse: it would also let a patch clear `title`, which is not
+ * optional and whose absence nothing downstream expects.
+ */
+type OptionalKeys<T> = {
+  [K in keyof T]-?: undefined extends T[K] ? K : never;
+}[keyof T];
+
+export type Patch<T> = Partial<Pick<T, Exclude<keyof T, OptionalKeys<T>>>> & {
+  [K in OptionalKeys<T>]?: T[K] | undefined;
+};
+
+/**
+ * Applies a patch, **removing** keys set to `undefined` rather than storing them
+ * as present-and-undefined.
+ *
+ * A spread would leave `place: undefined` sitting on the record. That is not the
+ * same as having no place: it round-trips differently through JSON and
+ * structured clone, and it contradicts the record types, which under
+ * `exactOptionalPropertyTypes` say an absent optional field is absent. Deleting
+ * is both what the caller meant and what the type says.
+ */
+function applyPatch<T extends object>(record: T, patch: object, now: string): T {
+  const next: Record<string, unknown> = { ...record, updated_at: now };
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) delete next[key];
+    else next[key] = value;
+  }
+  return next as T;
+}
+
 export interface EventDraft {
   title: string;
   when: TimeSpec;
@@ -108,13 +145,13 @@ export function createEvent(
 export function editEvent(
   timeline: Timeline,
   id: Id,
-  patch: Partial<Omit<TimelineEvent, keyof Base>>,
+  patch: Patch<Omit<TimelineEvent, keyof Base>>,
   now: string = nowIso(),
 ): Mutation | null {
   const existing = timeline.events.find((event) => event.id === id);
   if (!existing) return null;
 
-  const updated: TimelineEvent = { ...existing, ...patch, updated_at: now };
+  const updated = applyPatch(existing, patch, now);
   const events = sortEvents(timeline.events.map((e) => (e.id === id ? updated : e)));
 
   return {
@@ -243,13 +280,13 @@ export function createConnection(
 export function editConnection(
   timeline: Timeline,
   id: Id,
-  patch: Partial<Omit<Connection, keyof Base>>,
+  patch: Patch<Omit<Connection, keyof Base>>,
   now: string = nowIso(),
 ): Mutation | null {
   const existing = timeline.connections.find((candidate) => candidate.id === id);
   if (!existing) return null;
 
-  const updated: Connection = { ...existing, ...patch, updated_at: now };
+  const updated = applyPatch(existing, patch, now);
 
   return {
     timeline: {
@@ -382,13 +419,13 @@ export function createEra(timeline: Timeline, draft: EraDraft, now: string = now
 export function editEra(
   timeline: Timeline,
   id: Id,
-  patch: Partial<Omit<Era, keyof Base>>,
+  patch: Patch<Omit<Era, keyof Base>>,
   now: string = nowIso(),
 ): Mutation | null {
   const existing = timeline.eras.find((era) => era.id === id);
   if (!existing) return null;
 
-  const updated: Era = { ...existing, ...patch, updated_at: now };
+  const updated = applyPatch(existing, patch, now);
 
   return {
     timeline: { ...timeline, eras: timeline.eras.map((e) => (e.id === id ? updated : e)) },

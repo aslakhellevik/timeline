@@ -36,7 +36,14 @@ import {
   removeEvent,
   sortEvents,
 } from './timeline-model';
-import type { ConnectionDraft, EraDraft, EventDraft, Mutation, UndoStep } from './timeline-model';
+import type {
+  ConnectionDraft,
+  EraDraft,
+  EventDraft,
+  Mutation,
+  Patch,
+  UndoStep,
+} from './timeline-model';
 
 /** How many undo steps to keep. Beyond this, soft deletes are the safety net. */
 const UNDO_DEPTH = 50;
@@ -81,7 +88,7 @@ interface TimelineStoreState {
 
   quickAdd(input: string): QuickAddOutcome;
   addEvent(draft: EventDraft): TimelineEvent;
-  updateEvent(id: Id, patch: Partial<Omit<TimelineEvent, 'id' | 'created_at' | 'updated_at'>>): void;
+  updateEvent(id: Id, patch: Patch<Omit<TimelineEvent, 'id' | 'created_at' | 'updated_at'>>): void;
   deleteEvent(id: Id): void;
   undo(): void;
 
@@ -99,7 +106,7 @@ interface TimelineStoreState {
   removePack(packId: Id): void;
 
   addEra(draft: EraDraft): Id | null;
-  updateEra(id: Id, patch: Partial<Omit<Era, 'id' | 'created_at' | 'updated_at'>>): void;
+  updateEra(id: Id, patch: Patch<Omit<Era, 'id' | 'created_at' | 'updated_at'>>): void;
   deleteEra(id: Id): void;
   selectEra(id: Id | null): void;
 
