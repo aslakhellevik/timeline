@@ -31,7 +31,18 @@ export function wheelZoomFactor(deltaY: number, deltaMode: number, sensitivity =
 
 export interface InteractionHandlers {
   getViewport: () => Viewport;
-  setViewport: (vp: Viewport) => void;
+  /**
+   * `eased` asks for the change to be animated rather than applied at once
+   * (§6.1).
+   *
+   * The distinction is between gestures that are already continuous and
+   * gestures that are one discrete jump. A drag or a wheel arrives as a stream
+   * and easing it would only make the canvas lag the hand; a double-click or a
+   * `+` moves the window in a single step, and stepping straight past the
+   * mass-to-marks crossfade makes it read as a cut rather than as detail
+   * resolving.
+   */
+  setViewport: (vp: Viewport, eased?: boolean) => void;
   getBounds: () => TimeBounds;
 }
 
@@ -159,11 +170,11 @@ export function attachInteraction(el: HTMLElement, h: InteractionHandlers): () =
         break;
       case '+':
       case '=':
-        h.setViewport(zoomAt(vp, vp.width / 2, 1 / 1.4, h.getBounds()));
+        h.setViewport(zoomAt(vp, vp.width / 2, 1 / 1.4, h.getBounds()), true);
         break;
       case '-':
       case '_':
-        h.setViewport(zoomAt(vp, vp.width / 2, 1.4, h.getBounds()));
+        h.setViewport(zoomAt(vp, vp.width / 2, 1.4, h.getBounds()), true);
         break;
       default:
         return;
@@ -172,7 +183,7 @@ export function attachInteraction(el: HTMLElement, h: InteractionHandlers): () =
   };
 
   const onDoubleClick = (e: MouseEvent) => {
-    h.setViewport(zoomAt(h.getViewport(), localX(e.clientX), 1 / 2.5, h.getBounds()));
+    h.setViewport(zoomAt(h.getViewport(), localX(e.clientX), 1 / 2.5, h.getBounds()), true);
   };
 
   el.addEventListener('wheel', onWheel, { passive: false });

@@ -704,3 +704,19 @@ describe('uninstalling a pack (§5.1, D37)', () => {
     expect(state().selectedConnectionId).toBeNull();
   });
 });
+
+describe('asking for a reveal (§6.1)', () => {
+  it('counts requests, so the same event can be revealed twice', async () => {
+    await attach(fakeStore(makeTimeline({ events: [event('e1')] })));
+
+    const before = state().revealRequest;
+    state().select('e1');
+    // Selecting is not itself a request: the views act on a selection anyway,
+    // and a canvas click must not move the picture under the pointer.
+    expect(state().revealRequest).toBe(before);
+
+    state().revealSelected();
+    state().revealSelected();
+    expect(state().revealRequest).toBe(before + 2);
+  });
+});

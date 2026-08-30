@@ -1,10 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { Id, Tag, TimelineEvent } from '../core/model/types';
 import { project } from '../core/geo';
+import { compareTime } from '../core/time';
 import { CanvasHost } from '../render/canvas-host';
 import { MapRenderer } from '../render/map-renderer';
 import { clamp } from '../render/viewport';
 import type { TimeBounds } from '../render/viewport';
+import { animateViewport } from '../render/viewport-animation';
 
 /**
  * The spatial view (docs/design.md §11).
@@ -22,6 +24,8 @@ export interface MapViewProps {
   /** The first endpoint of a connection being made, so the map can draw it too. */
   connectFrom: Id | null;
   onSelectEvent: (id: Id) => void;
+  /** Bumped when something asks for the selection to be brought into view. */
+  revealRequest: number;
   initialViewport?: { centre: number; span: number };
   onViewportChange?: (viewport: { centre: number; span: number }) => void;
 }
@@ -33,6 +37,7 @@ export function MapView({
   selectedId,
   connectFrom,
   onSelectEvent,
+  revealRequest,
   initialViewport,
   onViewportChange,
 }: MapViewProps) {
@@ -46,6 +51,30 @@ export function MapView({
   const selectRef = useRef(onSelectEvent);
   selectRef.current = onSelectEvent;
   const initialRef = useRef(initialViewport);
+  const eventsRef = useRef(events);
+  eventsRef.current = events;
+
+  /** Cancels the scrubber animation in flight, if any. */
+  const stopRef = useRef<(() => void) | null>(null);
+  /** The id this map's own click just selected — see the reveal effect. */
+  const clickedRef = useRef<Id | null>(null);
+  const requestRef = useRef(revealRequest);
+
+  const report = useCallback(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    const viewport = renderer.getViewport();
+    reportRef.current?.({
+      centre: (viewport.start + viewport.end) / 2,
+      span: viewport.end - viewport.start,
+    });
+  }, []);
+
+  /** Stops the scrubber animation, so a gesture always wins over a reveal. */
+  const stop = useCallback(() => {
+    stopRef.current?.();
+    stopRef.current = null;
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -77,14 +106,6 @@ export function MapView({
         : { start: extent.start, end: extent.end, width },
     );
     host.requestDraw();
-
-    const report = () => {
-      const viewport = renderer.getViewport();
-      reportRef.current?.({
-        centre: (viewport.start + viewport.end) / 2,
-        span: viewport.end - viewport.start,
-      });
-    };
 
     const local = (event: PointerEvent | WheelEvent) => {
       const rect = frame.getBoundingClientRect();
@@ -121,6 +142,8 @@ export function MapView({
     const onDown = (event: PointerEvent) => {
       const { x, y } = local(event);
       downAt = { x, y };
+      // A hand on the canvas outranks a reveal still easing towards its window.
+      stop();
       frame.setPointerCapture(event.pointerId);
 
       if (y > renderer.getMapHeight()) {
@@ -197,14 +220,23 @@ export function MapView({
       if (target?.kind === 'cluster') {
         // A cluster of one selects it; a cluster of many selects the earliest,
         // which is the one the eye is looking for on a map of a period.
-        const earliest = [...target.cluster.events].sort((a, b) => a.when.b - b.when.b)[0];
-        if (earliest) selectRef.current(earliest.id);
+        // `compareTime` rather than a `b` subtraction: it is the corpus's sort
+        // key (it breaks a tie on `a`), and two orderings of the same events is
+        // one more than this project needs.
+        const earliest = [...target.cluster.events].sort((a, b) => compareTime(a.when, b.when))[0];
+        if (earliest) {
+          // Noted before the selection lands, so the reveal below can tell a
+          // selection made *here* from one that arrived from elsewhere.
+          clickedRef.current = earliest.id;
+          selectRef.current(earliest.id);
+        }
       }
     };
 
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       const { x, y } = local(event);
+      stop();
 
       if (y > renderer.getMapHeight()) {
         // Over the scrubber the wheel zooms *time*, anchored where the cursor is.
@@ -256,6 +288,7 @@ export function MapView({
     frame.addEventListener('dblclick', onDoubleClick);
 
     return () => {
+      stop();
       frame.removeEventListener('pointerdown', onDown);
       frame.removeEventListener('pointermove', onMove);
       frame.removeEventListener('pointerup', onUp);
@@ -280,6 +313,37 @@ export function MapView({
     rendererRef.current?.setConnectFrom(connectFrom);
     hostRef.current?.requestDraw();
   }, [selectedId, connectFrom]);
+
+  /**
+   * Brings the selected event onto the map (§6.1).
+   *
+   * Two motions, because the map has two axes with two meanings. The window
+   * moves in *time* — an event outside it is not drawn here at all, so
+   * selecting one from the list would otherwise leave nothing to look at — and
+   * the camera moves in *space*, but only when the event's dot is off screen.
+   * A click on a cluster is exempt for the reason it is on the other canvases:
+   * it was already under the pointer.
+   */
+  useEffect(() => {
+    const asked = revealRequest !== requestRef.current;
+    requestRef.current = revealRequest;
+    const clicked = clickedRef.current === selectedId;
+    clickedRef.current = null;
+    if (clicked && !asked) return;
+
+    const renderer = rendererRef.current;
+    const host = hostRef.current;
+    if (!renderer || !host || !selectedId) return;
+    const event = eventsRef.current.find((candidate) => candidate.id === selectedId);
+    if (!event) return;
+
+    const target = renderer.revealTime(event.when.b, event.when.c);
+    if (target) {
+      stop();
+      stopRef.current = animateViewport(host, renderer, target, { onFrame: report });
+    }
+    if (renderer.revealEvent(event.id)) host.requestDraw();
+  }, [selectedId, revealRequest, report, stop]);
 
   return (
     <div

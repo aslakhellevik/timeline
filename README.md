@@ -231,6 +231,6 @@ of v1. What comes next is deliberately deferred: the map, AI, and the social lay
 
 ```
 npm run dev        # your timeline; starts empty
-npm test           # 829 tests
+npm test           # 896 tests
 npm run typecheck
 ```

@@ -136,3 +136,85 @@ export function interpolate(a: Viewport, b: Viewport, u: number): Viewport {
   const s = Math.exp(Math.log(span(a)) + (Math.log(span(b)) - Math.log(span(a))) * u);
   return { start: c - s / 2, end: c + s / 2, width: b.width };
 }
+
+/**
+ * A little slack at each end of the frame, so the outermost events are not
+ * flush to the edge.
+ *
+ * One copy, because two things have to agree about it: the pan bounds a view
+ * hands the interaction layer, and the bounds `revealWindow` clamps against. If
+ * they differed, a reveal would land somewhere the next gesture immediately
+ * corrected.
+ */
+export function frameBounds(frame: { start: Days; end: Days }): TimeBounds {
+  const margin = Math.max((frame.end - frame.start) * 0.02, 1);
+  return { min: frame.start - margin, max: frame.end + margin };
+}
+
+/** The shortest period a reveal treats as the thing being revealed. */
+const REVEAL_MIN_CONTEXT = 10 * YEAR;
+
+/**
+ * How many of those periods the window may hold and still count as showing one.
+ *
+ * Four, because "on screen" and "legible" are not the same claim, and only the
+ * second one is worth moving the view for. Fitted to the whole corpus every
+ * event is inside the window — the selected one included — and it is a hairline
+ * among eight hundred others, dissolved into the mass by the semantic zoom
+ * (D50). A reveal that stopped at "it is technically in the window" would do
+ * nothing at all in exactly the case that made the bug worth fixing.
+ *
+ * Stated as a multiple of the target's own period rather than solved from the
+ * density, though the density is what actually decides whether a mark resolves:
+ * a solved window would land somewhere different for every event, and a reveal
+ * has to be predictable enough that the second one teaches you what the first
+ * one did.
+ */
+const REVEAL_MAX_CONTEXTS = 4;
+
+/**
+ * Half the width of the band that counts as comfortably on screen, as a
+ * fraction of the window. The remainder is the edges, where a mark is about to
+ * leave and a reveal should still act.
+ */
+const REVEAL_COMFORT = 0.44;
+
+/**
+ * The window that brings `[from, to]` into view, or `null` when it is already
+ * there (docs/design.md §6.1).
+ *
+ * Two rules, in this order. The span the user chose is kept wherever it already
+ * shows the target — a reveal is a **pan** whenever a pan is enough, because
+ * zooming to a day around an instant throws away the period they were reading.
+ * Where it is not enough the window is re-derived around the target: never
+ * narrower than `1.8 ×` its length, which is `fitTo(from, to, …, 0.4)`, and
+ * never wider than `REVEAL_MAX_CONTEXTS` of it.
+ *
+ * `place` is where in the window the target should land, as a fraction from the
+ * start, and it moves the comfortable band with it. Half for an axis that is
+ * linear on screen. The corridor's is not: it allocates space as `1/z`, so the
+ * older half of a window occupies the top tenth of the picture, and an event
+ * centred in *time* there is a smudge at the horizon rather than something to
+ * look at (D33 keeps the viewport one-dimensional, which is what lets one
+ * function serve both).
+ */
+export function revealWindow(
+  vp: Viewport,
+  from: Days,
+  to: Days,
+  bounds: TimeBounds,
+  place = 0.5,
+): Viewport | null {
+  const target = Math.max(to - from, 0);
+  const widest = Math.max(target, REVEAL_MIN_CONTEXT) * REVEAL_MAX_CONTEXTS;
+  const current = span(vp);
+
+  const near = vp.start + current * Math.max(0, place - REVEAL_COMFORT);
+  const far = vp.start + current * Math.min(1, place + REVEAL_COMFORT);
+  if (from >= near && to <= far && current <= widest) return null;
+
+  const wanted = Math.min(Math.max(current, target * 1.8), widest);
+  const middle = (from + to) / 2;
+  const start = middle - wanted * place;
+  return clamp({ start, end: start + wanted, width: vp.width }, bounds);
+}

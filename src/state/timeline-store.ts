@@ -95,6 +95,15 @@ interface TimelineStoreState {
    */
   pickerOpen: boolean;
   query: string;
+  /**
+   * Bumped whenever something asks the views to bring the selection into view
+   * (§6.1) — "show on timeline", or `Enter` on a list row.
+   *
+   * A counter rather than an id, because the request is not always a *change*:
+   * pressing "show on timeline" on the event that is already selected has to
+   * reveal it again, and nothing in the selection moves when it does.
+   */
+  revealRequest: number;
   undoStack: UndoEntry[];
   /** What the next undo would take back, e.g. "delete event". Null when empty. */
   undoLabel: string | null;
@@ -162,6 +171,8 @@ interface TimelineStoreState {
   setQuery(query: string): void;
   select(id: Id | null): void;
   selectConnection(id: Id | null): void;
+  /** Asks whichever canvas is showing to bring the selected event into view. */
+  revealSelected(): void;
 }
 
 let backing: Store | null = null;
@@ -511,6 +522,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
     connectFrom: null,
     pickerOpen: false,
     query: '',
+    revealRequest: 0,
     undoStack: [],
     undoLabel: null,
     error: null,
@@ -935,6 +947,10 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
 
     selectConnection(id) {
       set({ selectedConnectionId: id, selectedEraId: null, connectFrom: null, pickerOpen: false });
+    },
+
+    revealSelected() {
+      set({ revealRequest: get().revealRequest + 1 });
     },
   };
 });

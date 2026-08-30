@@ -8,7 +8,7 @@ import { MarkdownEditor } from './MarkdownEditor';
 import { PlaceField } from './PlaceField';
 
 /** The selected event, with the fields the concept actually cares about. */
-export function EventDetail() {
+export function EventDetail({ onShowOnCanvas }: { onShowOnCanvas?: () => void }) {
   const timeline = useTimeline((state) => state.timeline);
   const selectedId = useTimeline((state) => state.selectedId);
   const select = useTimeline((state) => state.select);
@@ -43,7 +43,24 @@ export function EventDetail() {
     <DetailPane label="Event" onClose={() => select(null)}>
       <div>
         <h2 className="text-sm font-semibold text-paper">{event.title}</h2>
-        <p className="mt-0.5 text-xs tabular-nums text-paper-dim">{formatTime(event.when)}</p>
+        <p className="mt-0.5 flex items-baseline gap-2 text-xs text-paper-dim">
+          <span className="tabular-nums">{formatTime(event.when)}</span>
+          {/*
+            The way back to the picture. A date in a pane is a fact; where it
+            sits among everything else is the thing this project is for, and
+            until this existed there was no route from the pane to it at all —
+            selecting from the list left the canvas wherever it happened to be.
+          */}
+          {onShowOnCanvas && (
+            <button
+              onClick={onShowOnCanvas}
+              className="text-paper-dim/80 underline decoration-line
+                         underline-offset-2 hover:text-paper"
+            >
+              show on timeline
+            </button>
+          )}
+        </p>
         {event.pack && (
           <p className="mt-1 text-[11px] text-paper-dim">
             from a pack — editing or connecting it makes it yours

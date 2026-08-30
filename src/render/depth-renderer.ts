@@ -51,8 +51,19 @@ import { LABEL_FONT, LABEL_WIDTH, fitText, formatMoment } from './text';
 import { withAlpha } from './colour';
 import { DARK_THEME, DEFAULT_FRAME } from './timeline-renderer';
 import type { Selection, Target, TimelineData, TimelineTheme } from './timeline-renderer';
+import { frameBounds, revealWindow } from './viewport';
 
 const TOP_PADDING = 12;
+/**
+ * Where a revealed event is placed in the window, as a fraction from its start.
+ *
+ * Not the middle. `y = horizon + depth/z` with `z` running 1 → 9 linearly in
+ * time puts the vertical middle of the corridor at `z = 1.8`, which is a tenth
+ * of the window from its newest edge — so an event centred in time is at the
+ * horizon. `0.85` sits it a little below the middle of the picture, where the
+ * corridor is wide enough to read.
+ */
+const DEPTH_REVEAL_PLACE = 0.85;
 /** Widest the river gets, in lateral units (1 = the corridor's half-width). */
 const MAX_RIVER = 0.5;
 /** Where the innermost era lane begins, clear of the river at full width. */
@@ -309,6 +320,22 @@ export class DepthRenderer {
    */
   getFrame(): { start: Days; end: Days } {
     return this.frame;
+  }
+
+  /**
+   * The window that would bring `[from, to]` into view, or `null` when it is
+   * already there (§6.1).
+   *
+   * The same function as the flat view's, with one argument different, which is
+   * the whole of what the projection changes. The window is placed so the event
+   * sits in the *near* part of it rather than the middle: the corridor spends
+   * half its screen height on the newest tenth of the window (`1/z`), so an
+   * event centred in time lands at the horizon, drawn two pixels tall. Placed
+   * this way it arrives at eye level with its past receding behind it, which is
+   * what the view is for.
+   */
+  revealTime(from: Days, to: Days): Viewport | null {
+    return revealWindow(this.viewport, from, to, frameBounds(this.frame), DEPTH_REVEAL_PLACE);
   }
 
   private computeFrame(): { start: Days; end: Days } {

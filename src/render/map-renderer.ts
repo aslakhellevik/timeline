@@ -23,13 +23,14 @@
  * neat dot would be the same lie the time model refuses to tell about dates.
  */
 
-import type { Id, Tag, TimelineEvent, Viewport } from '../core/model/types';
+import type { Days, Id, Tag, TimelineEvent, Viewport } from '../core/model/types';
 import { computeDensity } from '../core/density';
 import {
   PROJECTED_HALF_HEIGHT,
   PROJECTED_HALF_WIDTH,
   clusterEvents,
   landRings,
+  locate,
   project,
   unproject,
 } from '../core/geo';
@@ -41,6 +42,7 @@ import { DARK_THEME } from './timeline-renderer';
 import type { TimelineTheme } from './timeline-renderer';
 import { LABEL_FONT, fitText } from './text';
 import { withAlpha } from './colour';
+import { revealWindow } from './viewport';
 
 /** Height of the time scrubber along the bottom. */
 const SCRUB_HEIGHT = 54;
@@ -613,6 +615,53 @@ export class MapRenderer {
 
   getExtent(): { start: number; end: number } {
     return this.extent;
+  }
+
+  /**
+   * The time window that would bring `[from, to]` into view, or `null` when it
+   * is already there (§6.1).
+   *
+   * The map needs it as much as the timelines do and for a sharper reason: an
+   * event outside the window is not drawn *at all* here, so selecting one from
+   * the list would otherwise leave the map showing nothing to look at. Bounds
+   * are the corpus extent, which is also what the scrubber spans.
+   */
+  revealTime(from: Days, to: Days): Viewport | null {
+    return revealWindow(this.viewport, from, to, { min: this.extent.start, max: this.extent.end });
+  }
+
+  /**
+   * Recentres the camera on the event's cluster, if it is off screen.
+   *
+   * Only if: at world zoom every dot is already visible, and sliding the globe
+   * sideways to put Europe in the middle would move the picture without showing
+   * anything new. Returns whether it moved, so the caller knows whether a redraw
+   * is owed.
+   *
+   * The camera jumps rather than eases, unlike the time window. A pan across the
+   * Atlantic and a zoom of the time axis are different motions, and animating
+   * this one would need a second interpolator for something the selection ring
+   * already explains.
+   */
+  revealEvent(id: Id): boolean {
+    // Nothing has been drawn yet: the camera is about to be fitted to the whole
+    // world by `draw`, which shows everything there is to reveal.
+    if (this.size.width === 0 || this.mapHeight === 0) return false;
+
+    const event = this.events.find((candidate) => candidate.id === id);
+    const placed = event ? locate(event.place, event.tags) : null;
+    if (!placed) return false;
+
+    const { x, y } = this.toScreen(placed.lon, placed.lat);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    const margin = MAX_DOT + PADDING;
+    if (x > margin && x < this.size.width - margin && y > margin && y < this.mapHeight - margin) {
+      return false;
+    }
+
+    const point = project(placed.lon, placed.lat);
+    this.setCamera({ ...this.camera, cx: point.x, cy: point.y });
+    return true;
   }
 }
 

@@ -48,6 +48,7 @@ import { formatYear } from './ticks';
 import { LABEL_FONT, LABEL_WIDTH, fitText, formatMoment } from './text';
 import { composite, inkOn, mix, withAlpha } from './colour';
 import type { CanvasSize } from './canvas-host';
+import { frameBounds, revealWindow } from './viewport';
 
 /**
  * Chart chrome and ink. Values are the validated dark-surface roles: recessive
@@ -487,6 +488,18 @@ export class TimelineRenderer {
    */
   getFrame(): { start: Days; end: Days } {
     return this.frame;
+  }
+
+  /**
+   * The window that would bring `[from, to]` into view, or `null` when it is
+   * already there (§6.1).
+   *
+   * The decision lives here rather than in the view because the bounds it has
+   * to respect come from the frame, which is this object's business; the view
+   * owns only the animation to the answer.
+   */
+  revealTime(from: Days, to: Days): Viewport | null {
+    return revealWindow(this.viewport, from, to, frameBounds(this.frame));
   }
 
   /** Recomputed on a data change only: every frame reads it to scale the mass. */

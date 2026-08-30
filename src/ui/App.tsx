@@ -46,6 +46,8 @@ export function App() {
   const beginConnect = useTimeline((state) => state.beginConnect);
   const select = useTimeline((state) => state.select);
   const selectConnection = useTimeline((state) => state.selectConnection);
+  const revealRequest = useTimeline((state) => state.revealRequest);
+  const revealSelected = useTimeline((state) => state.revealSelected);
   const restoreBookmark = useTimeline((state) => state.restoreBookmark);
   const undo = useTimeline((state) => state.undo);
   const undoDepth = useTimeline((state) => state.undoStack.length);
@@ -133,6 +135,17 @@ export function App() {
    */
   const viewRef = useRef(view);
   const hashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /*
+   * The canvas the user was last on, so "show on timeline" from the list has
+   * somewhere to go.
+   *
+   * Remembered rather than fixed to `timeline`: someone reading the map who
+   * looks an event up in the list means "put it back on the map", and sending
+   * them to a view they did not choose is a worse answer than any default.
+   */
+  const lastCanvasView = useRef<'timeline' | 'depth' | 'map'>(
+    initial.view && initial.view !== 'list' ? initial.view : 'timeline',
+  );
 
   const scheduleHashWrite = useCallback(() => {
     if (hashTimer.current !== null) clearTimeout(hashTimer.current);
@@ -151,6 +164,7 @@ export function App() {
 
   useEffect(() => {
     viewRef.current = view;
+    if (view !== 'list') lastCanvasView.current = view;
     scheduleHashWrite();
     return () => {
       if (hashTimer.current !== null) {
@@ -167,6 +181,19 @@ export function App() {
     },
     [scheduleHashWrite],
   );
+
+  /**
+   * "show on timeline": go to the last canvas and put the selection on screen.
+   *
+   * The request is a counter in the store rather than a call into a view,
+   * because the view that has to act on it may not be mounted yet — pressing
+   * this from the list mounts a canvas, and a freshly mounted one reveals the
+   * selection anyway.
+   */
+  const showOnCanvas = useCallback(() => {
+    setView(lastCanvasView.current);
+    revealSelected();
+  }, [revealSelected]);
 
   /**
    * A new era over the middle half of what is on screen.
@@ -332,6 +359,7 @@ export function App() {
                 onSelectEvent={select}
                 onSelectConnection={selectConnection}
                 onSelectEra={selectEra}
+                revealRequest={revealRequest}
                 {...(startViewport ? { initialViewport: startViewport } : {})}
                 onViewportChange={onViewportChange}
               />
@@ -349,6 +377,7 @@ export function App() {
                 onSelectEvent={select}
                 onSelectConnection={selectConnection}
                 onSelectEra={selectEra}
+                revealRequest={revealRequest}
                 {...(startViewport ? { initialViewport: startViewport } : {})}
                 onViewportChange={onViewportChange}
               />
@@ -360,11 +389,12 @@ export function App() {
                 selectedId={selectedId}
                 connectFrom={connectFrom}
                 onSelectEvent={select}
+                revealRequest={revealRequest}
                 {...(startViewport ? { initialViewport: startViewport } : {})}
                 onViewportChange={onViewportChange}
               />
             ) : (
-              <EventList />
+              <EventList events={visible.events} onShowOnCanvas={showOnCanvas} />
             )}
           </main>
           {selectedConnectionId ? (
@@ -372,7 +402,7 @@ export function App() {
           ) : selectedEraId ? (
             <EraDetail />
           ) : (
-            selectedId && <EventDetail />
+            selectedId && <EventDetail onShowOnCanvas={showOnCanvas} />
           )}
         </div>
       )}

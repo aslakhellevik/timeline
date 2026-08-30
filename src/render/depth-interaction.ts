@@ -20,7 +20,8 @@ import type { TimeBounds } from './viewport';
 
 export interface DepthHandlers {
   getViewport: () => Viewport;
-  setViewport: (viewport: Viewport) => void;
+  /** `eased` animates the change — see `InteractionHandlers` for which do. */
+  setViewport: (viewport: Viewport, eased?: boolean) => void;
   getBounds: () => TimeBounds;
   /** The projection of the last drawn frame — the source of the inverse mapping. */
   getProjection: () => DepthProjection | null;
@@ -150,11 +151,11 @@ export function attachDepthInteraction(el: HTMLElement, h: DepthHandlers): () =>
         break;
       case '+':
       case '=':
-        h.setViewport(zoomAtY(vp, projection, height * 0.6, 1 / 1.4, h.getBounds()));
+        h.setViewport(zoomAtY(vp, projection, height * 0.6, 1 / 1.4, h.getBounds()), true);
         break;
       case '-':
       case '_':
-        h.setViewport(zoomAtY(vp, projection, height * 0.6, 1.4, h.getBounds()));
+        h.setViewport(zoomAtY(vp, projection, height * 0.6, 1.4, h.getBounds()), true);
         break;
       default:
         return;
@@ -163,7 +164,10 @@ export function attachDepthInteraction(el: HTMLElement, h: DepthHandlers): () =>
   };
 
   const onDoubleClick = (e: MouseEvent) => {
-    h.setViewport(zoomAtY(h.getViewport(), h.getProjection(), localY(e.clientY), 1 / 2.5, h.getBounds()));
+    h.setViewport(
+      zoomAtY(h.getViewport(), h.getProjection(), localY(e.clientY), 1 / 2.5, h.getBounds()),
+      true,
+    );
   };
 
   el.addEventListener('wheel', onWheel, { passive: false });

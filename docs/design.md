@@ -68,6 +68,7 @@ map are deferred — but the data model is shaped so that none of them require a
 | D54 | A vagueness halo is a **ring at the true radius**, not a filled disc — revising how D43 is drawn |
 | D55 | Clustering is a grid **plus agglomerative passes**, merging against the radii the dots are actually **drawn** at |
 | D56 | Additive arc ink falls as `1/√n`, so a bundle brightens as `√n` instead of saturating to white |
+| D57 | Selecting an event **reveals** it: every view moves to show it, and a window more than four times the event's own period counts as not showing it |
 
 Conventions, settled and not worth further discussion:
 
@@ -792,6 +793,45 @@ wherever the *other* finger last was. `zoomAt` gives its anchor up at the span l
 wheel at the edge of a fully zoomed-out canvas therefore slides rather than holding still, which
 is the better of the two invariants to keep at a hard stop.
 
+The ease was promised here and only ever applied to the wheel, which does not need it. A wheel
+and a drag arrive as a continuous stream, and easing them would only make the canvas lag the
+hand; a double-click, a `+` and a `-` are single discrete jumps, and jumping straight past the
+mass-to-marks crossfade makes it read as a cut rather than as detail resolving. Those three now
+animate, through one helper shared with the reveal below (`viewport-animation.ts`), and any
+gesture arriving mid-flight cancels it — an animation that went on writing the viewport under a
+finger would be the canvas arguing with the hand.
+
+**Selecting an event reveals it (D57).** Until this existed, selection changed what the panel
+said and nothing else, which made the first thing anyone does with a link look broken: opening
+`#e=…` described an event in July 1990 beside a canvas showing five thousand years, with the
+event a hairline at the right-hand edge and the list still at the top of the corpus. Every view
+now moves to the selection — the two timelines and the map's window in time, the map's camera in
+space, and the list by scrolling.
+
+The rule has two halves, and the second is the one worth arguing. *Where*: keep the span the
+user chose wherever it already shows the event, because a reveal is a pan whenever a pan is
+enough and zooming to a day around an instant throws away the period they were reading; widen it
+only to hold an event longer than the window. *Whether*: being inside the window is not the
+test. Fitted to the whole corpus every event is inside the window, and each one is a hairline
+dissolved into the mass by the semantic zoom (D50) — so a window wider than four times the
+event's own period counts as not showing it, with a decade as the shortest period recognised. An
+instant therefore reveals to about forty years, which is a period rather than a point. Stated as
+a multiple rather than solved from the density that actually governs the crossfade: a solved
+window would land somewhere different for every event, and a reveal has to be predictable enough
+that the second one teaches you what the first one did.
+
+Two exceptions, both of them cases where moving would be wrong. A selection made *by clicking
+this canvas* never moves it — the mark was already under the pointer, and pulling the picture
+out from under it is the view arguing with itself. And an event filtered out of the view is not
+there to be revealed.
+
+The depth view places the revealed event at 0.85 of the window rather than in the middle of it.
+The corridor allocates screen space as `1/z` (§6.7), which puts the vertical middle of the
+picture a tenth of the window from its newest edge — so an event centred in *time* is drawn at
+the horizon, two pixels tall. Placed this way it arrives at eye level with its past receding
+behind it. It is the same function with one argument different, which is all D33 lets the
+projection change.
+
 **Performance budget.** 50k events, 10k connections, 60 fps on a laptop. Build a seeded
 synthetic-data generator on day one — the density view cannot be developed against an empty
 timeline, and the perf budget is meaningless without it.
@@ -808,7 +848,23 @@ It is v1 scope for two independent reasons, either of which would be sufficient:
   it by scrubbing a density plot is absurd. The list, and the search behind it, is the real
   answer to "where is that event I added in March".
 
-Virtualised rows, so 50k events costs nothing.
+Virtualised rows, so 50k events costs nothing. Which is also why it has to follow a selection
+that arrived from somewhere else: with the rows windowed, the selected one is not merely
+off-screen but *not rendered*, so opening `#e=…` left an empty-looking list at the top of the
+corpus beside a panel describing an event fifty years later. Only the arrows used to scroll.
+Arrowing moves as little as possible, or the list would jump a page per keypress; an arriving
+selection goes to the top of the window instead, because on a phone the detail sheet covers the
+bottom two thirds of the scroller and "just inside the window" is behind the sheet describing
+the very row it is hiding.
+
+`Enter` on a row is the way back to the picture: it switches to the canvas last used and reveals
+the row there (§6.1). The same link sits under the date in the event panel, which is where
+someone reading about an event is when they wonder where it sits.
+
+The list takes the filtered corpus from the app rather than filtering again. It was running
+`applyFilter` over the whole timeline inside the same memo as the search, so every keystroke in
+the search box re-filtered everything before searching it — twice the work of any other view,
+for an answer the app had already computed for the footer.
 
 ### 6.3 Search
 
@@ -853,6 +909,17 @@ Events already connected to the source stay in the picker's results, marked. The
 read as a search failure, and choosing one is reasonable: it opens what you already wrote about
 the pair. For the same reason, connecting an already-connected pair selects the existing
 connection rather than reporting an error.
+
+**One rule in the store still needs the list to have a cursor of its own.** Because *every*
+selection completes the pick, arrowing down the list while one was armed wrote a connection per
+keypress and left a trail of them behind the cursor — the rule working exactly as specified,
+against a component that had assumed moving and choosing were the same act. While a pick is
+armed the arrows therefore move a local cursor and `Enter` commits it, which is what the
+picker's own footer has always promised (`↑↓ to move · ⏎ to connect`). Committing still goes
+through `select`, so the rule stays in one place; what changed is that the list no longer calls
+it on the way past. The cursored row is ringed in the pending-connection yellow and marked
+`aria-current` rather than `aria-selected`, because while a pick is armed the *selection* is
+still the connection's first endpoint.
 
 Finishing the pick lands in the note editor with the cursor in it. The note is the point.
 
