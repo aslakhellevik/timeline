@@ -11,5 +11,7 @@ export { landRings } from './land';
 export type { Ring } from './land';
 export { REGION_PLACES, isPlaceableTag, locate } from './regions';
 export type { RegionPlace } from './regions';
+export { findPlace, gazetteerSize, searchPlaces } from './gazetteer';
+export type { GazetteerPlace } from './gazetteer';
 export { clusterEvents } from './cluster';
 export type { Cluster } from './cluster';

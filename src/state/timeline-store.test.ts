@@ -118,6 +118,7 @@ beforeEach(() => {
     selectedEraId: null,
     connectFrom: null,
     pickerOpen: false,
+    placingId: null,
     query: '',
     undoStack: [],
     undoLabel: null,
@@ -715,6 +716,139 @@ describe('uninstalling a pack (§5.1, D37)', () => {
     await state().removePack('pack.test');
 
     expect(state().selectedConnectionId).toBeNull();
+  });
+});
+
+describe("editing an event's tags (§6.2, D20, D44)", () => {
+  it('attaches a premade region to a name typed any of its ways', async () => {
+    const store = fakeStore(makeTimeline({ events: [event('e1')] }));
+    await attach(store);
+
+    state().setEventTags('e1', ['north-america']);
+    await state().flush();
+
+    // The whole point of taking names rather than ids: "north-america" is the
+    // built-in region, not a private tag beside it (D44) — and because the map
+    // places by region tag, the difference is whether the event appears on it.
+    expect(state().timeline.events[0]?.tags).toEqual(['tag.region.north-america']);
+    expect(state().timeline.tags.map((t) => t.id)).toContain('tag.region.north-america');
+  });
+
+  it('invents a tag, and one undo takes back both it and the tagging', async () => {
+    await attach(fakeStore(makeTimeline({ events: [event('e1')] })));
+
+    state().setEventTags('e1', ['siege warfare']);
+    const invented = state().timeline.tags.find((t) => t.name === 'siege warfare');
+    expect(invented).toBeDefined();
+    expect(state().timeline.events[0]?.tags).toEqual([invented?.id]);
+
+    state().undo();
+    expect(state().timeline.events[0]?.tags).toEqual([]);
+    // Folded into the same entry, exactly as quickAdd folds its own: an undo
+    // that left the invented tag live would silently grow the vocabulary. It is
+    // tombstoned rather than removed, because D9 applies to a tag as much as to
+    // anything else the user might have on another device.
+    expect(state().timeline.tags.find((t) => t.name === 'siege warfare')?.deleted_at).toBeTruthy();
+  });
+
+  it('removes a tag by leaving it out of the list', async () => {
+    await attach(
+      fakeStore(
+        makeTimeline({
+          events: [event('e1', { tags: ['t1', 't2'] })],
+          tags: [tag('t1', { name: 'war' }), tag('t2', { name: 'art' })],
+        }),
+      ),
+    );
+
+    state().setEventTags('e1', ['war']);
+    expect(state().timeline.events[0]?.tags).toEqual(['t1']);
+  });
+
+  it('adopts a pack event, like every other edit (§5.1)', async () => {
+    const store = fakeStore(makeTimeline({ events: [packEvent('pack.x/a', 'pack.x')] }));
+    await attach(store);
+
+    state().setEventTags('pack.x/a', ['war']);
+    await state().flush();
+
+    expect(state().timeline.events[0]?.pack).toBeUndefined();
+    expect(store.data.events[0]?.pack).toBeUndefined();
+  });
+
+  it('does nothing for an event that is not there', async () => {
+    const store = fakeStore(EMPTY_TIMELINE);
+    await attach(store);
+
+    state().setEventTags('missing', ['war']);
+    await state().flush();
+
+    // Not even the tag: a mutation that cannot land must not leave half of
+    // itself behind in the vocabulary.
+    expect(state().timeline.tags).toHaveLength(0);
+    expect(store.puts).toHaveLength(0);
+  });
+});
+
+describe('placing an event on the map (D66)', () => {
+  it('stores the click with the precision the caller derived, and disarms', async () => {
+    const store = fakeStore(makeTimeline({ events: [event('e1')] }));
+    await attach(store);
+
+    state().beginPlacing('e1');
+    expect(state().placingId).toBe('e1');
+    expect(state().selectedId).toBe('e1');
+
+    state().placeAt(41.01, 28.98, 60);
+    await state().flush();
+
+    expect(state().timeline.events[0]?.place).toEqual({
+      name: '',
+      lat: 41.01,
+      lon: 28.98,
+      precision: 60,
+    });
+    expect(state().placingId).toBeNull();
+  });
+
+  it('keeps a name that was already typed', async () => {
+    await attach(
+      fakeStore(makeTimeline({ events: [event('e1', { place: { name: 'Constantinople' } })] })),
+    );
+
+    state().beginPlacing('e1');
+    state().placeAt(41.01, 28.98, 60);
+
+    // Two true things were said about the place; keeping the numbers and
+    // throwing the word away loses the better half.
+    expect(state().timeline.events[0]?.place?.name).toBe('Constantinople');
+  });
+
+  it('ignores a click when nothing is armed', async () => {
+    const store = fakeStore(makeTimeline({ events: [event('e1')] }));
+    await attach(store);
+
+    state().placeAt(0, 0, 10);
+    await state().flush();
+    expect(state().timeline.events[0]?.place).toBeUndefined();
+    expect(store.puts).toHaveLength(0);
+  });
+
+  it('is disarmed by the other modes, and by the event going away', async () => {
+    await attach(fakeStore(makeTimeline({ events: [event('e1'), event('e2')] })));
+
+    state().beginPlacing('e1');
+    state().beginConnect('e1');
+    expect(state().placingId).toBeNull();
+
+    state().cancelConnect();
+    state().beginPlacing('e1');
+    state().select('e2');
+    expect(state().placingId).toBeNull();
+
+    state().beginPlacing('e2');
+    state().deleteEvent('e2');
+    expect(state().placingId).toBeNull();
   });
 });
 

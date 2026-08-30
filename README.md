@@ -116,6 +116,14 @@ because that is all that is really known about where it happened.
 
 The projection is equal-area (Equal Earth), since the question the map answers is *how much*.
 
+Where an event happened can be typed as a **name** — `Constantinople`, `Carthage`, `Oslo` — against
+a small gazetteer bundled with the app: Natural Earth's cities and countries, plus a hand-written
+set of the historical places a history timeline needs and no modern gazetteer has. Nothing is
+looked up over the network, ever. A name it does not know is kept as a name and says so, and for
+anything else you can simply **click the map**: how far you are zoomed in is how precise the
+result claims to be, so a click at world zoom records a two-hundred-kilometre halo rather than a
+false pinpoint.
+
 ### The depth view
 
 A second view of the same timeline, in which time runs *into* the screen: you stand at the newest
@@ -206,7 +214,7 @@ src/core/           pure, framework-free, fully tested
   search.ts         search, and the capture-time duplicate guard
   quick-add.ts      the capture grammar
   packs.ts          install, upgrade, adoption, uninstall
-  geo/              projection, coastlines, region placement, clustering
+  geo/              projection, coastlines, region placement, clustering, gazetteer
   markdown.ts       a small Markdown subset, escape-first (D27)
 src/packs/          the bundled packs — WWII, the Cold War
 src/render/         canvas renderers — no framework imports (D11)

@@ -94,6 +94,15 @@ interface TimelineStoreState {
    * instead" escape hatch, which is the only way the canvas route is reachable.
    */
   pickerOpen: boolean;
+  /**
+   * The event waiting to be given a spot on the map, if any (D66).
+   *
+   * The spatial twin of `connectFrom`, and deliberately the same shape: while it
+   * is set the app is in one mode, the map click means one thing, and a banner
+   * says so. Typed coordinates remain the route for anyone who has them; this is
+   * the route for everyone who does not, which is almost everyone.
+   */
+  placingId: Id | null;
   query: string;
   /**
    * Bumped whenever something asks the views to bring the selection into view
@@ -135,8 +144,16 @@ interface TimelineStoreState {
   quickAdd(input: string): QuickAddOutcome;
   addEvent(draft: EventDraft): TimelineEvent;
   updateEvent(id: Id, patch: Patch<Omit<TimelineEvent, 'id' | 'created_at' | 'updated_at'>>): void;
+  /** Replaces an event's tags from names, inventing or resolving each (D20, D44). */
+  setEventTags(id: Id, names: readonly string[]): void;
   deleteEvent(id: Id): void;
   undo(): void;
+
+  /** Arms "click the map where it happened" for one event (D66). */
+  beginPlacing(id: Id): void;
+  cancelPlacing(): void;
+  /** Finishes it: stores the point and disarms. Ignored when nothing is armed. */
+  placeAt(lat: number, lon: number, precision: number): void;
 
   beginConnect(from: Id): void;
   cancelConnect(): void;
@@ -523,6 +540,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
     selectedEraId: null,
     connectFrom: null,
     pickerOpen: false,
+    placingId: null,
     query: '',
     revealRequest: 0,
     undoStack: [],
@@ -610,6 +628,68 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
       commit(editEvent(timeline, id, patch));
     },
 
+    /**
+     * The tag editor's one write, folded exactly as `quickAdd` folds its own.
+     *
+     * It takes **names**, not ids, because that is what both ends of the pane
+     * deal in: the chips show names, the `+ tag` box is typed into, and D44's
+     * normalisation — case, `-`/`_`/space, a leading article — is what decides
+     * whether `#north-america` means the built-in region or a private tag beside
+     * it. Resolving that here rather than in the component keeps one answer to
+     * "what does this word mean" for capture and for editing.
+     *
+     * One `commit`, so undoing an added tag also removes the tag record it
+     * invented — and the coalescing key is dropped when it invented one, because
+     * a coalesced entry keeps the *older* steps and the new tag would otherwise
+     * outlive the undo that was meant to take it back.
+     */
+    setEventTags(id, names) {
+      const { timeline } = adopt(get().timeline, 'events', id);
+      const resolved = ensureTags(timeline, names);
+      const mutation = editEvent(resolved.timeline, id, { tags: resolved.ids });
+      if (!mutation) return;
+
+      const { coalesce, ...rest } = mutation;
+      commit({
+        ...rest,
+        touched: [...resolved.touched, ...mutation.touched],
+        undo: [...resolved.undo, ...mutation.undo],
+        label: 'tag change',
+        ...(resolved.undo.length === 0 && coalesce !== undefined ? { coalesce } : {}),
+      });
+    },
+
+    /**
+     * Placing an event by clicking the map (D66).
+     *
+     * Armed and disarmed like a connection, and for the same reason: what a
+     * click on the canvas means has to be one piece of state the whole app can
+     * read, not a flag inside whichever component happens to be mounted.
+     */
+    beginPlacing(id) {
+      // A pending connection and a pending placement are two answers to the same
+      // click, so arming one disarms the other.
+      set({ placingId: id, selectedId: id, connectFrom: null, pickerOpen: false });
+    },
+
+    cancelPlacing() {
+      set({ placingId: null });
+    },
+
+    placeAt(lat, lon, precision) {
+      const id = get().placingId;
+      if (!id) return;
+      const event = get().timeline.events.find((candidate) => candidate.id === id);
+      set({ placingId: null });
+      if (!event) return;
+      // The name is kept if there is one. Someone who typed "Constantinople" and
+      // then pointed at the Bosphorus has said two true things about the place,
+      // and throwing the word away to keep the numbers loses the better half.
+      get().updateEvent(id, {
+        place: { name: event.place?.name ?? '', lat, lon, precision },
+      });
+    },
+
     deleteEvent(id) {
       const mutation = removeEvent(get().timeline, id);
       // The cascade (D21) is computed once, by the model. A connection it is
@@ -629,6 +709,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
           ? { selectedConnectionId: null }
           : {}),
         ...(state.connectFrom === id ? { connectFrom: null, pickerOpen: false } : {}),
+        ...(state.placingId === id ? { placingId: null } : {}),
       };
       if (Object.keys(patch).length > 0) set(patch);
     },
@@ -644,7 +725,13 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
     },
 
     beginConnect(from) {
-      set({ connectFrom: from, pickerOpen: true, selectedId: from, selectedConnectionId: null });
+      set({
+        connectFrom: from,
+        pickerOpen: true,
+        selectedId: from,
+        selectedConnectionId: null,
+        placingId: null,
+      });
     },
 
     cancelConnect() {
@@ -800,7 +887,13 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
     },
 
     selectEra(id) {
-      set({ selectedEraId: id, selectedId: null, selectedConnectionId: null, connectFrom: null });
+      set({
+        selectedEraId: id,
+        selectedId: null,
+        selectedConnectionId: null,
+        connectFrom: null,
+        placingId: null,
+      });
     },
 
     /**
@@ -956,11 +1049,24 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
         get().connectTo(id);
         return;
       }
-      set({ selectedId: id, selectedConnectionId: null, selectedEraId: null });
+      set({
+        selectedId: id,
+        selectedConnectionId: null,
+        selectedEraId: null,
+        // A placement is armed for one event; selecting a different one ends it,
+        // exactly as it ends a pending connection.
+        ...(id === get().placingId ? {} : { placingId: null }),
+      });
     },
 
     selectConnection(id) {
-      set({ selectedConnectionId: id, selectedEraId: null, connectFrom: null, pickerOpen: false });
+      set({
+        selectedConnectionId: id,
+        selectedEraId: null,
+        connectFrom: null,
+        pickerOpen: false,
+        placingId: null,
+      });
     },
 
     revealSelected() {

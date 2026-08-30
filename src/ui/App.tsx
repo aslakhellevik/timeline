@@ -51,6 +51,9 @@ export function App() {
   const connectFrom = useTimeline((state) => state.connectFrom);
   const pickerOpen = useTimeline((state) => state.pickerOpen);
   const cancelConnect = useTimeline((state) => state.cancelConnect);
+  const placingId = useTimeline((state) => state.placingId);
+  const cancelPlacing = useTimeline((state) => state.cancelPlacing);
+  const placeAt = useTimeline((state) => state.placeAt);
   const beginConnect = useTimeline((state) => state.beginConnect);
   const select = useTimeline((state) => state.select);
   const selectConnection = useTimeline((state) => state.selectConnection);
@@ -240,6 +243,33 @@ export function App() {
    * handlers that did not know about each other (§6.4).
    */
   useOnEscape(cancelConnect, connectFrom !== null);
+  // The same key for the same kind of thing: an armed mode the user wants out
+  // of, above the pane and below any panel (D60).
+  useOnEscape(cancelPlacing, placingId !== null);
+
+  /*
+   * Placing an event happens on the map, so the app goes there and comes back.
+   *
+   * The offer is made in the detail pane, which is reachable from every view —
+   * so without this, "set on the map" from the list would arm a mode whose
+   * only surface was not on screen. Coming back matters as much as going: the
+   * user was reading the timeline, and a detour should end where it started.
+   */
+  const returnView = useRef<View | null>(null);
+  useEffect(() => {
+    if (placingId !== null) {
+      if (returnView.current === null) {
+        returnView.current = viewRef.current;
+        setView('map');
+      }
+      return;
+    }
+    if (returnView.current !== null) {
+      const back = returnView.current;
+      returnView.current = null;
+      setView(back);
+    }
+  }, [placingId]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -402,15 +432,18 @@ export function App() {
         say so somewhere other than inside the modal that is no longer there.
       */}
       {connectFrom && !pickerOpen && (
-        <div className="flex items-center gap-3 border-b border-[#ffd43b]/40 bg-[#ffd43b]/10 px-4 py-1.5 text-xs text-paper">
-          <span>
-            pick the other event — click a mark on the timeline, a dot on the map, or a row in the
-            list
-          </span>
-          <button onClick={cancelConnect} className="text-paper-dim hover:text-paper">
-            cancel (esc)
-          </button>
-        </div>
+        <ArmedBanner onCancel={cancelConnect}>
+          pick the other event — click a mark on the timeline, a dot on the map, or a row in the
+          list
+        </ArmedBanner>
+      )}
+
+      {/* The spatial twin of the banner above, in the same yellow for the same
+          reason: one mode is armed and the next click belongs to it (D66). */}
+      {placingId && (
+        <ArmedBanner onCancel={cancelPlacing}>
+          click the map where it happened — how close you can point is how precise it will be
+        </ArmedBanner>
       )}
 
       <div className="flex min-h-0 flex-1">
@@ -458,6 +491,8 @@ export function App() {
               allEvents={timeline.events}
               selectedId={selectedId}
               connectFrom={connectFrom}
+              placingId={placingId}
+              onPlace={placeAt}
               onSelectEvent={select}
               revealRequest={revealRequest}
               {...(startViewport ? { initialViewport: startViewport } : {})}
@@ -564,6 +599,18 @@ export function App() {
       {packsOpen && <PackPanel onClose={() => setPacksOpen(false)} />}
       {pickerOpen && <ConnectPicker />}
       {helpOpen && <HelpOverlay onClose={() => setHelpOpen(false)} />}
+    </div>
+  );
+}
+
+/** The yellow strip that says one click has been claimed by a pending act. */
+function ArmedBanner({ onCancel, children }: { onCancel: () => void; children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 border-b border-[#ffd43b]/40 bg-[#ffd43b]/10 px-4 py-1.5 text-xs text-paper">
+      <span>{children}</span>
+      <button onClick={onCancel} className="shrink-0 text-paper-dim hover:text-paper">
+        cancel (esc)
+      </button>
     </div>
   );
 }

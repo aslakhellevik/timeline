@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
-import { formatTime, parseTime } from '../core/time';
+import { useMemo } from 'react';
+import type { Era } from '../core/model/types';
 import { useTimeline } from '../state/timeline-store';
 import { DetailPane } from './DetailPane';
 import { MarkdownEditor } from './MarkdownEditor';
+import { TimeField } from './TimeField';
+import { Button, Field } from './controls';
+import { useDraft } from './use-draft';
 
 /**
  * An era's detail (docs/design.md D15).
@@ -14,79 +17,50 @@ import { MarkdownEditor } from './MarkdownEditor';
  *
  * The span is edited as text through the same parser quick-add uses, so
  * `1837–1901`, `c. 1900` and `the 1960s` all work here without a date picker
- * that cannot express any of them.
+ * that cannot express any of them. That field is now `TimeField`, shared with
+ * the event pane, which is where it had been about to be copied to.
  */
 export function EraDetail() {
   const timeline = useTimeline((state) => state.timeline);
   const selectedEraId = useTimeline((state) => state.selectedEraId);
-  const selectEra = useTimeline((state) => state.selectEra);
-  const updateEra = useTimeline((state) => state.updateEra);
-  const deleteEra = useTimeline((state) => state.deleteEra);
 
   const era = useMemo(
     () => timeline.eras.find((candidate) => candidate.id === selectedEraId) ?? null,
     [timeline.eras, selectedEraId],
   );
 
-  const [span, setSpan] = useState('');
-  const [spanError, setSpanError] = useState<string | null>(null);
-
-  // Reset the draft when a different era is opened, not on every keystroke.
-  useEffect(() => {
-    setSpan(era ? formatTime(era.when) : '');
-    setSpanError(null);
-  }, [era?.id, era?.when]);
-
   if (!era) return null;
+  // Keyed for the reason the event pane is: the drafts inside belong to this
+  // era, and the note editor's mode belongs to this era's note.
+  return <EraPane key={era.id} era={era} />;
+}
 
-  const commitSpan = () => {
-    const trimmed = span.trim();
-    if (trimmed.length === 0 || trimmed === formatTime(era.when)) {
-      setSpanError(null);
-      return;
-    }
-    const parsed = parseTime(trimmed);
-    if (!parsed.ok) {
-      // The parser's own reason, not a generic one: it distinguishes "31 June"
-      // from "could not read this at all", and the difference is what tells the
-      // user whether to fix the date or the phrasing.
-      setSpanError(parsed.reason);
-      return;
-    }
-    setSpanError(null);
-    updateEra(era.id, { when: parsed.value });
-  };
+function EraPane({ era }: { era: Era }) {
+  const selectEra = useTimeline((state) => state.selectEra);
+  const updateEra = useTimeline((state) => state.updateEra);
+  const deleteEra = useTimeline((state) => state.deleteEra);
+
+  const name = useDraft(era.name, (value) => {
+    // A nameless era is a coloured band with nothing to say; reverting is
+    // kinder than storing the blank.
+    if (value.trim().length > 0) updateEra(era.id, { name: value.trim() });
+  });
 
   return (
     <DetailPane label="era" onClose={() => selectEra(null)}>
+      <Field
+        label="name"
+        value={name.value}
+        onChange={(change) => name.onChange(change.target.value)}
+        onBlur={name.flush}
+      />
 
-      <label className="flex flex-col gap-1 text-xs text-paper-dim">
-        name
-        <input
-          value={era.name}
-          onChange={(change) => updateEra(era.id, { name: change.target.value })}
-          className="rounded border border-line bg-surface px-2 py-1 text-sm text-paper
-                     focus:border-accent focus:outline-none"
-        />
-      </label>
-
-      <label className="flex flex-col gap-1 text-xs text-paper-dim">
-        span
-        <input
-          value={span}
-          onChange={(change) => setSpan(change.target.value)}
-          onBlur={commitSpan}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') commitSpan();
-            if (event.key === 'Escape') setSpan(formatTime(era.when));
-          }}
-          placeholder="1837–1901 · the 1960s · c. 1900"
-          className={`rounded border bg-surface px-2 py-1 text-sm tabular-nums text-paper
-                      placeholder:text-paper-dim focus:outline-none
-                      ${spanError ? 'border-[#e66767]' : 'border-line focus:border-accent'}`}
-        />
-        {spanError && <span className="text-[11px] text-[#e66767]">{spanError}</span>}
-      </label>
+      <TimeField
+        label="span"
+        value={era.when}
+        onCommit={(when) => updateEra(era.id, { when })}
+        placeholder="1837–1901 · the 1960s · c. 1900"
+      />
 
       {/*
         Personal versus canonical decides whether the era survives a tag filter
@@ -122,13 +96,14 @@ export function EraDetail() {
         rows={6}
       />
 
-      <button
+      <Button
+        variant="quiet"
         onClick={() => deleteEra(era.id)}
-        className="mt-auto self-start rounded border border-line px-2 py-1 text-xs
-                   text-paper-dim hover:border-[#e66767] hover:text-[#e66767]"
+        className="mt-auto self-start rounded border border-line px-2 hover:border-[#e66767]
+                   hover:text-[#e66767]"
       >
         delete era
-      </button>
+      </Button>
     </DetailPane>
   );
 }

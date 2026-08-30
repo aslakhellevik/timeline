@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import type { TagKind } from '../core/model/types';
 import { tagUsage } from '../core/filter';
+import { isPlaceableTag } from '../core/geo';
 import { useTimeline } from '../state/timeline-store';
+import { MapPin, plural } from './controls';
 
 /**
  * Tag filtering (docs/design.md §3.5).
@@ -92,12 +94,15 @@ export function FilterBar({ onAddLife }: { onAddLife?: () => void }) {
               <span className="mr-0.5 text-[11px] tracking-wide text-paper-faint">{label}</span>
               {group.map(({ tag, total }) => {
                 const on = selected.has(tag.id);
+                const placeable = isPlaceableTag(tag.id);
                 return (
                   <button
                     key={tag.id}
                     onClick={() => toggleTag(tag.id)}
                     aria-pressed={on}
-                    title={`${tag.name} — ${total} event${total === 1 ? '' : 's'}`}
+                    title={`${tag.name} — ${plural(total, 'event')}${
+                      placeable ? ', and it places them on the map' : ''
+                    }`}
                     className={`flex min-h-8 items-center gap-1 rounded-full border px-2.5 py-0.5
                       text-[11px] sm:min-h-0 sm:px-2
                       ${
@@ -116,6 +121,10 @@ export function FilterBar({ onAddLife }: { onAddLife?: () => void }) {
                         style={{ backgroundColor: tag.color }}
                       />
                     )}
+                    {/* The same pin as the tag editor's chips (§11.4). Which
+                        tags are geography is the one thing users did not work
+                        out about the map, and this is where they are met. */}
+                    {placeable && <MapPin className={on ? 'opacity-70' : 'text-paper-dim'} />}
                     {tag.name}
                     <span className={on ? 'opacity-70' : 'text-paper-dim'}>{total}</span>
                   </button>

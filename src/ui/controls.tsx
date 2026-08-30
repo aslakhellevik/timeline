@@ -109,6 +109,33 @@ export function Button({ variant = 'default', className, onClick, ...rest }: But
   );
 }
 
+/**
+ * The mark that says "this tag puts the event on the map" (§11.4).
+ *
+ * The map places almost every event by its region tag, and nothing anywhere said
+ * so — the one review comment about the map was that it was not clear how to
+ * make a region. A pin on the chip is the whole answer: it appears in the tag
+ * editor, in the suggestions and on the filter bar, so wherever a user meets
+ * tags they can see which of them are geography.
+ *
+ * `aria-hidden`, because the chip that carries it says the same thing in its
+ * `title` — an announced "image" between a tag name and its count is noise.
+ */
+export function MapPin({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 8 10"
+      aria-hidden
+      fill="currentColor"
+      className={`size-2.5 shrink-0 ${className ?? ''}`}
+    >
+      <path
+        d="M4 0a4 4 0 0 0-4 4c0 2.9 3.4 5.8 3.5 5.9a.8.8 0 0 0 1 0C4.6 9.8 8 6.9 8 4a4 4 0 0 0-4-4Zm0 5.5A1.5 1.5 0 1 1 4 2.5a1.5 1.5 0 0 1 0 3Z"
+      />
+    </svg>
+  );
+}
+
 /** One titled block of a panel, ruled off from the one above it. */
 export function Section({ title, children }: { title: string; children: ReactNode }) {
   return (

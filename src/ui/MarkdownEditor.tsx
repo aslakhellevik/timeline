@@ -1,5 +1,6 @@
 import { useId, useMemo, useState } from 'react';
 import { renderMarkdown } from '../core/markdown';
+import { useDraft } from './use-draft';
 
 /**
  * Write / read on one field.
@@ -12,6 +13,13 @@ import { renderMarkdown } from '../core/markdown';
  * The HTML comes from `core/markdown`, which escapes its input before parsing
  * and emits a fixed set of tags — see the file for why that is the whole of the
  * sanitisation story.
+ *
+ * The initial mode is read **once**, so the caller must key this on whatever it
+ * is editing; every one of them now keys the whole pane. Without that the mode
+ * is sticky across selections, and the symptom is specific: read one event's
+ * note and the next event without one opens on an empty preview beside a
+ * `write` tab that is disabled — a pane that cannot be typed into and shows
+ * nothing.
  */
 export interface MarkdownEditorProps {
   label: string;
@@ -30,11 +38,30 @@ export function MarkdownEditor({
   rows = 8,
   autoFocus = false,
 }: MarkdownEditorProps) {
-  const [mode, setMode] = useState<'write' | 'read'>(
+  const [chosen, setChosen] = useState<'write' | 'read'>(
     value.trim().length > 0 && !autoFocus ? 'read' : 'write',
   );
+  // A note is committed when the typing stops, not per keystroke (§6.5) — see
+  // `use-draft` for what was wrong with a database write per character.
+  const draft = useDraft(value, onChange);
   const id = useId();
-  const html = useMemo(() => (mode === 'read' ? renderMarkdown(value) : ''), [mode, value]);
+
+  /*
+   * Read is only a mode when there is something to read, and the tab that is
+   * *selected* is never the disabled one. Emptying a note used to leave the
+   * pane in read mode with its own tab greyed out and nothing but a border on
+   * screen: a selected tab that cannot be selected is not a state, it is a bug
+   * with an outline round it.
+   */
+  const readable = draft.value.trim().length > 0;
+  const mode = chosen === 'read' && !readable ? 'write' : chosen;
+
+  // The draft, not the stored value: switching to read before the debounce has
+  // fired would otherwise preview the previous sentence.
+  const html = useMemo(
+    () => (mode === 'read' ? renderMarkdown(draft.value) : ''),
+    [mode, draft.value],
+  );
 
   /*
    * Two fixes to the same mistake: the tabs were not wired to anything.
@@ -65,8 +92,13 @@ export function MarkdownEditor({
               id={`${id}-tab-${option}`}
               aria-selected={mode === option}
               aria-controls={panelId}
-              onClick={() => setMode(option)}
-              disabled={option === 'read' && value.trim().length === 0}
+              onClick={() => {
+                // Leaving the textarea commits what is in it, so the preview is
+                // of the note as saved rather than of a draft nothing has seen.
+                draft.flush();
+                setChosen(option);
+              }}
+              disabled={option === 'read' && !readable}
               className={`rounded px-1.5 py-0.5 text-[11px] disabled:opacity-30 ${
                 mode === option ? 'bg-line text-paper' : 'text-paper-dim hover:text-paper'
               }`}
@@ -86,8 +118,9 @@ export function MarkdownEditor({
         {mode === 'write' ? (
           <textarea
             id={id}
-            value={value}
-            onChange={(change) => onChange(change.target.value)}
+            value={draft.value}
+            onChange={(change) => draft.onChange(change.target.value)}
+            onBlur={draft.flush}
             rows={rows}
             autoFocus={autoFocus}
             placeholder={placeholder}

@@ -76,6 +76,9 @@ map are deferred — but the data model is shaped so that none of them require a
 | D62 | Faint ink is **one token at full opacity**, and only on the page plane: on the chart surface `paper-dim` is the contrast floor |
 | D63 | Below `sm` the wordmark and the view switcher leave the header — capture keeps the width (§9) |
 | D64 | The app checks for a newer build hourly and **says when one has installed itself**, because the worker evicts the assets the running tab is using |
+| D65 | A date is edited in **one text field with no mode selector**: `formatTime` round-trips through `parseTime`, so the text carries the mode — revising §2.2's "the selector exists for editing" |
+| D66 | An event can be **placed by clicking the map**, and the precision is read off the zoom — D43 applied to input rather than to drawing |
+| D67 | A place may be **a name with no coordinates**, and a bundled gazetteer (Natural Earth plus hand-written historical places) turns the names history uses into points, offline |
 
 Conventions, settled and not worth further discussion:
 
@@ -181,6 +184,17 @@ dependency — **build and test it first, before anything renders.** It must han
 The parser infers `mode` and `granularity` alongside the numbers, so typing into the quick-add
 box never requires touching the mode selector — the selector exists for editing and for the
 cases where the text is ambiguous.
+
+**As built there is no mode selector at all, and the editor is one text field (D65).** The
+reason is a property of the pair rather than a simplification: `formatTime` round-trips through
+`parseTime` for every shape it can produce. An interval formats as `1914–1918` and parses back
+as an interval, a period phrase as `12th century` and parses back as `fuzzy` with century
+granularity, and where the numbers alone would lose the claim — "mid-3rd century BC" against
+"c. 250 BC" — `text` is kept and the formatter uses it. So the text *is* the mode, and a picker
+offering `instant / interval / fuzzy` beside it would be three controls asking what one line has
+already said. The same field is used by the event pane and the era pane (`ui/TimeField`); it
+commits on blur and on Enter, never per keystroke, because a half-typed date is almost always an
+invalid one and reddening the box at `196` is the parser shouting at work in progress.
 
 **Known limitation, accepted:** a trapezoid cannot represent a bimodal claim. "Either 1187 or
 1189" becomes a fuzzy span covering both, which slightly overstates the possibility of 1188.
@@ -876,6 +890,26 @@ the very row it is hiding.
 the row there (§6.1). The same link sits under the date in the event panel, which is where
 someone reading about an event is when they wonder where it sits.
 
+**The pane is an editor, which it was not.** The event panel showed the title, the date and the
+tags as text and offered no way to change any of them, although `updateEvent` had covered all
+three since M2 — so a title mistyped into the capture box, the surface deliberately optimised for
+speed over accuracy, could be read back and not corrected, and the only route to a fix was delete
+and retype. The title is a borderless input styled as the heading; the date is the shared
+`TimeField` (D65); the tag chips carry a `×` and a `+ tag` box beside them. All three commit on
+blur or Enter and revert on Escape, never per keystroke.
+
+The tag box suggests over the whole vocabulary, **grouped, with the regions first and labelled
+`regions — these place the event on the map`**, and every region chip — here and on the filter
+bar — carries a small pin. That is the whole answer to the one thing nobody worked out about the
+map: almost every dot on it is placed by a region tag (§11.4), and until the pin existed there
+was nothing anywhere in the interface saying which of thirty words were geography. Tags are
+emitted as **names**, never ids, so that `ensureTags` remains the single answer to what a word
+means (D20, D44) — one `commit` covers resolving the names, inventing any that are new, and the
+edit itself, so an undo takes back the tag and the tagging together.
+
+The "from a pack" line moved **above** the title. It is a warning about the edit that adoption
+will trigger (§5.1), and under the title it was read after the thing it is about had been done.
+
 **A `listbox`, not a `grid` (D61).** The accessibility claim above was, for a while, only a
 claim: the rows were `role="row"` over bare `<span>`s inside `role="grid"`, and a grid whose
 rows contain no cells announces nothing at all — the one view that exists to be the accessible
@@ -1012,6 +1046,26 @@ something plainer, never something unsafe.
 The editor is write/read tabs rather than a live side-by-side preview, because the pane is three
 hundred pixels wide and half of that is not an editor. It opens on whichever mode the content
 implies: an empty note wants a cursor, a written one wants to be read.
+
+**Text fields commit when the typing stops, and the editor is keyed on its subject.** Every one
+of them — the note, a connection's argument, an era's name, `learned from` — wrote through to the
+store on every keystroke: a database write, a re-render of the whole app, and an `updated_at`
+recording the moment of the last letter rather than the moment of the thought. The draft is now
+held in the component and committed on about half a second of idle and on blur, which is what the
+place field had always done and what nothing else had copied. It complements rather than replaces
+the undo coalescing (§8.6): the window is one second per `(kind, id, field)`, so a slow typist
+still gets one undo entry per sentence rather than one per pause.
+
+The mode was worse, because it was *sticky across selections*. `MarkdownEditor` reads "empty note
+wants a cursor, written one wants to be read" once, at mount, and all three panes were one
+long-lived component — so reading one event's note and then selecting an event without one left
+an empty preview beside a `write` tab that was disabled: a field that could not be typed into and
+had nothing in it. Each pane is now keyed on the record it is showing, so the drafts and the mode
+belong to that record; and the selected tab is never the disabled one, whatever else happens.
+That keying is also what keeps §6.4's promise that finishing a connection lands in a focused note
+editor — `autoFocus` only fires on a fresh mount, so without it the promise held for the first
+connection of a session and no other.
+
 
 ### 6.6 URL state (D24)
 
@@ -1578,6 +1632,25 @@ reading*. Target a single input line with the date parser inline — `battle of 
 event takes more than a few seconds, the timeline never gets dense enough to have mass, and the
 entire premise fails. Treat this as a first-class design goal in M2, not polish.
 
+**The parse is shown before it is saved, which is what the lenient grammar was sold on.** §2.2
+justifies a parser that guesses — the rightmost of two years, a period phrase as a fuzzy span — by
+promising that "the quick-add UI shows the parsed date back, so the rare wrong guess is visible
+before it is saved". It was shown only *after*, in a panel reporting a fact about a record that
+already existed. The date and the tags now appear faintly in the box's right gutter as you type,
+on a ~100 ms debounce, from the same pure `parseQuickAdd` the store calls — so a misread year is
+caught by the person who typed it, with the cursor still in the box.
+
+**Success is a line; trouble is a panel.** The two outcomes are not the same kind of news and had
+the same shape: one absolutely-positioned dropdown that cleared only on the next keystroke, so
+`added · 1571` sat over ten filter chips indefinitely. A confirmation is now a status line in the
+same gutter — `added · <title> · <date> · #tags`, with `undo` beside it — which says everything
+the line claimed, including which tags it resolved to, and clears itself after four seconds or on
+blur. A duplicate warning or a refusal stays a dropdown and waits to be dismissed on purpose,
+since the thing it is warning about is the failure mode §6.3 calls the obvious one for a
+capture-optimised tool. Its duplicate rows are buttons that select the existing event, which is
+the whole point of showing them and was not previously reachable.
+
+
 ---
 
 ## 10. Deliberately left open
@@ -1702,4 +1775,41 @@ Coordinates can be typed as `59.91, 10.75` — the same choice as the era span f
 map-picker for a field almost nobody fills in is a lot of interface for very little. Impossible
 pairs are rejected rather than clamped: a latitude of 200 is a typo or a swapped pair, and
 quietly moving it to the pole hides the mistake in the one place it would look plausible.
+
+**A place may be a name, and there is a gazetteer for the names history uses (D67).** The field
+accepted coordinates and nothing else, so typing `Constantinople` reddened the box — although
+`name` is the first field of `Place` and the only one that is not optional. Three routes now, in
+the order a person reaches for them. A name the gazetteer knows brings its coordinates *and its
+own radius*, offered as suggestions while typing and attached on Enter. A name it does not know
+is stored as a name, with the field saying plainly that this is not yet a point on the map and
+offering the two ways to make it one. Coordinates still work, and now include `59,91 10,75` and
+`N59.91 E10.75` — a decimal comma is how half of Europe writes a number, including the country
+this app is named in, and refusing it was a parochialism.
+
+The gazetteer is bundled, for the reason the coastlines are (D25): geocoding a place name is
+exactly the request that would leak what someone is reading, to a third party, from a timeline
+they were told never leaves the device. Twelve kilobytes of `name|lat|lon|precisionKm`, from three
+sources — Natural Earth's 243 populated places at 25 km each, its 177 countries at their label
+point with the radius derived from the country's own area (`√(area/π)`, so Russia is 2321 km and
+Monaco is the 10 km floor), and about sixty-five **historical** places written by hand. The last
+group is the half that matters and the half no modern gazetteer has: Constantinople is not
+Istanbul, Carthage is not a suburb of Tunis, and the radius is the size of the place as it was.
+
+**And an event can be placed by clicking the map (D66).** "A map-picker for a field almost nobody
+fills in is a lot of interface for very little" was right about a *picker* and wrong about the
+map, which already exists, already knows how to turn a pixel into a point, and is the only
+surface on which the answer to "where did this happen" is obvious. The mode is armed from the
+place field, held in the store beside `connectFrom` — one piece of state the whole app can read
+rather than a flag inside whichever component is mounted — and announced by a banner in the same
+yellow, cancelled by the same Escape. The app switches to the map and comes back afterwards to
+where it was, because the offer is made from a pane reachable from every view.
+
+The precision comes from the **zoom**, not from a constant: six pixels is about as accurately as
+anyone points, and six pixels is two hundred kilometres at world zoom and five in close. So a
+click while looking at the whole of Europe records a Europe-sized uncertainty, and the halo drawn
+for it tells the truth without anyone having to think about it. That is D43 applied to input
+instead of to drawing — the same refusal to record a confidence nobody has. A name already typed
+survives the click: someone who wrote "Constantinople" and then pointed at the Bosphorus has said
+two true things about the place, and keeping only the numbers loses the better half.
+
 

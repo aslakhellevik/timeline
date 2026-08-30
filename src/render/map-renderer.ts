@@ -64,6 +64,8 @@ const MAX_DOT = 40;
 const CLUSTER_RADIUS = 22;
 /** Kilometres per degree of latitude, for turning a vagueness radius into pixels. */
 const KM_PER_DEGREE = 111.32;
+/** Derived from the same constant, so the halo and a click agree about scale. */
+const EARTH_RADIUS_KM = (KM_PER_DEGREE * 180) / Math.PI;
 
 /** What the cursor is over. */
 export type MapTarget =
@@ -193,6 +195,20 @@ export class MapRenderer {
       y: -(p.y - this.camera.cy) * this.camera.k + this.mapHeight / 2,
     };
   };
+
+  /**
+   * Kilometres per screen pixel at the current zoom.
+   *
+   * Exact enough to be worth having: Equal Earth is equal-*area*, and its `x`
+   * is radians of longitude at the equator, so one projected unit is one Earth
+   * radius of arc however the local shape is stretched. What it is for is
+   * turning a click into a **precision** — a click on a world map cannot mean a
+   * street corner, and D43 says the map must draw how vague a location really
+   * is rather than flatter it into a neat dot.
+   */
+  kmPerPixel(): number {
+    return EARTH_RADIUS_KM / Math.max(this.camera.k, 1e-9);
+  }
 
   /** Screen pixels back to the globe. */
   screenToLonLat(x: number, y: number): { lon: number; lat: number } {

@@ -23,6 +23,15 @@ export interface MapViewProps {
   selectedId: Id | null;
   /** The first endpoint of a connection being made, so the map can draw it too. */
   connectFrom: Id | null;
+  /**
+   * The event waiting for a spot on the map (D66). While it is set a click on
+   * the map means "here" rather than "select that dot", which is why the mode
+   * lives in the store and is announced by a banner over the whole app rather
+   * than being a state this canvas keeps to itself.
+   */
+  placingId: Id | null;
+  /** Called with the clicked point and how vague a click is at this zoom. */
+  onPlace: (lat: number, lon: number, precision: number) => void;
   onSelectEvent: (id: Id) => void;
   /** Bumped when something asks for the selection to be brought into view. */
   revealRequest: number;
@@ -36,6 +45,8 @@ export function MapView({
   allEvents,
   selectedId,
   connectFrom,
+  placingId,
+  onPlace,
   onSelectEvent,
   revealRequest,
   initialViewport,
@@ -50,6 +61,10 @@ export function MapView({
   reportRef.current = onViewportChange;
   const selectRef = useRef(onSelectEvent);
   selectRef.current = onSelectEvent;
+  const placingRef = useRef(placingId);
+  placingRef.current = placingId;
+  const placeRef = useRef(onPlace);
+  placeRef.current = onPlace;
   const initialRef = useRef(initialViewport);
   const eventsRef = useRef(events);
   eventsRef.current = events;
@@ -176,7 +191,13 @@ export function MapView({
       if (!drag) {
         const target = renderer.hitTest(x, y);
         frame.style.cursor =
-          y > renderer.getMapHeight() ? 'ew-resize' : target ? 'pointer' : 'grab';
+          y > renderer.getMapHeight()
+            ? 'ew-resize'
+            : placingRef.current
+              ? 'crosshair'
+              : target
+                ? 'pointer'
+                : 'grab';
         host.requestDraw();
         return;
       }
@@ -215,6 +236,24 @@ export function MapView({
 
       const { x, y } = local(event);
       if (Math.hypot(x - start.x, y - start.y) > 4) return;
+
+      /*
+       * Placing wins over selecting (D66). The click has to be able to land
+       * anywhere, including on top of a dot that is already there — putting an
+       * event beside one you already have is the commonest reason to point at
+       * the map at all.
+       *
+       * The precision comes from the zoom rather than from a constant: six
+       * pixels is about as accurately as anyone points, and six pixels is two
+       * hundred kilometres at world zoom and five in close. So a click while
+       * looking at the whole of Europe records a Europe-sized uncertainty,
+       * which is D43 applied to input instead of to drawing.
+       */
+      if (placingRef.current) {
+        const { lon, lat } = renderer.screenToLonLat(x, y);
+        placeRef.current(lat, lon, Math.max(5, Math.round(6 * renderer.kmPerPixel())));
+        return;
+      }
 
       const target = renderer.hitTest(x, y);
       if (target?.kind === 'cluster') {

@@ -1,8 +1,10 @@
 import { useMemo } from 'react';
+import type { Connection } from '../core/model/types';
 import { formatTime } from '../core/time';
 import { useTimeline } from '../state/timeline-store';
 import { DetailPane } from './DetailPane';
 import { MarkdownEditor } from './MarkdownEditor';
+import { Button } from './controls';
 
 /**
  * A connection's own document.
@@ -14,34 +16,43 @@ import { MarkdownEditor } from './MarkdownEditor';
  *
  * The editor opens in write mode on an empty note, which is the state a
  * just-created connection is in: finishing the pick puts the cursor where the
- * argument goes.
+ * argument goes (§6.4).
  */
 export function ConnectionDetail() {
   const timeline = useTimeline((state) => state.timeline);
   const selectedConnectionId = useTimeline((state) => state.selectedConnectionId);
-  const selectConnection = useTimeline((state) => state.selectConnection);
-  const select = useTimeline((state) => state.select);
-  const updateConnection = useTimeline((state) => state.updateConnection);
-  const deleteConnection = useTimeline((state) => state.deleteConnection);
 
   const connection = useMemo(
     () => timeline.connections.find((candidate) => candidate.id === selectedConnectionId) ?? null,
     [timeline.connections, selectedConnectionId],
   );
 
+  if (!connection) return null;
+  /*
+   * Keyed, so the note editor's mode and its draft belong to *this* connection.
+   * It is also what keeps §6.4's promise: a freshly made connection mounts a
+   * fresh editor, which is the only way `autoFocus` fires on the second one.
+   */
+  return <ConnectionPane key={connection.id} connection={connection} />;
+}
+
+function ConnectionPane({ connection }: { connection: Connection }) {
+  const timeline = useTimeline((state) => state.timeline);
+  const selectConnection = useTimeline((state) => state.selectConnection);
+  const select = useTimeline((state) => state.select);
+  const updateConnection = useTimeline((state) => state.updateConnection);
+  const deleteConnection = useTimeline((state) => state.deleteConnection);
+
   const events = useMemo(
     () => new Map(timeline.events.map((event) => [event.id, event])),
     [timeline.events],
   );
-
-  if (!connection) return null;
 
   const from = events.get(connection.from);
   const to = events.get(connection.to);
 
   return (
     <DetailPane label="connection" onClose={() => selectConnection(null)}>
-
       <div className="flex flex-col gap-1.5">
         {[from, to].map((event, index) => (
           <div key={event?.id ?? index} className="flex items-start gap-2">
@@ -96,13 +107,14 @@ export function ConnectionDetail() {
         )}
       </dl>
 
-      <button
+      <Button
+        variant="quiet"
         onClick={() => deleteConnection(connection.id)}
-        className="mt-auto self-start rounded border border-line px-2 py-1 text-xs
-                   text-paper-dim hover:border-[#e66767] hover:text-[#e66767]"
+        className="mt-auto self-start rounded border border-line px-2 hover:border-[#e66767]
+                   hover:text-[#e66767]"
       >
         delete connection
-      </button>
+      </Button>
     </DetailPane>
   );
 }
