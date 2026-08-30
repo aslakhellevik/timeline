@@ -26,12 +26,20 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
   const timeline = useTimeline((state) => state.timeline);
   const replaceTimeline = useTimeline((state) => state.replaceTimeline);
   const flush = useTimeline((state) => state.flush);
+  const resetAll = useTimeline((state) => state.resetAll);
 
   const [persistence, setPersistence] = useState<PersistenceResult | null>(null);
   const [backup, setBackup] = useState<BackupStatus | null>(null);
   const [estimate, setEstimate] = useState<StorageEstimateResult | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [confirmingReset, setConfirmingReset] = useState(false);
+
+  const resetEverything = useCallback(async () => {
+    await resetAll();
+    setConfirmingReset(false);
+    onClose();
+  }, [resetAll, onClose]);
 
   const refresh = useCallback(async () => {
     // `persistenceState`, not `requestPersistence` — opening settings should
@@ -176,6 +184,58 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
               }}
             />
           </div>
+        </Section>
+
+        {/*
+          Deliberately last, and deliberately two steps.
+
+          A local-first app has no server-side undo, so this is the one action in
+          the whole app that is genuinely unrecoverable — and the panel it sits in
+          exists precisely to say that clearing your data is the honest failure
+          mode. Offering the export beside it is not politeness; it is the only
+          safety net there is.
+        */}
+        <Section title="Start over">
+          {confirmingReset ? (
+            <>
+              <p className="text-xs text-[#e66767]">
+                This deletes every event, connection, era and pack in this browser. It cannot be
+                undone, and nothing else has a copy.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Action
+                  onClick={async () => {
+                    await flush();
+                    const result = await downloadExport(timeline);
+                    setNote(result.ok ? `exported ${result.filename}` : result.message);
+                  }}
+                >
+                  export first
+                </Action>
+                <button
+                  onClick={() => void resetEverything()}
+                  className="rounded border border-[#e66767] px-2 py-1 text-xs text-[#e66767]
+                             hover:bg-[#e66767]/10"
+                >
+                  delete everything
+                </button>
+                <button
+                  onClick={() => setConfirmingReset(false)}
+                  className="px-1 text-xs text-paper-dim hover:text-paper"
+                >
+                  cancel
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-paper-dim">
+                Empty this timeline and go back to the first-run screen. Useful for showing someone
+                the app from the beginning.
+              </p>
+              <Action onClick={() => setConfirmingReset(true)}>start over…</Action>
+            </>
+          )}
         </Section>
 
         {estimate?.supported && <p className="mt-4 text-xs text-paper-dim">{estimate.message}</p>}

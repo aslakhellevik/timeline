@@ -943,6 +943,20 @@ Found while building it, and worth writing down before the sync layer inherits t
   mid-window loses the last edits, so the queue is flushed on `pagehide` and
   `visibilitychange` — not `beforeunload`, which is unreliable on mobile.
 
+### 8.7a Starting over
+
+The data panel also offers a reset: empty everything and return to the first-run screen. Added
+when showing the app to someone a second time made it obvious there was no way to show them the
+beginning.
+
+Two steps, an export offered beside the confirmation, and last in the panel — this is the only
+genuinely unrecoverable action in the app, and it sits in the one panel whose whole purpose is to
+say that losing local data is the honest failure mode. It restores `isFirstRun` rather than only
+emptying the store, because an empty density view is exactly the first screen D26 exists to
+avoid. The backup folder and its stamp are deliberately kept: they are settings about *where*
+copies go, and forgetting them would disarm the safety net immediately after the one action that
+makes it matter.
+
 ### 8.8 Privacy (D25)
 
 **No telemetry, no analytics, no error reporting, no network traffic beyond loading the app

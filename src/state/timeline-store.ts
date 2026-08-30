@@ -112,6 +112,8 @@ interface TimelineStoreState {
 
   seedLife(birthYear: number): void;
   replaceTimeline(timeline: Timeline): void;
+  /** Empties everything and returns to first run. Unrecoverable. */
+  resetAll(): Promise<void>;
 
   setFilter(filter: Filter): void;
   /** Adds or removes one tag, leaving the rest of the filter alone. */
@@ -455,6 +457,37 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
           kind: 'personal',
         }),
       );
+    },
+
+    /**
+     * Empties the store and puts the app back on the first-run screen.
+     *
+     * `isFirstRun` has to go back to true, not just the data go away: the
+     * onboarding is what makes an empty timeline comprehensible, and dropping
+     * someone onto a blank density view is exactly the first screen D26 exists
+     * to avoid.
+     *
+     * The backup folder and its last-written stamp are deliberately kept. They
+     * are local settings about *where* copies go, not the data, and forgetting
+     * them would quietly disarm the safety net right after the one action that
+     * makes it matter.
+     */
+    async resetAll() {
+      const empty = EMPTY_TIMELINE;
+      set({
+        timeline: empty,
+        undoStack: [],
+        selectedId: null,
+        selectedConnectionId: null,
+        selectedEraId: null,
+        connectFrom: null,
+        pickerOpen: false,
+        query: '',
+        filter: NO_FILTER,
+        error: null,
+        isFirstRun: true,
+      });
+      await backing?.replaceAll(empty);
     },
 
     replaceTimeline(timeline) {
