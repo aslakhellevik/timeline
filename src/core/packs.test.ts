@@ -13,6 +13,7 @@ import {
   packRecordId,
   packRecords,
   summarise,
+  uninstallImpact,
   uninstallPack,
 } from './packs';
 import type { PackBundle } from './packs';
@@ -236,8 +237,10 @@ describe('uninstallPack', () => {
     expect(after.events[0]?.title).toBe('the fall of Constantinople');
   });
 
-  it('removes a personal connection whose endpoint is leaving', () => {
-    // The alternative is an arc into a hole.
+  it('tombstones a personal connection whose endpoint is leaving', () => {
+    // It has to leave the view — the alternative is an arc into a hole — but the
+    // note on it is the user's writing, not the pack's, and D37's argument for
+    // hard removal is an argument about pack records only.
     const installed = install(EMPTY_TIMELINE, bundle(), T1);
     const mine: Timeline = {
       ...installed,
@@ -268,9 +271,64 @@ describe('uninstallPack', () => {
       ],
     };
 
-    const after = uninstallPack(mine, 'pack.test');
+    const after = uninstallPack(mine, 'pack.test', T3);
     expect(after.events.map((e) => e.id)).toEqual(['mine']);
-    expect(after.connections).toHaveLength(0);
+    // The pack's own connection is gone for good; the user's is kept, deleted.
+    expect(after.connections.map((c) => c.id)).toEqual(['mine-link']);
+    expect(after.connections[0]?.deleted_at).toBe(T3);
+    expect(after.connections[0]?.updated_at).toBe(T3);
+  });
+
+  it('counts what will go, and whose it is', () => {
+    const installed = install(EMPTY_TIMELINE, bundle(), T1);
+    const mine: Timeline = {
+      ...installed,
+      connections: [
+        ...installed.connections,
+        {
+          id: 'mine-link',
+          created_at: T2,
+          updated_at: T2,
+          from: packRecordId('pack.test', 'fall'),
+          to: packRecordId('pack.test', 'press'),
+          note: 'mine',
+          tags: [],
+          provenance: { kind: 'manual' },
+        },
+      ],
+    };
+
+    expect(uninstallImpact(mine, 'pack.test')).toEqual({
+      events: 2,
+      eras: 1,
+      packConnections: 1,
+      ownConnections: 1,
+    });
+  });
+
+  it('does not count a connection already deleted, or tombstone it twice', () => {
+    const installed = install(EMPTY_TIMELINE, bundle(), T1);
+    const mine: Timeline = {
+      ...installed,
+      connections: [
+        ...installed.connections,
+        {
+          id: 'gone',
+          created_at: T2,
+          updated_at: T2,
+          deleted_at: T2,
+          from: packRecordId('pack.test', 'fall'),
+          to: packRecordId('pack.test', 'press'),
+          note: 'already deleted',
+          tags: [],
+          provenance: { kind: 'manual' },
+        },
+      ],
+    };
+
+    expect(uninstallImpact(mine, 'pack.test').ownConnections).toBe(0);
+    const after = uninstallPack(mine, 'pack.test', T3);
+    expect(after.connections[0]?.deleted_at).toBe(T2);
   });
 
   it('leaves tags alone, since packs share them by id', () => {

@@ -10,6 +10,7 @@
  */
 
 import type { Timeline } from '../core/model/types';
+import { isWellFormedSpec } from '../core/time';
 import type { MergeResult, MergeStats, RecordKind, TimelineDocument } from './contract';
 import { SCHEMA_VERSION } from './contract';
 
@@ -200,6 +201,101 @@ export function asDocument(raw: unknown): TimelineDocument {
 }
 
 // ---------------------------------------------------------------------------
+// Record validation (§8.7)
+// ---------------------------------------------------------------------------
+
+/**
+ * How far ahead of the importing machine a record may claim to have been
+ * written. §8.7 records the hole this closes: `updated_at` is client wall-clock
+ * time, so one device with a wrong clock stamps a record in 2035 and
+ * last-write-wins never overwrites it again — the record is frozen for a decade
+ * and nothing in the UI explains why.
+ *
+ * A day is wide enough for every honest cause (a timezone the file was written
+ * in, a clock a few hours out) and narrow enough to catch the dishonest one.
+ */
+export const FUTURE_TOLERANCE_MS = 86_400_000;
+
+/**
+ * Whether the merge should look at a record at all.
+ *
+ * The merge rule is the one place hostile or hand-edited JSON reaches the
+ * in-memory store, and the store is trusted by everything downstream: an event
+ * with no `when` throws inside `compareEvents` the moment it is sorted, a
+ * `tags: 'x'` throws in every filter, a string latitude puts a dot at NaN. None
+ * of those are recoverable by the user, and all of them are one `typeof` away
+ * from being caught here.
+ *
+ * The checks are per kind and deliberately shallow: they cover the fields the
+ * app dereferences without asking, and let anything else through, because a
+ * document from a future version of the app is expected to carry fields this
+ * build has never heard of.
+ */
+export function isWellFormedRecord(kind: RecordKind, value: unknown): boolean {
+  if (!isObject(value)) return false;
+  if (!hasBaseFields(value)) return false;
+
+  switch (kind) {
+    case 'events':
+      return (
+        typeof value.title === 'string' &&
+        isWellFormedSpec(value.when as never) &&
+        isIdList(value.tags) &&
+        isPlace(value.place)
+      );
+    case 'connections':
+      return (
+        typeof value.from === 'string' &&
+        typeof value.to === 'string' &&
+        value.from.length > 0 &&
+        value.to.length > 0 &&
+        isIdList(value.tags)
+      );
+    case 'eras':
+      return (
+        typeof value.name === 'string' &&
+        isWellFormedSpec(value.when as never) &&
+        isIdList(value.tags)
+      );
+    case 'tags':
+      return typeof value.name === 'string' && typeof value.kind === 'string';
+    case 'packs':
+      return (
+        typeof value.name === 'string' &&
+        typeof value.version === 'string' &&
+        typeof value.installed_at === 'string'
+      );
+  }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** `Base`, which every kind extends: an id and two timestamps, all strings. */
+function hasBaseFields(record: Record<string, unknown>): boolean {
+  if (typeof record.id !== 'string' || record.id.length === 0) return false;
+  if (typeof record.created_at !== 'string') return false;
+  if (typeof record.updated_at !== 'string') return false;
+  if (record.deleted_at !== undefined && typeof record.deleted_at !== 'string') return false;
+  return record.pack === undefined || typeof record.pack === 'string';
+}
+
+function isIdList(value: unknown): boolean {
+  return Array.isArray(value) && value.every((id) => typeof id === 'string');
+}
+
+function isPlace(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!isObject(value)) return false;
+  if (typeof value.name !== 'string') return false;
+  return (['lat', 'lon', 'precision'] as const).every((key) => {
+    const number = value[key];
+    return number === undefined || (typeof number === 'number' && Number.isFinite(number));
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Merge (§8.3, §5)
 // ---------------------------------------------------------------------------
 
@@ -211,12 +307,18 @@ interface MergeableRecord {
   pack?: string;
 }
 
+export interface MergeOptions {
+  /** Injectable clock, so the future-timestamp guard is testable. */
+  now?: Date;
+}
+
 /**
  * Merges a document into the current timeline **by `id`; it never replaces**
  * (§8.3). Restoring a backup onto a store that has since diverged has to be
  * safe, or backups are a trap.
  *
  * Per record:
+ *   - malformed            → rejected, and counted (§8.7)
  *   - unknown id           → added
  *   - newer `updated_at`   → replaces the local one
  *   - older or equal       → skipped, so the local edit survives
@@ -229,15 +331,34 @@ interface MergeableRecord {
  * Records present locally but absent from the document are left alone. An
  * incoming document is a claim about the records it contains, never about the
  * ones it omits.
+ *
+ * Validation lives here rather than in `asDocument` because this is where a
+ * record actually enters the timeline — every route in (file import, backup
+ * restore, pack install) goes through this one function, and only this one has
+ * somewhere to report what it threw away.
  */
-export function mergeDocument(current: Timeline, incoming: TimelineDocument): MergeResult {
+export function mergeDocument(
+  current: Timeline,
+  incoming: TimelineDocument,
+  options: MergeOptions = {},
+): MergeResult {
   const doc = migrate(incoming);
+  const now = options.now ?? new Date();
 
-  const events = mergeKind(current.events, asArray(doc.events));
-  const connections = mergeKind(current.connections, asArray(doc.connections));
-  const tags = mergeKind(current.tags, asArray(doc.tags));
-  const eras = mergeKind(current.eras, asArray(doc.eras));
-  const packs = mergeKind(current.packs, asArray(doc.packs));
+  const events = mergeKind(current.events, asArray(doc.events), 'events', now);
+
+  // An arc has to terminate in something, so an incoming connection naming an
+  // event neither this timeline nor the document has is dropped rather than
+  // stored to dangle. Checked against the *merged* events, so a file may bring
+  // a connection and both its endpoints at once.
+  const known = new Set(events.records.map((event) => event.id));
+  const connections = mergeKind(current.connections, asArray(doc.connections), 'connections', now, {
+    accept: (record) => known.has(record.from) && known.has(record.to),
+  });
+
+  const tags = mergeKind(current.tags, asArray(doc.tags), 'tags', now);
+  const eras = mergeKind(current.eras, asArray(doc.eras), 'eras', now);
+  const packs = mergeKind(current.packs, asArray(doc.packs), 'packs', now);
 
   return {
     timeline: {
@@ -260,6 +381,9 @@ export function mergeDocument(current: Timeline, incoming: TimelineDocument): Me
 function mergeKind<T extends MergeableRecord>(
   current: readonly T[],
   incoming: readonly T[],
+  kind: RecordKind,
+  now: Date,
+  options: { accept?: (record: T) => boolean } = {},
 ): { records: T[]; stats: MergeStats } {
   const records = current.slice();
   const index = new Map<string, number>();
@@ -268,13 +392,14 @@ function mergeKind<T extends MergeableRecord>(
     if (record) index.set(record.id, i);
   }
 
-  const stats: MergeStats = { added: 0, updated: 0, skipped: 0 };
+  const stats: MergeStats = { added: 0, updated: 0, skipped: 0, rejected: 0 };
 
-  for (const candidate of incoming) {
-    if (!candidate || typeof candidate.id !== 'string') {
-      stats.skipped++;
+  for (const raw of incoming) {
+    if (!isWellFormedRecord(kind, raw) || options.accept?.(raw) === false) {
+      stats.rejected++;
       continue;
     }
+    const candidate = clampFuture(raw, now);
 
     const at = index.get(candidate.id);
     if (at === undefined) {
@@ -303,6 +428,24 @@ function mergeKind<T extends MergeableRecord>(
   return { records, stats };
 }
 
+/**
+ * Pulls an absurd future `updated_at` back to the moment of the import.
+ *
+ * **Clamped, not skipped**, and the difference matters: the record is the
+ * user's data and is very likely fine — it is the *claim to have been written
+ * tomorrow* that is not, and that claim is what would freeze the id against
+ * every later edit (§8.7). Clamping keeps the content and costs the record only
+ * its place at the front of the queue: it now merges by the ordinary rule, so a
+ * newer local version wins and an unknown id is still added.
+ *
+ * `created_at` is left as it is. Nothing decides anything by it.
+ */
+function clampFuture<T extends MergeableRecord>(record: T, now: Date): T {
+  const stamped = Date.parse(record.updated_at);
+  if (!Number.isFinite(stamped) || stamped <= now.getTime() + FUTURE_TOLERANCE_MS) return record;
+  return { ...record, updated_at: now.toISOString() };
+}
+
 /** Whether `theirs` should overwrite `mine`. */
 function accepts(mine: MergeableRecord, theirs: MergeableRecord): boolean {
   // §5 — a pack upgrade skips any record whose `pack` has been cleared. Adopting
@@ -321,6 +464,20 @@ function accepts(mine: MergeableRecord, theirs: MergeableRecord): boolean {
  * `'2026-08-15T10:00+02:00'` and `'2026-08-15T08:00Z'` are the same moment and
  * sort differently as strings. Compare instants, and fall back to a string
  * comparison only when a value will not parse.
+ *
+ * **The fallback compares as text, and that is kept on purpose.** A value that
+ * will not parse has no instant to compare, and the alternatives are worse:
+ * treating it as the epoch would let any parseable timestamp overwrite it, and
+ * treating it as an error would make one unreadable field abort a whole import.
+ * A byte comparison at least keeps the order *total and deterministic*, which
+ * is what the merge needs to be repeatable — merging the same file twice must
+ * reach the same timeline.
+ *
+ * The cost, stated plainly: `'zzz'` sorts above `'2026-…'`, so a record with an
+ * unreadable timestamp can overwrite a real one. That is the same hole the
+ * future-timestamp guard closes for readable values, and it is left open
+ * because the two need different answers — a garbled string cannot be clamped
+ * to anything. Nothing this app writes reaches it.
  */
 export function compareTimestamps(a: string | undefined, b: string | undefined): number {
   const left = typeof a === 'string' ? a : '';

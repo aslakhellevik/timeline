@@ -9,6 +9,7 @@ import {
   createBackupManager,
   daysSince,
   downloadExport,
+  exportFilename,
   isBackupSupported,
   isSnapshotName,
   snapshotFilename,
@@ -27,18 +28,29 @@ class FakeDirectory implements SnapshotDirectory {
   readonly name = 'Backups';
   readonly files = new Map<string, string>();
   failWrites = false;
+  /** Fails at `createWritable`, which is *after* the empty file exists. */
+  failOpen = false;
 
   constructor(seed: readonly string[] = []) {
     for (const filename of seed) this.files.set(filename, '{}');
   }
 
   getFileHandle(filename: string, options?: { create?: boolean }): Promise<SnapshotFile> {
-    if (!this.files.has(filename) && options?.create !== true) {
-      return Promise.reject(new Error(`no such file: ${filename}`));
+    if (!this.files.has(filename)) {
+      if (options?.create !== true) {
+        return Promise.reject(new Error(`no such file: ${filename}`));
+      }
+      // Like the real API: creating the handle creates an empty file, before
+      // anything has been written into it.
+      this.files.set(filename, '');
     }
     const directory = this;
     const file: SnapshotFile = {
+      getFile(): Promise<{ size: number }> {
+        return Promise.resolve({ size: (directory.files.get(filename) ?? '').length });
+      },
       createWritable(): Promise<SnapshotWritable> {
+        if (directory.failOpen) return Promise.reject(new Error('permission lost'));
         let buffer = '';
         let aborted = false;
         return Promise.resolve({
@@ -370,5 +382,136 @@ describe('the module-level surface', () => {
     const status = await backupStatus();
     expect(status.supported).toBe(false);
     expect(typeof status.message).toBe('string');
+  });
+});
+
+/**
+ * A failed write used to leave a zero-byte file behind, because
+ * `getFileHandle(…, { create: true })` creates the file and `createWritable`
+ * can fail after it. The file then sorted as the newest snapshot and would have
+ * restored nothing — the worst possible failure for a backup, since it looks
+ * like the most recent one.
+ */
+describe('writeSnapshotTo — the empty-snapshot trap', () => {
+  it('removes the file it just created when the write never starts', async () => {
+    const directory = new FakeDirectory();
+    directory.failOpen = true;
+
+    const result = await writeSnapshotTo(directory, sampleTimeline(), { now: AUGUST });
+
+    expect(result.ok).toBe(false);
+    expect([...directory.files.keys()]).toEqual([]);
+  });
+
+  it('leaves yesterday-and-today alone when the file was already there', async () => {
+    // The file existed before, so it is not this call's to delete: whatever is
+    // in it is a real snapshot from earlier today.
+    const directory = new FakeDirectory(['timeline-2026-08-15.json']);
+    directory.failOpen = true;
+
+    const result = await writeSnapshotTo(directory, sampleTimeline(), { now: AUGUST });
+
+    expect(result.ok).toBe(false);
+    expect(directory.files.get('timeline-2026-08-15.json')).toBe('{}');
+  });
+
+  it('prunes an empty snapshot whatever the retention, and does not count it', async () => {
+    const directory = new FakeDirectory([
+      'timeline-2026-07-01.json',
+      'timeline-2026-07-02.json',
+    ]);
+    // Left by an earlier failed write, on a later date than either real one.
+    directory.files.set('timeline-2026-08-01.json', '');
+
+    const result = await writeSnapshotTo(directory, sampleTimeline(), { now: AUGUST, retain: 3 });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.pruned).toContain('timeline-2026-08-01.json');
+    // Three real snapshots remain, so nothing was pushed off the bottom by it.
+    expect([...directory.files.keys()].filter(isSnapshotName).sort()).toEqual([
+      'timeline-2026-07-01.json',
+      'timeline-2026-07-02.json',
+      'timeline-2026-08-15.json',
+    ]);
+  });
+});
+
+describe('snapshotsToPrune — empty entries', () => {
+  it('never counts an empty file towards the retention', () => {
+    const entries = [
+      { name: 'timeline-2026-07-01.json', size: 900 },
+      { name: 'timeline-2026-07-02.json', size: 900 },
+      { name: 'timeline-2026-07-03.json', size: 0 },
+    ];
+    expect(snapshotsToPrune(entries, 2)).toEqual(['timeline-2026-07-03.json']);
+  });
+
+  it('treats an unknown size as a real snapshot, since it might be one', () => {
+    const entries = [{ name: 'timeline-2026-07-01.json' }, { name: 'timeline-2026-07-02.json' }];
+    expect(snapshotsToPrune(entries, 2)).toEqual([]);
+  });
+});
+
+describe('export naming', () => {
+  it('puts the time in the name, so two exports on one day do not collide', () => {
+    expect(exportFilename(AUGUST)).toBe('timeline-2026-08-15-1200.json');
+    expect(exportFilename(new Date(2026, 7, 15, 9, 5))).toBe('timeline-2026-08-15-0905.json');
+  });
+
+  it('is not a snapshot name, so pruning can never delete an export', () => {
+    // Which matters only if the downloads folder is also the backup folder —
+    // and that is exactly the case where deleting the user's file is worst.
+    expect(isSnapshotName(exportFilename(AUGUST))).toBe(false);
+  });
+});
+
+/**
+ * §8.3 layer 3, and the distinction the indicator turns on: a snapshot is a
+ * file this app wrote, an export is one the browser was asked to save. A
+ * cancelled save-as used to clear the amber warning as thoroughly as a real
+ * backup did.
+ */
+describe('exports are not backups', () => {
+  function manager() {
+    return createBackupManager(`export-test-${counter++}`);
+  }
+
+  it('stamps exports separately from backups', async () => {
+    const backup = manager();
+    await backup.markExported('2026-08-15T09:00:00.000Z');
+
+    expect(await backup.lastExportAt()).toBe('2026-08-15T09:00:00.000Z');
+    expect(await backup.lastBackupAt()).toBeNull();
+    backup.close();
+  });
+
+  it('words the figure after whichever copy is the more recent', async () => {
+    const backup = manager();
+    const days = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+
+    await backup.markBackedUp(days(5));
+    await backup.markExported(days(2));
+    let status = await backup.status();
+    expect(status.lastCopyKind).toBe('export');
+    expect(status.daysSinceCopy).toBe(2);
+    expect(status.daysSinceBackup).toBe(5);
+    expect(status.message).toBe('Exported 2 days ago.');
+
+    await backup.markBackedUp(days(1));
+    status = await backup.status();
+    expect(status.lastCopyKind).toBe('backup');
+    expect(status.message).toBe('Backed up yesterday.');
+    backup.close();
+  });
+
+  it('still lets an export clear the staleness warning, since on Safari it is all there is', async () => {
+    const backup = manager();
+    await backup.markExported(new Date().toISOString());
+
+    const status = await backup.status();
+    expect(status.stale).toBe(false);
+    expect(status.lastBackupAt).toBeNull();
+    backup.close();
   });
 });

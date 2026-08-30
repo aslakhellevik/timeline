@@ -1,7 +1,10 @@
 import 'fake-indexeddb/auto';
+import { openDB } from 'idb';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Store, StoreChange } from './contract';
+import { SCHEMA_VERSION } from './contract';
 import { createIndexedDbStore, deleteStore } from './db';
+import { SchemaVersionError } from './serialise';
 import { T1, T3, connection, era, event, sampleTimeline, tag } from './fixtures';
 
 const open: Store[] = [];
@@ -233,5 +236,90 @@ describe.skipIf(!hasChannel)('cross-tab notification', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * §8.1 says migrations are applied "on load and on import". Import had them
+ * from the start; this path did not, so a database written by an older build
+ * reached the app unmigrated — the one case the migration chain exists for.
+ */
+describe('migrations on load (§8.1)', () => {
+  /** Reads the recorded schema version straight out of the meta store. */
+  async function storedVersion(name: string): Promise<unknown> {
+    const raw = await openDB(name);
+    const value = await raw.get('meta', 'schema_version');
+    raw.close();
+    return value;
+  }
+
+  /**
+   * A database as an older build left it: IndexedDB version 1, the record
+   * stores present, and no meta store to say what schema the records are in.
+   */
+  async function legacyDatabase(name: string): Promise<void> {
+    const raw = await openDB(name, 1, {
+      upgrade(database) {
+        for (const kind of ['events', 'connections', 'tags', 'eras', 'packs']) {
+          database.createObjectStore(kind, { keyPath: 'id' });
+        }
+      },
+    });
+    await raw.put('events', event('e1', { title: 'Written by the old build' }));
+    // Schema 1 predates packs entirely; the 1 → 2 migration is what settles what
+    // an installed-pack list means on a document that had no concept of one.
+    await raw.put('packs', { id: 'pack.junk', created_at: T1, updated_at: T1 });
+    raw.close();
+  }
+
+  it('runs the chain over records an older build wrote, and keeps them', async () => {
+    const name = `legacy-${counter++}`;
+    await legacyDatabase(name);
+
+    const db = await store(name);
+    const loaded = await db.load();
+
+    expect(loaded.events.map((e) => e.id)).toEqual(['e1']);
+    // The 1 → 2 migration's whole content: a document from before packs has
+    // none installed. Unmigrated, that junk record was handed to the app.
+    expect(loaded.packs).toEqual([]);
+  });
+
+  it('records the new version, so the migration is paid for once', async () => {
+    const name = `legacy-once-${counter++}`;
+    await legacyDatabase(name);
+
+    const db = await store(name);
+    await db.load();
+    expect(await storedVersion(name)).toBe(SCHEMA_VERSION);
+
+    // And the write-back really happened: a second load, which now migrates
+    // nothing, still sees the migrated state.
+    expect((await db.load()).packs).toEqual([]);
+  });
+
+  it('stamps a database it creates with the current version, migrating nothing', async () => {
+    const name = `fresh-${counter++}`;
+    const db = await store(name);
+    await db.put('events', [event('e1')]);
+    expect(await storedVersion(name)).toBe(SCHEMA_VERSION);
+    expect((await db.load()).events).toHaveLength(1);
+  });
+
+  it('refuses to open a database written by a newer build rather than downgrade it', async () => {
+    // The same argument as `SchemaVersionError` at import: reading on regardless
+    // means writing back without the fields this build does not know about.
+    const name = `newer-${counter++}`;
+    const db = await store(name);
+    await db.put('events', [event('e1')]);
+    db.close();
+    open.length = 0;
+
+    const raw = await openDB(name);
+    await raw.put('meta', SCHEMA_VERSION + 5, 'schema_version');
+    raw.close();
+
+    const reopened = await store(name);
+    await expect(reopened.load()).rejects.toThrow(SchemaVersionError);
   });
 });

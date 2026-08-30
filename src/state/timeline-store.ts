@@ -17,6 +17,8 @@ import { findPossibleDuplicates } from '../core/search';
 import { fromGregorian, interval } from '../core/time';
 import type { RecordKind, Store, StoreChange, TimelineDocument } from '../store/contract';
 import { SCHEMA_VERSION } from '../store/contract';
+import { requestPersistence } from '../store/durability';
+import type { PersistenceResult } from '../store/durability';
 import { compareTimestamps, mergeDocument } from '../store/serialise';
 import { PersistQueue } from './persist-queue';
 import {
@@ -99,6 +101,24 @@ interface TimelineStoreState {
   error: string | null;
   /** True until the user has anything of their own — drives first run (D26). */
   isFirstRun: boolean;
+  /**
+   * When the timeline last changed, as `Date.now()`. Null until it has.
+   *
+   * The dirty signal the automatic backup runs on (§8.3): a cycle that finds
+   * this unchanged since the last snapshot skips the write. Deliberately a
+   * stamp rather than a boolean — nothing has to reset it, so the flag cannot
+   * be cleared by one reader and missed by another.
+   */
+  lastMutationAt: number | null;
+  /**
+   * The outcome of the one automatic `navigator.storage.persist()` request
+   * (§8.3, layer 1), or null before the first write.
+   *
+   * Kept so the data panel can tell "never asked" from "asked and refused" —
+   * `persistenceState()` reports both as simply not persisted, and only one of
+   * them is worth offering a button for.
+   */
+  persistence: PersistenceResult | null;
 
   attach(store: Store): Promise<void>;
   flush(): Promise<void>;
@@ -153,6 +173,12 @@ let incoming: Map<RecordKind, Set<Id>> | null = null;
 let incomingTimer: ReturnType<typeof setTimeout> | null = null;
 /** Attaches run one at a time; StrictMode starts two before either finishes. */
 let attaching: Promise<unknown> = Promise.resolve();
+/**
+ * Whether a persistence request is in flight. The *answer* is kept in state, so
+ * "have we asked?" is a state question; this only stops two writes in the same
+ * tick from both asking before either has an answer to record.
+ */
+let claimingPersistence = false;
 
 interface Adoption {
   timeline: Timeline;
@@ -263,6 +289,33 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
       : { ...mutation, touched: [...mutation.touched, { kind: 'events', records }] };
   };
 
+  /**
+   * Claims persistent storage, once, on the first real write (§8.3, layer 1).
+   *
+   * `requestPersistence` has said "call it on first write" in its own docstring
+   * since it was written and nothing ever did, so the layer the design puts
+   * first was the one layer that never ran. Here rather than on load because
+   * Chromium weighs engagement: asked as the page opens the answer is often no,
+   * asked once there is something to lose it is usually yes. It is a request,
+   * not a prompt — nothing is shown to the user either way.
+   */
+  const claimPersistence = (): void => {
+    // Asked exactly once: the recorded answer is what says it has been.
+    if (claimingPersistence || get().persistence !== null) return;
+    claimingPersistence = true;
+    void requestPersistence()
+      .then((result) => set({ persistence: result }))
+      // Durability is a best effort by definition; failing to ask must not
+      // interrupt the write that triggered it.
+      .catch(() => undefined)
+      .finally(() => {
+        claimingPersistence = false;
+      });
+  };
+
+  /** Every path that changes the timeline stamps it, for the backup schedule. */
+  const markDirty = (): { lastMutationAt: number } => ({ lastMutationAt: Date.now() });
+
   /** Commits a model mutation: new state, records queued, undo recorded. */
   const commit = (mutation: Mutation | null): void => {
     // A mutation that changed nothing — `installBuiltinTags` on a timeline that
@@ -271,6 +324,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
     if (!mutation || mutation.touched.length === 0) return;
 
     queue?.enqueue(mutation.touched);
+    claimPersistence();
 
     // `isFirstRun` means "the user has nothing of their own", which `attach`
     // defines over events and eras — so materialising the premade tag set does
@@ -281,6 +335,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
 
     set((state) => ({
       timeline: mutation.timeline,
+      ...markDirty(),
       ...(mutation.undo.length > 0
         ? undoState(
             pushUndo(
@@ -301,6 +356,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
 
   /** Awaits a wholesale write and reports failure rather than dropping it. */
   const writeAll = async (timeline: Timeline): Promise<boolean> => {
+    claimPersistence();
     try {
       await backing?.replaceAll(timeline);
       return true;
@@ -386,7 +442,11 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
     if (!changed && !clearing) return;
 
     set({
-      ...(changed ? { timeline: { events, connections, tags, eras, packs } } : {}),
+      // Another tab's write changed this timeline too, and the backup folder is
+      // per machine rather than per tab: whichever tab holds the folder
+      // permission has to notice, or an edit made in the other one is never
+      // backed up at all.
+      ...(changed ? { timeline: { events, connections, tags, eras, packs }, ...markDirty() } : {}),
       ...(clearing ? undoState([]) : {}),
     });
   };
@@ -455,6 +515,8 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
     undoLabel: null,
     error: null,
     isFirstRun: true,
+    lastMutationAt: null,
+    persistence: null,
 
     /**
      * Binds the store to a database.
@@ -564,7 +626,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
 
       const mutation = applyUndo(get().timeline, entry.steps);
       queue?.enqueue(mutation.touched);
-      set({ timeline: mutation.timeline, ...undoState(stack.slice(0, -1)) });
+      set({ timeline: mutation.timeline, ...markDirty(), ...undoState(stack.slice(0, -1)) });
     },
 
     beginConnect(from) {
@@ -654,7 +716,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
       // Undo is not offered for an install: it is a bulk operation with an
       // explicit inverse of its own, and pushing several hundred records onto
       // the undo stack would evict everything the user actually did.
-      set({ timeline: sorted, ...undoState([]), isFirstRun: false });
+      set({ timeline: sorted, ...markDirty(), ...undoState([]), isFirstRun: false });
       // Anything still queued would otherwise land *after* the wholesale write
       // and reinstate the record it replaced.
       await queue?.flush();
@@ -676,10 +738,14 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
 
       set({
         timeline: next,
+        ...markDirty(),
         ...undoState([]),
         ...(gone(state.selectedId) ? { selectedId: null } : {}),
+        // A tombstoned connection counts as gone: the user's own connections
+        // into a departing event are kept as tombstones, and the detail pane
+        // must not go on showing one.
         ...(state.selectedConnectionId &&
-        !next.connections.some((c) => c.id === state.selectedConnectionId)
+        !next.connections.some((c) => c.id === state.selectedConnectionId && !c.deleted_at)
           ? { selectedConnectionId: null }
           : {}),
         ...(state.selectedEraId && !next.eras.some((e) => e.id === state.selectedEraId)
@@ -780,6 +846,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
 
       set({
         timeline: empty,
+        ...markDirty(),
         ...undoState([]),
         selectedId: null,
         selectedConnectionId: null,
@@ -795,7 +862,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
 
     async replaceTimeline(timeline) {
       const sorted = { ...timeline, events: sortEvents(timeline.events) };
-      set({ timeline: sorted, ...undoState([]), isFirstRun: false });
+      set({ timeline: sorted, ...markDirty(), ...undoState([]), isFirstRun: false });
       await queue?.flush();
       await writeAll(sorted);
     },

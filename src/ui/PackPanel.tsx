@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { packRecords, summarise } from '../core/packs';
+import { packRecords, summarise, uninstallImpact } from '../core/packs';
 import type { PackBundle } from '../core/packs';
 import { CATALOGUE } from '../packs';
 import { useTimeline } from '../state/timeline-store';
@@ -72,6 +72,7 @@ export function PackPanel({ onClose }: { onClose: () => void }) {
           {summaries.map(({ bundle, installed, upgradable, events, eras, connections }) => {
             const owned = installed ? packRecords(timeline, bundle.id) : null;
             const adopted = installed ? events - (owned?.events.length ?? 0) : 0;
+            const impact = installed ? uninstallImpact(timeline, bundle.id) : null;
 
             return (
               <li key={bundle.id} className="flex flex-col gap-2 px-5 py-3">
@@ -121,9 +122,22 @@ export function PackPanel({ onClose }: { onClose: () => void }) {
 
                   {installed && confirming === bundle.id && (
                     <div className="flex flex-wrap items-center gap-2 text-xs">
+                      {/*
+                        The count of the user's own connections is the one that
+                        matters: pack content comes back with a click, and a note
+                        somebody wrote about why two things belong together does
+                        not. It is said separately, and said as "hidden", because
+                        those are tombstoned rather than deleted.
+                      */}
                       <span className="text-paper-soft">
-                        removes {owned?.events.length ?? 0} events
+                        removes {impact?.events ?? 0} events
+                        {(impact?.packConnections ?? 0) > 0 &&
+                          ` and ${impact?.packConnections} of its connections`}
                         {adopted > 0 && `, keeps the ${adopted} you adopted`}
+                        {(impact?.ownConnections ?? 0) > 0 &&
+                          `, and hides ${impact?.ownConnections} connection${
+                            impact?.ownConnections === 1 ? '' : 's'
+                          } of your own that led into it`}
                       </span>
                       <button
                         onClick={() => {

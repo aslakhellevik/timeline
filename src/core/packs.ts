@@ -217,6 +217,55 @@ export function packRecords(
   };
 }
 
+/** What an uninstall would take away, counted so the confirmation can say it. */
+export interface UninstallImpact {
+  /** Pack-owned events. Adopted ones have cleared `pack` and are not counted. */
+  events: number;
+  eras: number;
+  /** Connections the pack brought. These go for good. */
+  packConnections: number;
+  /**
+   * The user's **own** connections into a departing event. Tombstoned, not
+   * dropped — and counted separately, because these are the only records in the
+   * operation that are the user's own writing.
+   */
+  ownConnections: number;
+}
+
+/** The ids of the records `uninstallPack` would take out of the timeline. */
+function doomedIds(timeline: Timeline, packId: Id): Set<Id> {
+  const ids = new Set<Id>();
+  for (const event of timeline.events) if (event.pack === packId) ids.add(event.id);
+  for (const era of timeline.eras) if (era.pack === packId) ids.add(era.id);
+  return ids;
+}
+
+/**
+ * Counts what an uninstall would remove, split by whose it is.
+ *
+ * The confirmation used to say only how many events would go, which is the
+ * count that matters least: pack events come back with one click. What does not
+ * come back is the note the user wrote on a connection *into* one of them, and
+ * the old wording never mentioned those at all.
+ */
+export function uninstallImpact(timeline: Timeline, packId: Id): UninstallImpact {
+  const doomed = doomedIds(timeline, packId);
+  let packConnections = 0;
+  let ownConnections = 0;
+  for (const connection of timeline.connections) {
+    if (connection.deleted_at) continue;
+    if (connection.pack === packId) packConnections++;
+    else if (doomed.has(connection.from) || doomed.has(connection.to)) ownConnections++;
+  }
+
+  return {
+    events: timeline.events.filter((event) => event.pack === packId).length,
+    eras: timeline.eras.filter((era) => era.pack === packId).length,
+    packConnections,
+    ownConnections,
+  };
+}
+
 /**
  * Removes a pack and everything it still owns.
  *
@@ -228,23 +277,30 @@ export function packRecords(
  *
  * Anything adopted has had its `pack` cleared and is therefore untouched, which
  * is the whole point of adoption.
+ *
+ * **The user's own connections into a departing event are tombstoned, not
+ * dropped.** They still have to leave the view — an arc into a hole is the
+ * thing D37 is avoiding — but the argument in that note is the user's writing,
+ * not the pack's, and every reason D37 gives for hard removal is a reason about
+ * *pack* records: re-derivable from the bundle, and blocked by a tombstone on
+ * reinstall. Neither is true of a connection somebody wrote themselves. A
+ * tombstone leaves it recoverable, and reinstalling the pack does not resurrect
+ * it — which is right, since a connection nobody has seen for a year should not
+ * silently reappear.
  */
-export function uninstallPack(timeline: Timeline, packId: Id): Timeline {
-  const doomed = new Set(
-    [
-      ...timeline.events.filter((event) => event.pack === packId),
-      ...timeline.eras.filter((era) => era.pack === packId),
-    ].map((record) => record.id),
-  );
+export function uninstallPack(timeline: Timeline, packId: Id, now: string = nowIso()): Timeline {
+  const doomed = doomedIds(timeline, packId);
 
   return {
     events: timeline.events.filter((event) => event.pack !== packId),
-    // Connections owned by the pack go, and so do the user's own connections to
-    // an event that is leaving: the alternative is an arc into a hole.
-    connections: timeline.connections.filter(
-      (connection) =>
-        connection.pack !== packId && !doomed.has(connection.from) && !doomed.has(connection.to),
-    ),
+    connections: timeline.connections.flatMap((connection): Connection[] => {
+      // The pack's own, gone with the rest of its content.
+      if (connection.pack === packId) return [];
+      if (connection.deleted_at) return [connection];
+      const dangling = doomed.has(connection.from) || doomed.has(connection.to);
+      if (!dangling) return [connection];
+      return [{ ...connection, deleted_at: now, updated_at: now }];
+    }),
     // Tags are left alone. They are shared by id (D20), so a pack's tags are
     // almost always the built-in ones the user's own events also carry.
     tags: timeline.tags,

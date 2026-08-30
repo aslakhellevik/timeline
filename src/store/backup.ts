@@ -4,10 +4,14 @@
  * Layer 2 — automatic file backup. The user picks a folder once; the
  * `FileSystemDirectoryHandle` is structured-cloneable, so it lives in IndexedDB
  * and survives reloads, and permission is re-granted with one click per
- * session. Snapshots are `timeline-YYYY-MM-DD.json`, the most recent ~20 kept.
+ * session. Snapshots are `timeline-YYYY-MM-DD.json`, the most recent ~20 kept —
+ * which is twenty *days*, since a second write on the same day overwrites the
+ * first. Scheduling lives in `auto-backup.ts`; this file only writes.
  *
  * Layer 3 — a plain download, plus the "last backed up N days ago" figure that
- * gives the export button a conscience.
+ * gives the export button a conscience. The two are stamped separately: a
+ * snapshot is a file this app wrote, an export is one the browser was asked to
+ * save, and only the first of those is something the app can be sure of.
  *
  * The File System Access API is Chromium-desktop only. Everything here reports
  * its own availability instead of assuming it, because on Safari and Firefox
@@ -27,8 +31,13 @@ export const DEFAULT_BACKUP_DB_NAME = 'arlinje-backup';
 const META_STORE = 'meta';
 const FOLDER_KEY = 'backup-folder';
 const LAST_BACKUP_KEY = 'last-backup-at';
+const LAST_EXPORT_KEY = 'last-export-at';
 
-/** Roughly a month of daily snapshots (§8.3). */
+/**
+ * Snapshots kept, which is **twenty days, not twenty saves**: the filename is
+ * the local date, so every write after the first on a given day overwrites that
+ * day's file (§8.3).
+ */
 export const SNAPSHOT_RETENTION = 20;
 
 /** The indicator turns amber past this (§8.3). */
@@ -54,6 +63,12 @@ export interface SnapshotDirectory {
 
 export interface SnapshotFile {
   createWritable(options?: { keepExistingData?: boolean }): Promise<SnapshotWritable>;
+  /**
+   * Optional, and probed rather than assumed: it is only used to tell an empty
+   * snapshot from a real one, and a directory implementation without it simply
+   * loses that check.
+   */
+  getFile?(): Promise<{ size: number }>;
 }
 
 export interface SnapshotWritable {
@@ -101,6 +116,15 @@ export type ExportResult =
   | { ok: true; filename: string; at: string }
   | { ok: false; reason: 'unsupported' | 'failed'; message: string };
 
+/**
+ * A copy of the timeline outside the browser, and which kind it was.
+ *
+ * `'backup'` is a file this app wrote into the folder itself, and is a fact.
+ * `'export'` is a download the user was offered; whether they saved it is not
+ * knowable from here, so it is reported as what it is.
+ */
+export type CopyKind = 'backup' | 'export';
+
 export interface BackupStatus {
   /** Whether layer 2 is available at all in this browser. */
   supported: boolean;
@@ -108,10 +132,17 @@ export interface BackupStatus {
   folder: string | null;
   /** `'none'` when there is no folder to have permission for. */
   permission: HandlePermission | 'none';
-  /** ISO instant of the last successful backup, of either kind. */
+  /** ISO instant of the last snapshot written into the backup folder. */
   lastBackupAt: string | null;
   daysSinceBackup: number | null;
-  /** Past `BACKUP_STALE_DAYS`, or never backed up at all. */
+  /** ISO instant of the last export handed to the browser. */
+  lastExportAt: string | null;
+  daysSinceExport: number | null;
+  /** The more recent of the two, which is what the indicator counts from. */
+  lastCopyAt: string | null;
+  lastCopyKind: CopyKind | null;
+  daysSinceCopy: number | null;
+  /** Past `BACKUP_STALE_DAYS`, or no copy of any kind. */
   stale: boolean;
   message: string;
 }
@@ -150,14 +181,39 @@ export function backupSupport(): BackupSupport {
 // Snapshot naming and rotation (pure, so the destructive part is testable)
 // ---------------------------------------------------------------------------
 
+function pad(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
 /** `timeline-YYYY-MM-DD.json`, in local time: the user's today, not UTC's. */
 export function snapshotFilename(date: Date = new Date()): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
   return `timeline-${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}.json`;
+}
+
+/**
+ * `timeline-YYYY-MM-DD-HHMM.json` — the same name with a time on it.
+ *
+ * Exports land in the downloads folder, where a second export on the same day
+ * used to arrive as `timeline-2026-08-15 (1).json` and leave the user guessing
+ * which of the two was newer. The minute is in the name instead.
+ *
+ * The extra part also keeps an export out of `isSnapshotName`, which matters if
+ * the backup folder and the downloads folder are ever the same one: pruning
+ * must never delete a file the user asked for by hand.
+ */
+export function exportFilename(date: Date = new Date()): string {
+  const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  return `timeline-${day}-${pad(date.getHours())}${pad(date.getMinutes())}.json`;
 }
 
 export function isSnapshotName(name: string): boolean {
   return SNAPSHOT_PATTERN.test(name);
+}
+
+/** A name, and its size when the directory will say (see `SnapshotFile.getFile`). */
+export interface SnapshotEntry {
+  name: string;
+  size?: number;
 }
 
 /**
@@ -166,13 +222,24 @@ export function isSnapshotName(name: string): boolean {
  *
  * Anything that is not a snapshot is ignored, never returned: the folder is the
  * user's, and this function decides what gets deleted from it.
+ *
+ * **An empty snapshot is not a snapshot.** A zero-byte file is what a failed
+ * write leaves behind, and it sorts as the newest one — so it would hold the
+ * top of the rotation while restoring nothing, and push a real snapshot off the
+ * bottom. Those are pruned whatever the retention, and never counted towards it.
  */
 export function snapshotsToPrune(
-  names: readonly string[],
+  entries: readonly (string | SnapshotEntry)[],
   retain: number = SNAPSHOT_RETENTION,
 ): string[] {
-  const snapshots = names.filter(isSnapshotName).sort().reverse();
-  return snapshots.slice(Math.max(retain, 0));
+  const snapshots = entries
+    .map((entry) => (typeof entry === 'string' ? { name: entry } : entry))
+    .filter((entry) => isSnapshotName(entry.name))
+    .sort((a, b) => (a.name < b.name ? 1 : a.name > b.name ? -1 : 0));
+
+  const empty = snapshots.filter((entry) => entry.size === 0).map((entry) => entry.name);
+  const real = snapshots.filter((entry) => entry.size !== 0).map((entry) => entry.name);
+  return [...real.slice(Math.max(retain, 0)), ...empty];
 }
 
 // ---------------------------------------------------------------------------
@@ -193,6 +260,12 @@ export interface WriteSnapshotOptions {
  * Writing through `createWritable` is atomic — the browser writes a swap file
  * and moves it into place on close — so a crash mid-write cannot corrupt
  * yesterday's snapshot. Two writes on the same day overwrite the same file.
+ *
+ * `getFileHandle(…, { create: true })` is not part of that atomicity, though:
+ * it creates an empty file *before* `createWritable` is called, so a failure in
+ * between — permission withdrawn, disk full — left a zero-byte file that sorted
+ * as the newest snapshot and would restore nothing. A file this call created
+ * and then failed to fill is removed again.
  */
 export async function writeSnapshotTo(
   directory: SnapshotDirectory,
@@ -203,6 +276,15 @@ export async function writeSnapshotTo(
   const filename = snapshotFilename(now);
   const contents = serialiseDocument(toDocument(timeline, { exportedAt: now.toISOString() }));
 
+  // Whether today's snapshot already exists, so a failure knows whether it is
+  // undoing its own mess or would be deleting yesterday's good copy.
+  let existed = true;
+  try {
+    await directory.getFileHandle(filename);
+  } catch {
+    existed = false;
+  }
+
   let writable: SnapshotWritable | null = null;
   try {
     const file = await directory.getFileHandle(filename, { create: true });
@@ -211,6 +293,7 @@ export async function writeSnapshotTo(
     await writable.close();
   } catch (error) {
     if (writable?.abort) await writable.abort(error).catch(() => undefined);
+    if (!existed) await directory.removeEntry(filename).catch(() => undefined);
     return {
       ok: false,
       reason: 'write-failed',
@@ -222,9 +305,12 @@ export async function writeSnapshotTo(
   // clearing out an old one fails.
   let pruned: string[] = [];
   try {
-    const names: string[] = [];
-    for await (const name of directory.keys()) names.push(name);
-    const doomed = snapshotsToPrune(names, options.retain ?? SNAPSHOT_RETENTION);
+    const entries: SnapshotEntry[] = [];
+    for await (const name of directory.keys()) {
+      if (!isSnapshotName(name)) continue;
+      entries.push({ name, ...(await sizeOf(directory, name)) });
+    }
+    const doomed = snapshotsToPrune(entries, options.retain ?? SNAPSHOT_RETENTION);
     for (const name of doomed) {
       try {
         await directory.removeEntry(name);
@@ -240,6 +326,20 @@ export async function writeSnapshotTo(
   return { ok: true, filename, at: now.toISOString(), pruned };
 }
 
+/** `{ size }` when the directory will say, `{}` when it will not. */
+async function sizeOf(
+  directory: SnapshotDirectory,
+  name: string,
+): Promise<{ size?: number }> {
+  try {
+    const handle = await directory.getFileHandle(name);
+    if (typeof handle.getFile !== 'function') return {};
+    return { size: (await handle.getFile()).size };
+  } catch {
+    return {};
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Layer 3 — manual export
 // ---------------------------------------------------------------------------
@@ -247,13 +347,21 @@ export async function writeSnapshotTo(
 export interface DownloadExportOptions {
   filename?: string;
   now?: Date;
-  /** Whether this counts towards "last backed up". It should: a saved file is a backup. */
+  /** Whether this counts towards "last exported". */
   record?: boolean;
 }
 
 /**
  * Hands the browser a file to save (§8.3, layer 3). Available everywhere; on
  * Safari and Firefox it is the whole backup story.
+ *
+ * **What this records is an export, not a backup, and the difference is not
+ * pedantry.** All the page can do is click an anchor; whether a file was ever
+ * written is decided afterwards, in a dialog this code cannot see. Counting
+ * that as a backup meant a cancelled save-as cleared the amber "not backed up"
+ * warning — the indicator confidently reporting a copy that does not exist. It
+ * is stamped under its own key and the panel says "exported", which is exactly
+ * as much as is actually known.
  */
 export async function downloadExport(
   timeline: Timeline,
@@ -270,7 +378,7 @@ export async function downloadExport(
   }
 
   const now = options.now ?? new Date();
-  const filename = options.filename ?? snapshotFilename(now);
+  const filename = options.filename ?? exportFilename(now);
   const at = now.toISOString();
 
   try {
@@ -294,7 +402,7 @@ export async function downloadExport(
     };
   }
 
-  if (options.record !== false) await markBackedUp(at);
+  if (options.record !== false) await markExported(at);
   return { ok: true, filename, at };
 }
 
@@ -311,6 +419,8 @@ export interface BackupManager {
   writeSnapshot(timeline: Timeline, options?: WriteSnapshotOptions): Promise<SnapshotResult>;
   lastBackupAt(): Promise<string | null>;
   markBackedUp(at?: string): Promise<void>;
+  lastExportAt(): Promise<string | null>;
+  markExported(at?: string): Promise<void>;
   status(): Promise<BackupStatus>;
   close(): void;
 }
@@ -441,22 +551,45 @@ export function createBackupManager(name: string = DEFAULT_BACKUP_DB_NAME): Back
       await writeMeta(LAST_BACKUP_KEY, at);
     },
 
+    lastExportAt() {
+      return readMeta<string>(LAST_EXPORT_KEY);
+    },
+
+    async markExported(at: string = new Date().toISOString()) {
+      await writeMeta(LAST_EXPORT_KEY, at);
+    },
+
     async status() {
       const supported = isBackupSupported();
       const handle = await manager.getFolder();
-      const last = await manager.lastBackupAt();
-      const days = daysSince(last);
+      const backedUp = await manager.lastBackupAt();
+      const exported = await manager.lastExportAt();
       const permission = handle ? await permissionFor(handle, false) : 'none';
-      const stale = days === null || days >= BACKUP_STALE_DAYS;
+
+      // The most recent copy of either kind is what the indicator counts from,
+      // and its kind is what the wording has to follow.
+      const kind: CopyKind | null =
+        backedUp === null && exported === null
+          ? null
+          : compareInstants(backedUp, exported) >= 0
+            ? 'backup'
+            : 'export';
+      const lastCopyAt = kind === 'backup' ? backedUp : kind === 'export' ? exported : null;
+      const days = daysSince(lastCopyAt);
 
       return {
         supported,
         folder: handle?.name ?? null,
         permission,
-        lastBackupAt: last,
-        daysSinceBackup: days,
-        stale,
-        message: statusMessage(supported, handle !== null, days),
+        lastBackupAt: backedUp,
+        daysSinceBackup: daysSince(backedUp),
+        lastExportAt: exported,
+        daysSinceExport: daysSince(exported),
+        lastCopyAt,
+        lastCopyKind: kind,
+        daysSinceCopy: days,
+        stale: days === null || days >= BACKUP_STALE_DAYS,
+        message: statusMessage(supported, handle !== null, days, kind),
       };
     },
 
@@ -514,6 +647,15 @@ export function markBackedUp(at?: string): Promise<void> {
   return shared().markBackedUp(at);
 }
 
+/** ISO instant of the last export offered. A request to save, not a saved file. */
+export function lastExportAt(): Promise<string | null> {
+  return shared().lastExportAt();
+}
+
+export function markExported(at?: string): Promise<void> {
+  return shared().markExported(at);
+}
+
 export function backupStatus(): Promise<BackupStatus> {
   return shared().status();
 }
@@ -560,15 +702,35 @@ async function permissionFor(
   }
 }
 
-function statusMessage(supported: boolean, hasFolder: boolean, days: number | null): string {
-  if (days === null) {
+/** Later of two instants: 1 if `a`, -1 if `b`, 0 if neither or both are absent. */
+function compareInstants(a: string | null, b: string | null): number {
+  if (a === null) return b === null ? 0 : -1;
+  if (b === null) return 1;
+  const left = Date.parse(a);
+  const right = Date.parse(b);
+  if (!Number.isFinite(left)) return Number.isFinite(right) ? -1 : 0;
+  if (!Number.isFinite(right)) return 1;
+  return left === right ? 0 : left > right ? 1 : -1;
+}
+
+function statusMessage(
+  supported: boolean,
+  hasFolder: boolean,
+  days: number | null,
+  kind: CopyKind | null,
+): string {
+  if (days === null || kind === null) {
     return supported && !hasFolder
       ? 'Not backed up yet. Choose a folder and it will keep itself up to date.'
       : 'Not backed up yet. Export the timeline to keep a copy outside the browser.';
   }
-  if (days === 0) return 'Backed up today.';
-  if (days === 1) return 'Backed up yesterday.';
-  return `Backed up ${days} days ago.`;
+  // An export is a file the browser was asked to save, and the app never learns
+  // whether it was. Saying "exported" rather than "backed up" is the whole of
+  // the distinction, and the one the user needs to judge the figure by.
+  const verb = kind === 'backup' ? 'Backed up' : 'Exported';
+  if (days === 0) return `${verb} today.`;
+  if (days === 1) return `${verb} yesterday.`;
+  return `${verb} ${days} days ago.`;
 }
 
 function isAbort(error: unknown): boolean {

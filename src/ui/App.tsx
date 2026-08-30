@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import type { TimelineEvent } from '../core/model/types';
 import { applyFilter } from '../core/filter';
 import { interval } from '../core/time';
-import { backupStatus, createIndexedDbStore } from '../store';
+import { backupStatus, createIndexedDbStore, startAutoBackup } from '../store';
 import type { BackupStatus } from '../store';
 import { useTimeline } from '../state/timeline-store';
 import { ConnectPicker } from './ConnectPicker';
@@ -231,6 +231,26 @@ export function App() {
     void backupStatus().then(setBackup);
   }, [status, dataOpen]);
 
+  /*
+   * Layer 2's schedule (§8.3): a snapshot once the store is ready, then every
+   * ten minutes while there is something new to save, and one on the way out.
+   *
+   * Everything it reads is read at the moment of the write, through
+   * `getState()`, so the schedule does not re-mount when the timeline changes —
+   * which it would do on every keystroke, and each remount would take another
+   * snapshot on 'open'.
+   */
+  useEffect(() => {
+    if (status !== 'ready') return;
+    const backups = startAutoBackup({
+      timeline: () => useTimeline.getState().timeline,
+      dirtyAt: () => useTimeline.getState().lastMutationAt,
+      flush: () => useTimeline.getState().flush(),
+      onResult: () => void backupStatus().then(setBackup),
+    });
+    return () => backups.stop();
+  }, [status]);
+
   useEffect(() => {
     if (status === 'ready' && isFirstRun) setOnboarding(true);
   }, [status, isFirstRun]);
@@ -380,10 +400,16 @@ export function App() {
           onClick={() => setDataOpen(true)}
           className={backup?.stale ? 'text-[#c98500] hover:underline' : 'hover:text-paper'}
         >
+          {/*
+            "exported" and "backed up" are not the same claim: the first is a
+            file the browser was asked to save, the second one this app wrote.
+          */}
           {backup
-            ? backup.daysSinceBackup === null
+            ? backup.daysSinceCopy === null
               ? 'never backed up'
-              : `backed up ${backup.daysSinceBackup === 0 ? 'today' : `${backup.daysSinceBackup}d ago`}`
+              : `${backup.lastCopyKind === 'export' ? 'exported' : 'backed up'} ${
+                  backup.daysSinceCopy === 0 ? 'today' : `${backup.daysSinceCopy}d ago`
+                }`
             : 'your data'}
         </button>
         {error && <span className="text-[#e66767]">{error}</span>}

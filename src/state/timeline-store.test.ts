@@ -123,6 +123,8 @@ beforeEach(() => {
     undoLabel: null,
     error: null,
     isFirstRun: true,
+    lastMutationAt: null,
+    persistence: null,
   });
 });
 
@@ -571,5 +573,134 @@ describe('the error line', () => {
     state().updateEvent('e1', { title: 'Two' });
     await state().flush();
     expect(state().error).toBeNull();
+  });
+});
+
+/**
+ * §8.3's layer 2 runs on a dirty signal, and a signal that misses a change is
+ * worse than none: it means the automatic backup quietly stops covering it.
+ */
+describe('the dirty signal (§8.3)', () => {
+  it('is null until something changes', async () => {
+    await attach(fakeStore(makeTimeline({ events: [event('e1')] })));
+    expect(state().lastMutationAt).toBeNull();
+  });
+
+  it('is stamped by an ordinary mutation, and again by the next one', async () => {
+    await attach(fakeStore(makeTimeline({ events: [event('e1')] })));
+
+    state().updateEvent('e1', { title: 'One' });
+    const first = state().lastMutationAt;
+    expect(first).not.toBeNull();
+
+    await delay(5);
+    state().updateEvent('e1', { title: 'Two' });
+    expect(state().lastMutationAt).not.toBe(first);
+  });
+
+  it('is stamped by an undo, which is a new write and not an old one', async () => {
+    await attach(fakeStore(makeTimeline({ events: [event('e1')] })));
+    state().updateEvent('e1', { title: 'One' });
+    const before = state().lastMutationAt;
+
+    await delay(5);
+    state().undo();
+    expect(state().lastMutationAt).not.toBe(before);
+  });
+
+  it('is stamped by the wholesale writes as well as the per-record ones', async () => {
+    await attach(fakeStore());
+
+    await state().installPack(BUNDLE);
+    const installed = state().lastMutationAt;
+    expect(installed).not.toBeNull();
+
+    await delay(5);
+    await state().removePack('pack.test');
+    expect(state().lastMutationAt).not.toBe(installed);
+  });
+
+  it('is stamped when another tab changes the timeline', async () => {
+    // The backup folder is per machine, not per tab: whichever tab holds the
+    // permission has to notice, or an edit made in the other is never saved.
+    const store = fakeStore(makeTimeline({ events: [event('e1')] }));
+    await attach(store);
+    expect(state().lastMutationAt).toBeNull();
+
+    const later = new Date(Date.now() + 60_000).toISOString();
+    store.data = { ...store.data, events: [event('e1', { title: 'Elsewhere', updated_at: later })] };
+    store.emit({ kind: 'events', ids: ['e1'] });
+    await delay();
+
+    expect(state().lastMutationAt).not.toBeNull();
+  });
+});
+
+describe('claiming persistent storage (§8.3, layer 1)', () => {
+  it('asks on the first write, and records the answer', async () => {
+    await attach(fakeStore(makeTimeline({ events: [event('e1')] })));
+    expect(state().persistence).toBeNull();
+
+    state().updateEvent('e1', { title: 'Something worth keeping' });
+    await delay(5);
+
+    // Node has no `navigator.storage`, so the honest answer here is
+    // "unsupported" — the point is that something asked at all.
+    expect(state().persistence).not.toBeNull();
+    expect(typeof state().persistence?.message).toBe('string');
+  });
+});
+
+describe('uninstalling a pack (§5.1, D37)', () => {
+  /**
+   * Seeded rather than built through the UI: connecting to a pack event adopts
+   * it, so the app's own routes rarely produce this shape. An import or another
+   * device does, and the records then sit there until an uninstall meets them.
+   */
+  function withPackAndMyLink() {
+    return fakeStore(
+      makeTimeline({
+        events: [packEvent('pack.test/fall', 'pack.test'), event('mine')],
+        connections: [
+          connection('c-pack', { from: 'pack.test/fall', to: 'mine', pack: 'pack.test' }),
+          connection('c-mine', { from: 'mine', to: 'pack.test/fall', note: 'why these two' }),
+        ],
+        packs: [
+          {
+            id: 'pack.test',
+            created_at: OLD,
+            updated_at: OLD,
+            name: 'Test pack',
+            version: '1',
+            license: 'CC0-1.0',
+            installed_at: OLD,
+          },
+        ],
+      }),
+    );
+  }
+
+  it('tombstones my own connection into a departing event, and hard-removes the pack’s', async () => {
+    const store = withPackAndMyLink();
+    await attach(store);
+
+    await state().removePack('pack.test');
+
+    const connections = state().timeline.connections;
+    expect(connections.map((c) => c.id)).toEqual(['c-mine']);
+    expect(connections[0]?.deleted_at).toBeTruthy();
+    // And it reached the database as a tombstone, not as an absence.
+    expect(store.data.connections.map((c) => c.id)).toEqual(['c-mine']);
+    expect(store.data.connections[0]?.deleted_at).toBeTruthy();
+  });
+
+  it('closes the detail pane on a connection it has just tombstoned', async () => {
+    const store = withPackAndMyLink();
+    await attach(store);
+    state().selectConnection('c-mine');
+
+    await state().removePack('pack.test');
+
+    expect(state().selectedConnectionId).toBeNull();
   });
 });

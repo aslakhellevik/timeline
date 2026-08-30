@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
+  RECORD_KINDS,
+  SNAPSHOT_RETENTION,
   backupStatus,
   chooseBackupFolder,
   downloadExport,
@@ -12,7 +14,12 @@ import {
   storageEstimate,
   writeSnapshot,
 } from '../store';
-import type { BackupStatus, PersistenceResult, StorageEstimateResult } from '../store';
+import type {
+  BackupStatus,
+  MergeStats,
+  PersistenceResult,
+  StorageEstimateResult,
+} from '../store';
 import { useTimeline } from '../state/timeline-store';
 
 /**
@@ -27,6 +34,8 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
   const replaceTimeline = useTimeline((state) => state.replaceTimeline);
   const flush = useTimeline((state) => state.flush);
   const resetAll = useTimeline((state) => state.resetAll);
+  /** The result of the automatic layer-1 request, if it has happened yet. */
+  const claimed = useTimeline((state) => state.persistence);
 
   const [persistence, setPersistence] = useState<PersistenceResult | null>(null);
   const [backup, setBackup] = useState<BackupStatus | null>(null);
@@ -65,12 +74,24 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
     try {
       const incoming = parseDocument(await file.text());
       const merged = mergeDocument(timeline, incoming);
-      replaceTimeline(merged.timeline);
-      const { events, connections, tags, eras } = merged.stats;
-      const added = events.added + connections.added + tags.added + eras.added;
-      const updated = events.updated + connections.updated + tags.updated + eras.updated;
-      const skipped = events.skipped + connections.skipped + tags.skipped + eras.skipped;
-      setNote(`imported — ${added} added, ${updated} updated, ${skipped} left alone`);
+      // Awaited: the note below claims the import landed, and until the write
+      // has actually returned that is not yet true.
+      await replaceTimeline(merged.timeline);
+      const total = (of: (stats: MergeStats) => number) =>
+        RECORD_KINDS.reduce((sum, kind) => sum + of(merged.stats[kind]), 0);
+      const rejected = total((stats) => stats.rejected);
+      setNote(
+        `imported — ${total((stats) => stats.added)} added, ` +
+          `${total((stats) => stats.updated)} updated, ` +
+          `${total((stats) => stats.skipped)} left alone` +
+          // Said plainly rather than folded into "left alone": a record left
+          // alone is the merge rule protecting newer work, a rejected one is
+          // data that could not be read at all, and the user may want the file
+          // looked at.
+          (rejected > 0
+            ? `, ${rejected} record${rejected === 1 ? '' : 's'} could not be read`
+            : ''),
+      );
     } catch (error) {
       setNote(error instanceof Error ? error.message : 'could not read that file');
     }
@@ -103,19 +124,40 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
 
         <Section title="Keep it from being evicted">
           <p className="text-xs text-paper-dim">{persistence?.message ?? 'checking…'}</p>
-          {persistence && !persistence.persisted && persistence.supported && (
-            <Action
-              onClick={async () => {
-                setPersistence(await requestPersistence());
-              }}
-            >
-              ask the browser to keep it
-            </Action>
-          )}
+          {persistence &&
+            !persistence.persisted &&
+            persistence.supported &&
+            /*
+              The app already asked, on the first thing you saved (§8.3, layer
+              1). Offering a button that repeats a refused request is worse than
+              saying what happened: the browser decides this on how much the app
+              is used, so the honest advice is the one that changes its mind.
+            */
+            (claimed?.requested && !claimed.persisted ? (
+              <p className="text-xs text-paper-dim">
+                It was asked when you saved your first event, and would not commit. Using the app
+                more, or installing it, usually changes that.
+              </p>
+            ) : (
+              <Action
+                onClick={async () => {
+                  setPersistence(await requestPersistence());
+                }}
+              >
+                ask the browser to keep it
+              </Action>
+            ))}
         </Section>
 
         <Section title="Back up to a folder">
           <p className="text-xs text-paper-dim">{backup?.message ?? 'checking…'}</p>
+          {backup?.supported && backup.folder && (
+            <p className="text-xs text-paper-dim">
+              A copy is written when you open the app and every ten minutes after a change. The
+              last {SNAPSHOT_RETENTION} are kept — {SNAPSHOT_RETENTION} days, rather than{' '}
+              {SNAPSHOT_RETENTION} files: a second copy on the same day replaces the first.
+            </p>
+          )}
           {backup?.supported && (
             <div className="flex flex-wrap gap-2">
               <Action
@@ -158,7 +200,9 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
         <Section title="Export and import">
           <p className="text-xs text-paper-dim">
             A single JSON file with everything in it. Importing merges by record rather than
-            replacing, so restoring an old backup never discards newer work.
+            replacing, so restoring an old backup never discards newer work. An export counts as
+            exported, not backed up — where the file goes is between you and the browser, and this
+            app never learns whether you saved it.
           </p>
           <div className="flex flex-wrap gap-2">
             <Action

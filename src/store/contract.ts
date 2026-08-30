@@ -65,7 +65,15 @@ export interface Store {
 export interface MergeStats {
   added: number;
   updated: number;
+  /** Left alone: the local copy was the same age or newer, or had been adopted. */
   skipped: number;
+  /**
+   * Thrown away as unreadable — a malformed record, or a connection to an event
+   * nothing has (§8.7). Distinct from `skipped`, which is the merge rule working
+   * as designed; this is data that could not be let in at all, and the panel
+   * says so rather than reporting a clean import.
+   */
+  rejected: number;
 }
 
 export interface MergeResult {

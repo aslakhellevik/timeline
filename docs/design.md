@@ -56,6 +56,9 @@ map are deferred — but the data model is shaped so that none of them require a
 | D42 | The map draws **coastlines, not borders**: borders move on the timescale the timeline covers, coastlines do not |
 | D43 | Events with no coordinates are placed by their **region tag**, drawn with a halo at the region's true radius |
 | D44 | Tag names are matched **normalised**, and a built-in may carry aliases — a `#tag` is one word and half the premade regions are not |
+| D45 | Uninstalling a pack **tombstones the user's own connections** into departing events, though it still hard-removes the pack's own (D37 is about pack records) |
+| D46 | Import **validates every record** and **clamps absurd future timestamps**, reversing §8.7's decision to leave both out of v1 |
+| D47 | An export is recorded as an **export**, never as a backup: the app hands the browser a file and never learns whether it was saved |
 
 Conventions, settled and not worth further discussion:
 
@@ -492,8 +495,17 @@ and `mergeDocument`'s single clause covers it.
 **Uninstall hard-removes (D37).** The one place D9's "never delete, sync needs tombstones" does
 not apply, and not by oversight: pack content is not the user's data and is re-derivable from the
 bundle, while a tombstone would carry a newer `updated_at` than the bundle and make reinstalling
-restore nothing. The user's own connections *into* a departing event go too — the alternative is
-an arc into a hole.
+restore nothing.
+
+**The user's own connections into a departing event are tombstoned, not dropped (D45).** They
+still have to leave the view — an arc into a hole is what D37's last clause was avoiding — but
+every reason D37 gives for hard removal is a reason about *pack* records: re-derivable from the
+bundle, and blocked by a tombstone on reinstall. Neither is true of an argument somebody wrote
+themselves about why two things belong together, which is the part of this app that is hardest to
+replace. A tombstone leaves it recoverable, and reinstalling the pack does not resurrect it, which
+is right: a connection nobody has seen for a year should not silently reappear. The confirmation
+counts the two kinds separately for the same reason — it used to say only how many events would
+go, which is the count that matters least, since pack events come back with one click.
 
 **The mass is drawn in two layers (D38).** The `mine / mine + packs` toggle turned out not to be
 enough on its own: with a pack installed and the toggle on, a wall of canonical events simply
@@ -884,6 +896,14 @@ reasons unrelated to the worker.
   array of pure `(data) => data` functions applied on load and on import, run from whatever
   version the file declares. Old migrations are never deleted — an export from two years ago has
   to open, or the portability promise was a decoration.
+- **"On load" meant on import only, for a while.** Files were migrated and the database was not,
+  so records written by an older build were handed to the app unchanged — the one case the chain
+  exists for. The schema version of the records on disk now lives in a small `meta` object store
+  beside them, and a load that finds it behind runs the same chain a file goes through, writes the
+  result back and records the new version, so the cost is paid once. Databases that predate the
+  meta store have their version inferred from the IndexedDB version, which has tracked the schema
+  version so far. The guard points both ways: a database written by a *newer* build refuses to
+  open rather than be quietly downgraded, on the same argument as `SchemaVersionError` at import.
 - SQLite-in-wasm is deferred until there is a query in-memory filtering cannot serve. There
   probably never will be.
 - **Two tabs on the same store will silently eat each other's edits** — both hold in-memory
@@ -921,6 +941,42 @@ last ~20. Chromium desktop only — Safari and Firefox fall back to layer 3.
 **Layer 3 — manual export, with a visible conscience.** An always-available export button, plus a
 "last backed up N days ago" indicator that turns amber past a week. On browsers without layer 2,
 prompt for a download on close after a session with substantial edits.
+
+**Layers 1 and 2 are automatic, and for a while neither was.** Every piece of both existed except
+the thing that runs them: `requestPersistence` said "call it on first write" in its own docstring
+and nothing did, and the only caller of `writeSnapshot` was the "back up now" button — so a folder
+chosen in January still held January's snapshot in August unless the user remembered. A backup
+that depends on being remembered is layer 3 with extra steps. As built:
+
+- **Layer 1 fires on the first real write**, once per timeline, and the answer is kept so the
+  panel can tell "never asked" from "asked and refused" — the browser reports both as simply not
+  persisted, and only one of them is worth offering a button for. On the first write rather than
+  on load because Chromium weighs engagement: asked as the page opens the answer is often no.
+- **Layer 2 writes on open, then every ten minutes when the timeline is dirty, and once on
+  `pagehide`.** The store stamps every mutation and the schedule compares that stamp against the
+  one it last wrote, so an idle tab costs nothing — not even a permission query. Another tab's
+  write counts as a mutation too: the folder is per machine, not per tab.
+- **It never prompts.** Folder permission is only granted on a user gesture, so a cycle that finds
+  permission ungranted does nothing at all and leaves the panel to say so. A dialog raised by a
+  ten-minute timer is how an app gets denied permanently.
+- **It flushes first**, since the debounce window is the likeliest data-loss path (§8.7) and a
+  snapshot taken without flushing can be missing the edits it was scheduled to protect.
+
+**"The last ~20" is twenty days, not twenty saves.** The filename is the local date, so every
+write after the first on a given day overwrites that day's file — which is what makes a
+ten-minute cycle cheap. Two other things follow. A file that is *empty* is not counted towards the
+retention and is always pruned: a failed write used to leave a zero-byte file behind, because
+`getFileHandle(…, { create: true })` creates the file before `createWritable` can fail, and it
+then sorted as the newest snapshot and would have restored nothing. And a write that fails now
+removes the file it created, if it created it.
+
+**An export is recorded as an export (D47).** All the page can do is click an anchor; whether a
+file was written is decided afterwards, in a dialog this code cannot see. Counting that as a
+backup meant a cancelled save-as cleared the amber warning as thoroughly as a real snapshot did.
+The two are stamped under separate keys, the indicator counts from whichever is more recent and
+words itself after which one that was, and exports carry an `-HHMM` suffix so two on the same day
+do not collide — which also keeps them outside the snapshot pattern, so pruning can never delete
+one.
 
 **Import merges by `id`; it never replaces.** Restoring a backup onto a store that has since
 diverged has to be safe, or backups are a trap. Per record: newer `updated_at` wins, tombstones
@@ -973,8 +1029,33 @@ Found while building it, and worth writing down before the sync layer inherits t
 
 - **`updated_at` is client wall-clock time.** One device with a wrong clock can stamp a record in
   2035, and last-write-wins will then never overwrite it again. A logical clock is the real fix;
-  a guard on absurd future timestamps at import would be a cheap partial one. Neither is in v1
-  because both change merge semantics.
+  a guard on absurd future timestamps at import is the cheap partial one, and **it is now in
+  (D46)**. Anything more than a day ahead of the importing machine is **clamped** to the moment of
+  the import rather than skipped: the record is the user's data and is very likely fine, it is
+  only the claim to have been written tomorrow that is not — and that claim is what would freeze
+  the id against every later edit. Clamping keeps the content and costs the record only its place
+  at the front of the queue. A day is wide enough for every honest cause and narrow enough to
+  catch the dishonest one. `created_at` is left alone; nothing decides anything by it.
+- **A document was trusted to contain records (D46).** `asDocument` checked `schema_version` and
+  nothing else, so hostile or hand-edited JSON put events with no `when`, string coordinates and
+  `tags: 'x'` straight into the store — and the store is trusted absolutely by everything
+  downstream, so an event with no `when` threw inside `compareEvents` the moment it was sorted,
+  which is not a state any amount of clicking gets out of. The merge now shape-checks every
+  incoming record against its kind, rejects the ones that fail, and reports the count so the panel
+  can say "N records could not be read" rather than claiming a clean import. Connections are held
+  to one rule more: an endpoint that neither the document nor the timeline has means the arc goes
+  into a hole, so it is dropped. Only *incoming* records are checked — deleting what is already
+  there would be the merge losing data on its own initiative. The checks are deliberately shallow
+  and cover only the fields the app dereferences without asking, because a document from a future
+  version will carry fields this build has never heard of. The validation lives in `mergeDocument`
+  rather than `asDocument`: that is where a record actually enters the timeline, every route in
+  goes through it, and it is the only one of the two with anywhere to report what it threw away.
+- **The string fallback in `compareTimestamps` is kept, with its cost stated.** A value that will
+  not parse has no instant to compare, and a byte comparison at least keeps the order total and
+  deterministic, so merging the same file twice reaches the same timeline. The cost is that
+  `'zzz'` sorts above `'2026-…'` — the same hole the future guard closes for readable values,
+  left open because a garbled string cannot be clamped to anything. Nothing this app writes
+  reaches it.
 - **Comparison must parse the instants, not the strings.** `+02:00` and `Z` forms of the same
   moment sort differently as text, so a naive string compare silently loses edits across
   timezones.

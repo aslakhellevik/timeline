@@ -12,14 +12,37 @@
  */
 
 import { deleteDB, openDB } from 'idb';
-import type { Connection, Era, InstalledPack, Tag, TimelineEvent } from '../core/model/types';
+import type { Connection, Era, InstalledPack, Tag, Timeline, TimelineEvent } from '../core/model/types';
 import type { RecordKind, Store, StoreChange } from './contract';
-import { RECORD_KINDS } from './serialise';
+import { SCHEMA_VERSION } from './contract';
+import { RECORD_KINDS, SchemaVersionError, migrate } from './serialise';
 
 export const DEFAULT_DB_NAME = 'arlinje';
 
-/** Bumped only when the object stores themselves change, not when the data schema does. */
-const DB_VERSION = 2;
+/**
+ * Bumped when the object stores themselves change, not when the data schema
+ * does. It has nevertheless tracked `SCHEMA_VERSION` so far, which is what lets
+ * `startingSchemaVersion` below infer the schema of a database that predates
+ * the meta store.
+ */
+const DB_VERSION = 3;
+
+/** Where the schema version of the records on disk is kept (§8.1). */
+const META_STORE = 'meta';
+const SCHEMA_KEY = 'schema_version';
+
+/**
+ * What schema the records in an existing database are written in.
+ *
+ * Only reachable for a database created before the meta store existed, so the
+ * answer has to be inferred, and `DB_VERSION` is the only evidence there is:
+ * version 1 predates packs (schema 1), version 2 is the schema-2 build, and a
+ * database being created now is written at the current version by definition.
+ */
+function startingSchemaVersion(oldVersion: number): number {
+  if (oldVersion === 0) return SCHEMA_VERSION;
+  return oldVersion === 1 ? 1 : 2;
+}
 
 /**
  * Opens (or creates) the store. `name` exists so tests, and any future
@@ -27,14 +50,33 @@ const DB_VERSION = 2;
  */
 export async function createIndexedDbStore(name: string = DEFAULT_DB_NAME): Promise<Store> {
   const db = await openDB(name, DB_VERSION, {
-    upgrade(database) {
+    upgrade(database, oldVersion, _newVersion, transaction) {
       for (const kind of RECORD_KINDS) {
         if (!database.objectStoreNames.contains(kind)) {
           database.createObjectStore(kind, { keyPath: 'id' });
         }
       }
+      // Written only when the store is created, never on a later upgrade: after
+      // that the stored version is the record of what is actually on disk and
+      // guessing over it would skip the migration it exists to trigger.
+      if (!database.objectStoreNames.contains(META_STORE)) {
+        database.createObjectStore(META_STORE);
+        void transaction
+          .objectStore(META_STORE)
+          .put(startingSchemaVersion(oldVersion), SCHEMA_KEY);
+      }
     },
   });
+
+  const readSchemaVersion = async (): Promise<number> => {
+    const stored = (await db.get(META_STORE, SCHEMA_KEY)) as unknown;
+    // Absent means a database this build has never opened before the meta store
+    // existed — impossible via `upgrade`, but a missing value must not be read
+    // as "version 0" and sent through every migration a second time.
+    return typeof stored === 'number' && Number.isInteger(stored) && stored >= 1
+      ? stored
+      : SCHEMA_VERSION;
+  };
 
   const listeners = new Set<(change: StoreChange) => void>();
   const channel = openChannel(name, (change) => {
@@ -61,8 +103,15 @@ export async function createIndexedDbStore(name: string = DEFAULT_DB_NAME): Prom
     }
   };
 
-  return {
+  const store: Store = {
     async load() {
+      const version = await readSchemaVersion();
+      // A database written by a newer build of the app. Exactly the case where
+      // reading on regardless and writing back what this build understands
+      // destroys the fields it does not (the same argument as `SchemaVersionError`
+      // at import), so it stops instead of quietly downgrading the timeline.
+      if (version > SCHEMA_VERSION) throw new SchemaVersionError(version, SCHEMA_VERSION);
+
       const tx = db.transaction(RECORD_KINDS, 'readonly');
       const [events, connections, tags, eras, packs] = await Promise.all([
         tx.objectStore('events').getAll(),
@@ -75,13 +124,41 @@ export async function createIndexedDbStore(name: string = DEFAULT_DB_NAME): Prom
 
       // Records come back in key order, not insertion order; nothing downstream
       // depends on store order (the renderer sorts by time).
-      return {
+      const loaded: Timeline = {
         events: events as TimelineEvent[],
         connections: connections as Connection[],
         tags: tags as Tag[],
         eras: eras as Era[],
         packs: packs as InstalledPack[],
       };
+
+      if (version === SCHEMA_VERSION) return loaded;
+
+      /*
+       * §8.1: migrations are applied "on load and on import". Import had them
+       * from the start and this path did not, so a database written by an older
+       * build was handed to the app unmigrated — the one case where the
+       * migration chain, which exists precisely so that old data opens, was
+       * never run.
+       *
+       * The records are put through the same ordered chain a file goes through,
+       * written back, and the version recorded, so the cost is paid once.
+       */
+      const migrated = migrate({
+        schema_version: version,
+        exported_at: new Date().toISOString(),
+        ...loaded,
+      });
+      const next: Timeline = {
+        events: migrated.events,
+        connections: migrated.connections,
+        tags: migrated.tags,
+        eras: migrated.eras,
+        packs: migrated.packs,
+      };
+      await store.replaceAll(next);
+      await db.put(META_STORE, SCHEMA_VERSION, SCHEMA_KEY);
+      return next;
     },
 
     async put(kind, records) {
@@ -139,6 +216,8 @@ export async function createIndexedDbStore(name: string = DEFAULT_DB_NAME): Prom
       db.close();
     },
   };
+
+  return store;
 }
 
 /**
