@@ -18,7 +18,7 @@ import type {
   Timeline,
   TimelineEvent,
 } from '../core/model/types';
-import { BUILTIN_TAGS } from '../core/model/builtin-tags';
+import { BUILTIN_TAGS, builtinTagByName, normaliseTagName } from '../core/model/builtin-tags';
 import { nowIso, uuidv7 } from '../core/model/ids';
 import type { RecordKind } from '../store/contract';
 
@@ -324,6 +324,13 @@ export function removeConnection(
  * Resolves tag names to ids, creating any that do not exist. Matching is
  * case-insensitive so `#war` typed twice does not become two tags — the quiet
  * way a tag vocabulary rots.
+ *
+ * Names are compared **normalised** (D44): `-`, `_` and a space are the same
+ * character and a leading article is dropped, because a `#tag` is one word and
+ * half the premade regions are not. Without it `#nordics` and `#north-america`
+ * each invented a private tag beside the built-in one, and the event never
+ * appeared on the map. A premade tag reached by one of its other spellings is
+ * materialised at its fixed id rather than copied under a new one (D20/D39).
  */
 export function ensureTags(
   timeline: Timeline,
@@ -331,22 +338,40 @@ export function ensureTags(
   now: string = nowIso(),
   kind: TagKind = 'user',
 ): { timeline: Timeline; ids: Id[]; touched: Touched[]; undo: UndoStep[] } {
-  const byName = new Map(timeline.tags.map((tag) => [tag.name.toLowerCase(), tag]));
+  const byName = new Map(timeline.tags.map((tag) => [normaliseTagName(tag.name), tag]));
+  const byId = new Map(timeline.tags.map((tag) => [tag.id, tag]));
   const created: Tag[] = [];
   const ids: Id[] = [];
+
+  const take = (tag: Tag): void => {
+    if (!ids.includes(tag.id)) ids.push(tag.id);
+  };
+  const add = (tag: Tag): void => {
+    created.push(tag);
+    byName.set(normaliseTagName(tag.name), tag);
+    byId.set(tag.id, tag);
+    take(tag);
+  };
 
   for (const raw of names) {
     const name = raw.trim();
     if (name.length === 0) continue;
-    const existing = byName.get(name.toLowerCase());
+
+    const existing = byName.get(normaliseTagName(name));
     if (existing) {
-      if (!ids.includes(existing.id)) ids.push(existing.id);
+      take(existing);
       continue;
     }
-    const tag: Tag = { ...baseFields(now), name, kind };
-    created.push(tag);
-    byName.set(name.toLowerCase(), tag);
-    ids.push(tag.id);
+
+    const builtin = builtinTagByName(name);
+    if (builtin) {
+      const record = byId.get(builtin.id);
+      if (record) take(record);
+      else add({ ...builtin, created_at: now, updated_at: now });
+      continue;
+    }
+
+    add({ ...baseFields(now), name, kind });
   }
 
   if (created.length === 0) return { timeline, ids, touched: [], undo: [] };

@@ -7,6 +7,7 @@ import type { TimelineDocument } from '../store/contract';
 import { instant } from './time';
 import {
   adoptRecord,
+  compareVersions,
   expandPack,
   isInstalled,
   packRecordId,
@@ -93,6 +94,36 @@ describe('expandPack', () => {
     const broken = bundle();
     broken.connections = [{ key: 'bad', from: 'fall', to: 'nowhere', note: '', tags: [] }];
     expect(expandPack(broken, { now: T1 }).connections).toHaveLength(0);
+  });
+
+  it('emits the ancestors of the built-in tags it references, not only the leaves', () => {
+    // A pack event tagged Norway has to answer a filter on Europe (D14 rollup).
+    // On a timeline that never materialised the premade set, emitting the leaf
+    // alone leaves Europe pointing at nothing — D20's two Europes again.
+    const regional: PackBundle = {
+      ...bundle(),
+      events: [
+        {
+          key: 'x',
+          title: 'the Eidsvoll constitution',
+          when: instant(1814),
+          tags: ['tag.region.norway'],
+        },
+      ],
+      connections: [],
+      eras: [],
+    };
+    const ids = expandPack(regional, { now: T1 }).tags.map((tag) => tag.id);
+    expect(ids).toContain('tag.region.norway');
+    expect(ids).toContain('tag.region.nordics');
+    expect(ids).toContain('tag.region.europe');
+    expect(ids).not.toContain('tag.region.asia');
+  });
+
+  it('stamps local wall-clock time, like every other timestamp in the app', () => {
+    expect(expandPack(bundle()).pack.installed_at).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}$/,
+    );
   });
 
   it('leaves learned_at unset — a pack cannot claim you learned anything', () => {
@@ -267,6 +298,23 @@ describe('packRecords and summarise', () => {
 
     const [current] = summarise(installed, [bundle('1.0.0')]);
     expect(current?.upgradable).toBe(false);
+  });
+
+  it('does not call a downgrade an upgrade', () => {
+    // Shipping an app whose bundle is behind what is installed offered an
+    // "upgrade" that walked the pack backwards.
+    const installed = install(EMPTY_TIMELINE, bundle('2.0.0'), T1);
+    expect(summarise(installed, [bundle('1.9.0')])[0]?.upgradable).toBe(false);
+    expect(summarise(installed, [bundle('2.0.1')])[0]?.upgradable).toBe(true);
+  });
+
+  it('compares versions as numbers, part by part', () => {
+    expect(compareVersions('1.10.0', '1.9.0')).toBe(1);
+    expect(compareVersions('2', '2.0.0')).toBe(0);
+    expect(compareVersions('1.2', '1.2.1')).toBe(-1);
+    // Beyond dotted numbers it has no opinion, only a total order.
+    expect(compareVersions('1.0.0-beta', '1.0.0')).toBe(0);
+    expect(compareVersions('alpha', '1.0.0')).toBe(1);
   });
 
   it('reports a pack that is not installed at all', () => {

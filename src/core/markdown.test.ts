@@ -74,6 +74,15 @@ describe('escaping', () => {
     expect(inertMarkup('<a href="javascript:alert(1)">x</a>').attributes).toHaveLength(1);
   });
 
+  it('cannot have its code-span placeholder forged', () => {
+    // The placeholder is a NUL, and text that carried one used to address the
+    // code array directly: "\0 0 \0" came back as <code>undefined</code>.
+    const forged = `a ${String.fromCharCode(0)}0${String.fromCharCode(0)} b`;
+    expect(escapeHtml(forged)).toBe('a 0 b');
+    expect(renderMarkdown(forged)).toBe('<p>a 0 b</p>');
+    expect(renderMarkdown(forged)).not.toContain('undefined');
+  });
+
   it('leaves a rejected link visible as text rather than dropping it', () => {
     // Silently swallowing it would leave the author thinking the link worked.
     expect(renderMarkdown('[click](javascript:alert(1))')).toContain('[click]');
@@ -115,6 +124,23 @@ describe('inline', () => {
     expect(html).toBe(
       '<a href="https://example.org" target="_blank" rel="noreferrer noopener"><strong>Gombrich</strong></a>',
     );
+  });
+
+  it('keeps a bracket that belongs to the URL inside the href', () => {
+    // Wikipedia disambiguates with brackets, so this is the ordinary case, not
+    // an edge one: the href used to stop at the "(" and the rest leaked out.
+    const url = 'https://en.wikipedia.org/wiki/Battle_of_Lepanto_(1571)';
+    const html = renderInline(escapeHtml(`[Lepanto](${url})`));
+    expect(html).toBe(
+      `<a href="${url}" target="_blank" rel="noreferrer noopener">Lepanto</a>`,
+    );
+    expect(markdownExcerpt(`see [Lepanto](${url}) for more`)).toBe('see Lepanto for more');
+  });
+
+  it('accepts an angle-bracketed destination', () => {
+    const html = renderInline(escapeHtml('[a](<https://example.org/x_(y)>)'));
+    expect(html).toContain('href="https://example.org/x_(y)"');
+    expect(html).not.toContain('&lt;');
   });
 
   it('keeps an ampersand in a URL escaped exactly once', () => {

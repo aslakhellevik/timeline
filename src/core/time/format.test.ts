@@ -85,6 +85,18 @@ describe('never shows year 0', () => {
       formatTime(instant(-249, undefined, undefined, { granularity: 'century' }), { era: 'bce' }),
     ).toBe('3rd century BCE');
   });
+
+  it('names the two decades either side of the epoch without straddling it', () => {
+    // The 0s BC is 9 BC..1 BC and the AD 0s is AD 1..AD 9. A decade that claimed
+    // both sides formatted a first-century year as "-8s BC".
+    expect(formatTime(instant(0, undefined, undefined, { granularity: 'decade' }))).toBe('0s BC');
+    expect(formatTime(instant(-8, undefined, undefined, { granularity: 'decade' }))).toBe('0s BC');
+    expect(formatTime(instant(1, undefined, undefined, { granularity: 'decade' }))).toBe('0s');
+    expect(formatTime(instant(9, undefined, undefined, { granularity: 'decade' }))).toBe('0s');
+    expect(formatTime(instant(10, undefined, undefined, { granularity: 'decade' }))).toBe('10s');
+    expect(format('0s')).toBe('0s');
+    expect(format('0s BC')).toBe('0s BC');
+  });
 });
 
 describe('intervals', () => {

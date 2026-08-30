@@ -438,6 +438,44 @@ describe('extractTime', () => {
     expect(extractTime('caesar c. 44').ok).toBe(true);
   });
 
+  it('does not turn prose into a date', () => {
+    // Each of these came out of the parser as a confident wrong answer: the
+    // decade of a man's age, an advertisement, and a war named after a duration.
+    expect(extractTime('Gombrich in his 20s').ok).toBe(false);
+    expect(extractTime('an ad 2 page spread').ok).toBe(false);
+    expect(extractTime('the 100 years war').ok).toBe(false);
+  });
+
+  it('reads three bare digits at either end of the line, but not in the middle', () => {
+    // A quick-add date is typed first or last; a number inside a phrase belongs
+    // to the phrase. Tags and punctuation do not count as either end.
+    for (const input of ['coronation of Otto 962', '962 coronation of Otto']) {
+      const result = extractTime(input);
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(input.slice(...result.consumed)).toBe('962');
+    }
+    expect(extractTime('coronation of Otto 962 #europe').ok).toBe(true);
+    expect(extractTime('the coronation of Otto (962).').ok).toBe(true);
+    expect(extractTime('Otto 962 was crowned').ok).toBe(false);
+  });
+
+  it('still reads a small number in the middle when an era marks it', () => {
+    expect(extractTime('the 44 BC ides of March').ok).toBe(true);
+    expect(extractTime('the 250s BC in Rome').ok).toBe(true);
+    expect(extractTime('the 1180s in Rome').ok).toBe(true);
+    expect(extractTime('the 12th century in Rome').ok).toBe(true);
+  });
+
+  it('takes the rightmost of equally long candidates when asked', () => {
+    const input = 'the 1848 revolutions in Hungary 1849';
+    const left = extractTime(input);
+    const right = extractTime(input, { prefer: 'rightmost' });
+    expect(left.ok && right.ok).toBe(true);
+    if (!left.ok || !right.ok) return;
+    expect(input.slice(...left.consumed)).toBe('1848');
+    expect(input.slice(...right.consumed)).toBe('1849');
+  });
+
   it('does not match inside a longer number or word', () => {
     expect(extractTime('serial 12345678 shipped').ok).toBe(false);
     const result = extractTime('order A1969B');

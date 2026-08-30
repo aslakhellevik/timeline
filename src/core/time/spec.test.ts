@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { TimeSpec } from '../model/types';
 import { fromGregorian } from './calendar';
-import { MIN_SIGMA, compareTime, fuzzy, instant, interval, midpoint, trapezoidStats } from './spec';
+import {
+  MIN_SIGMA,
+  compareTime,
+  fuzzy,
+  instant,
+  interval,
+  isWellFormedSpec,
+  midpoint,
+  trapezoidStats,
+} from './spec';
 
 const SQRT_12 = Math.sqrt(12);
 
@@ -281,5 +290,37 @@ describe('compareTime', () => {
         expect(compareTime(x, y) + compareTime(y, x)).toBe(0);
       }
     }
+  });
+});
+
+describe('isWellFormedSpec', () => {
+  it('accepts everything the constructors produce', () => {
+    for (const spec of [
+      instant(1969, 7, 20),
+      instant(-250),
+      interval(fromGregorian(1914), fromGregorian(1919)),
+      fuzzy(0, 1, 2, 3),
+      { ...instant(1848), text: 'the year of revolutions' },
+    ]) {
+      expect(isWellFormedSpec(spec)).toBe(true);
+    }
+  });
+
+  it('rejects what only an import could hand us', () => {
+    const good = instant(1848);
+    const bad: TimeSpec[] = [
+      { ...good, a: Number.NEGATIVE_INFINITY },
+      { ...good, d: Number.NaN },
+      { ...good, sigma: 0 },
+      { ...good, sigma: Number.POSITIVE_INFINITY },
+      { ...good, b: good.d + 1 }, // out of order
+      { ...good, mode: 'moment' as TimeSpec['mode'] },
+      { ...good, calendar: 'mayan' as TimeSpec['calendar'] },
+      { ...good, granularity: 'fortnight' as TimeSpec['granularity'] },
+      { ...good, a: '0' as unknown as number },
+    ];
+    for (const spec of bad) expect(isWellFormedSpec(spec)).toBe(false);
+    expect(isWellFormedSpec(null)).toBe(false);
+    expect(isWellFormedSpec(undefined)).toBe(false);
   });
 });

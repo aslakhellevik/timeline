@@ -22,9 +22,18 @@ export {
   toGregorian,
 } from './calendar';
 
-export { MIN_SIGMA, compareTime, fuzzy, instant, interval, midpoint, trapezoidStats } from './spec';
+export {
+  MIN_SIGMA,
+  compareTime,
+  fuzzy,
+  instant,
+  interval,
+  isWellFormedSpec,
+  midpoint,
+  trapezoidStats,
+} from './spec';
 
 export { extractTime, parseTime } from './parse';
-export type { ParseResult } from './parse';
+export type { ExtractOptions, ParseResult } from './parse';
 
 export { formatTime } from './format';

@@ -29,11 +29,14 @@ const ESCAPES: Readonly<Record<string, string>> = {
   '>': '&gt;',
   '"': '&quot;',
   "'": '&#39;',
+  // Dropped, not escaped: NUL is the code-span placeholder below, and leaving it
+  // in the text would let a note forge one and address the code array itself.
+  '\u0000': '',
 };
 
 /** The single chokepoint. Everything entering the output passes through here. */
 export function escapeHtml(text: string): string {
-  return text.replace(/[&<>"']/g, (char) => ESCAPES[char] as string);
+  return text.replace(/[&<>"'\u0000]/g, (char) => ESCAPES[char] as string);
 }
 
 /**
@@ -59,8 +62,20 @@ function safeHref(url: string): string | null {
 // Inline
 // ---------------------------------------------------------------------------
 
-/** A character that cannot appear in escaped input, so it cannot be forged. */
+/** A character `escapeHtml` strips from the input, so it cannot be forged. */
 const PLACEHOLDER = '\u0000';
+
+/**
+ * `[label](destination)`, with an optional `"title"` after the destination.
+ *
+ * The destination is either angle-bracketed — already escaped to `&lt;…&gt;` by
+ * the time this runs — or bare, in which case it may carry one level of balanced
+ * parentheses. That level is not pedantry: Wikipedia disambiguates with brackets
+ * (`…/Battle_of_Lepanto_(1571)`), and stopping at the first `(` cut the href in
+ * half and left the tail of the URL sitting in the prose.
+ */
+const LINK =
+  /\[([^\]]*)\]\(\s*(?:&lt;([^\n]*?)&gt;|((?:[^()\s]|\([^()\s]*\))+))(?:\s+&quot;[^)]*&quot;)?\s*\)/g;
 
 /**
  * Inline spans, over already-escaped text.
@@ -79,9 +94,9 @@ export function renderInline(escaped: string): string {
   // Links before emphasis, so `[**a**](url)` puts the emphasis inside the anchor
   // rather than tearing the brackets apart.
   text = text.replace(
-    /\[([^\]]*)\]\(([^)\s]+)(?:\s+&quot;[^)]*&quot;)?\)/g,
-    (whole, label: string, url: string) => {
-      const href = safeHref(unescapeHtml(url));
+    LINK,
+    (whole, label: string, angle: string | undefined, bare: string | undefined) => {
+      const href = safeHref(unescapeHtml(angle ?? bare ?? ''));
       if (href === null) return whole;
       return `<a href="${escapeHtml(href)}" target="_blank" rel="noreferrer noopener">${label}</a>`;
     },
@@ -265,7 +280,8 @@ export function markdownExcerpt(source: string, limit = 120): string {
   const plain = source
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/`([^`]*)`/g, '$1')
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    // Balanced parens here too, or a Wikipedia link leaves a stray bracket behind.
+    .replace(/!?\[([^\]]*)\]\((?:[^()\s]|\([^()\s]*\))*\)/g, '$1')
     .replace(/^[\s>#*+-]+/gm, '')
     .replace(/[*_]{1,2}/g, '')
     .replace(/\s+/g, ' ')

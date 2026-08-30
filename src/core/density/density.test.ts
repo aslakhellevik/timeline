@@ -321,6 +321,22 @@ describe('degenerate inputs', () => {
     expect(result.total).toBeCloseTo(1, 6);
     expect(result.lambdaMax).toBeGreaterThan(0);
   });
+
+  it('skips a spec with a non-finite bound rather than losing the whole grid', () => {
+    // The grid is prefix-summed, so one NaN spreads across every cell after it
+    // and the view goes blank. The store rejects such a spec on import
+    // (`isWellFormedSpec`); this is the backstop behind that.
+    const good = instant(1850, 6, 15);
+    for (const broken of [
+      { ...good, a: Number.NEGATIVE_INFINITY },
+      { ...good, d: Number.POSITIVE_INFINITY },
+      { ...good, a: Number.NaN, d: Number.NaN },
+    ]) {
+      const result = computeDensity([broken, instant(1860)], view(1800, 1900));
+      expect([...result.lambda].every(Number.isFinite)).toBe(true);
+      expect(result.total).toBeCloseTo(1, 6);
+    }
+  });
 });
 
 describe('display scaling', () => {

@@ -125,6 +125,11 @@ export function computeDensity(
     : (t: Days) => ((t - viewport.start) / dt + padPx) * supersample;
 
   for (const spec of specs) {
+    // A single non-finite bound would prefix-sum into NaN across the whole grid
+    // and blank the view. The store rejects such a spec on the way in
+    // (`isWellFormedSpec`); this is the backstop, and it costs two comparisons.
+    if (!Number.isFinite(spec.a) || !Number.isFinite(spec.d)) continue;
+
     const a = toCell(spec.a);
     const d = toCell(spec.d);
     if (d <= 0 || a >= cells) continue;

@@ -13,7 +13,7 @@
  * as zooming the timeline resolves mass into events.
  */
 
-import type { Id, TimelineEvent } from '../model/types';
+import type { TimelineEvent } from '../model/types';
 import type { Point } from './projection';
 import { locate } from './regions';
 
@@ -93,15 +93,4 @@ export function clusterEvents(
   // Largest first, so the small dots are drawn on top and stay clickable.
   clusters.sort((a, b) => b.events.length - a.events.length);
   return clusters;
-}
-
-/** Which placeable region tags a set of events actually uses, for the legend. */
-export function usedRegions(events: readonly TimelineEvent[]): Set<Id> {
-  const used = new Set<Id>();
-  for (const event of events) {
-    const placed = locate(event.place, event.tags);
-    if (!placed) continue;
-    for (const tag of event.tags) used.add(tag);
-  }
-  return used;
 }

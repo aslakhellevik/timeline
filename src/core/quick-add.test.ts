@@ -93,6 +93,28 @@ describe('parseQuickAdd', () => {
       expect(draft.title).toBe('chapter 12 notes on Rome');
     });
 
+    it('leaves prose that merely contains a number alone', () => {
+      // Every one of these was read as a date once: a man's age, an
+      // advertisement, and a war named after how long it lasted.
+      for (const input of ['Gombrich in his 20s', 'an ad 2 page spread', 'the 100 years war']) {
+        const draft = parseQuickAdd(input);
+        expect(draft.when, input).toBeNull();
+        expect(draft.title, input).toBe(input);
+      }
+    });
+
+    it('reads three bare digits at either end, where a date is actually typed', () => {
+      for (const input of ['coronation of Otto 962', '962 coronation of Otto']) {
+        const draft = parseQuickAdd(input);
+        expect(yearOf(draft), input).toBe(962);
+        expect(draft.title, input).toBe('coronation of Otto');
+      }
+      // Tags do not count as an end: they are cut out before the date is looked for.
+      const tagged = parseQuickAdd('coronation of Otto 962 #europe');
+      expect(yearOf(tagged)).toBe(962);
+      expect(tagged.title).toBe('coronation of Otto');
+    });
+
     it('reports no date rather than guessing', () => {
       const draft = parseQuickAdd('the treaty of Tarnogol');
       expect(draft.when).toBeNull();
@@ -241,6 +263,20 @@ describe('parseQuickAdd', () => {
         expect(yearOf(draft)).toBe(1571);
       }
     });
+  });
+
+  it('stays fast on a pasted page', () => {
+    // The box parses on every keystroke, and a paste is one keystroke. Finding
+    // the date used to rescan the remainder after every hit, which is quadratic
+    // in the number of dates: 574 ms for this input, against a 16 ms frame.
+    const line = 'the fall of X 1453, the war 1914-1918, c. 1200 BC and 20 July 1969. ';
+    const input = line.repeat(180);
+    expect(input.length).toBeGreaterThan(12000);
+    const started = performance.now();
+    const draft = parseQuickAdd(input);
+    const elapsed = performance.now() - started;
+    expect(draft.when).not.toBeNull();
+    expect(elapsed).toBeLessThan(50);
   });
 
   it('never throws, whatever is half-typed into the box', () => {

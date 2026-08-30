@@ -216,6 +216,29 @@ describe('searchEvents', () => {
       expect(cold).toBeLessThan(600);
       expect(perQuery).toBeLessThan(120);
     });
+
+    it('does not re-fold when handed a fresh array of the same events', () => {
+      // What the app actually does: it filters the store, so every keystroke
+      // arrives as a *new array of the same records*. Cached against the array
+      // alone, that cached nothing — 85 of the 96 ms per keystroke went on
+      // re-folding text that had already been folded.
+      const big = generateTimeline({ events: 50000, connections: 0, eras: 0, seed: 4 }).events;
+      const queries = ['tarnogol', 'treaty of', 'podcast', 'lepnto', 'kaltheim annals'];
+      searchEvents([...big], 'tarnogol', { tagNames });
+
+      const time = (run: (q: string) => void): number => {
+        const started = performance.now();
+        for (const q of queries) run(q);
+        return (performance.now() - started) / queries.length;
+      };
+      const reused = time((q) => void searchEvents(big, q, { tagNames }));
+      const fresh = time((q) => void searchEvents(big.filter(() => true), q, { tagNames }));
+
+      // Compared against the reused-array cost rather than against a number, so
+      // the assertion means the same thing on any machine. Measured: about equal
+      // with the record cache, twice as slow without it.
+      expect(fresh).toBeLessThan(reused * 1.5 + 10);
+    });
   });
 });
 

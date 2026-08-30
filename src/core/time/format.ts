@@ -64,7 +64,8 @@ function yearLabel(year: number, era: EraStyle): string {
 
 function decadeLabel(year: number, era: EraStyle): string {
   const [start] = decadeYears(year);
-  if (start > 0) return `${start}s`;
+  // The AD 0s starts at AD 1, not at a year 0, so it is named from its floor.
+  if (start >= 1) return `${Math.floor(start / 10) * 10}s`;
   // The BC decade starting at astronomical `start` is named for its last year.
   return `${-start - 8}s ${era === 'bce' ? 'BCE' : 'BC'}`;
 }

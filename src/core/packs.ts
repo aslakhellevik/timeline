@@ -24,6 +24,7 @@ import type {
   TimelineEvent,
 } from './model/types';
 import { BUILTIN_TAGS } from './model/builtin-tags';
+import { nowIso } from './model/ids';
 
 /**
  * A bundle as authored.
@@ -105,7 +106,7 @@ export interface PackDocument {
  * clears.
  */
 export function expandPack(bundle: PackBundle, options: InstallOptions = {}): PackDocument {
-  const now = options.now ?? new Date().toISOString();
+  const now = options.now ?? nowIso();
   const stamp = { created_at: now, updated_at: now, pack: bundle.id };
 
   const events = bundle.events.map(({ key, ...rest }): TimelineEvent => ({
@@ -140,9 +141,20 @@ export function expandPack(bundle: PackBundle, options: InstallOptions = {}): Pa
     ];
   });
 
+  // Ancestors count as referenced. A WWII event tagged German lands is meant to
+  // answer a filter on Europe (D14 rollup), and on a timeline that has never
+  // materialised the premade set, emitting the child without its parent leaves
+  // Europe pointing at nothing — the two-Europes failure D20 exists to prevent.
+  const parentOf = new Map(BUILTIN_TAGS.map((tag) => [tag.id, tag.parent]));
   const referenced = new Set<Id>();
   for (const record of [...events, ...eras, ...connections]) {
-    for (const tag of record.tags) referenced.add(tag);
+    for (const tag of record.tags) {
+      let current: Id | undefined = tag;
+      while (current !== undefined && !referenced.has(current)) {
+        referenced.add(current);
+        current = parentOf.get(current);
+      }
+    }
   }
   const tags = BUILTIN_TAGS.filter((tag) => referenced.has(tag.id)).map(
     (tag): Tag => ({ ...tag, created_at: now, updated_at: now }),
@@ -260,6 +272,26 @@ export interface PackSummary {
   connections: number;
 }
 
+/**
+ * Compares dotted version numbers: `-1`, `0` or `1`. Deliberately not semver in
+ * full — pack versions are `1`, `1.2`, `1.2.3`, a missing part counts as zero,
+ * and anything non-numeric falls back to comparing the strings, which at least
+ * keeps the order total. Enough to tell an upgrade from a downgrade, which mere
+ * inequality cannot: shipping an app with an older bundle than the one already
+ * installed used to offer "upgrade" and then quietly walk the pack backwards.
+ */
+export function compareVersions(a: string, b: string): number {
+  const left = a.split('.');
+  const right = b.split('.');
+  for (let i = 0; i < Math.max(left.length, right.length); i++) {
+    const x = Number.parseInt(left[i] ?? '0', 10);
+    const y = Number.parseInt(right[i] ?? '0', 10);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return a < b ? -1 : a > b ? 1 : 0;
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  return 0;
+}
+
 /** What the pack panel shows: the catalogue, annotated with what is installed. */
 export function summarise(timeline: Timeline, catalogue: readonly PackBundle[]): PackSummary[] {
   return catalogue.map((bundle) => {
@@ -267,7 +299,7 @@ export function summarise(timeline: Timeline, catalogue: readonly PackBundle[]):
     return {
       bundle,
       installed,
-      upgradable: installed !== undefined && installed.version !== bundle.version,
+      upgradable: installed !== undefined && compareVersions(installed.version, bundle.version) < 0,
       events: bundle.events.length,
       eras: (bundle.eras ?? []).length,
       connections: (bundle.connections ?? []).length,

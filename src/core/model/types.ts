@@ -193,6 +193,4 @@ export interface Filter {
   tags: Id[];
   /** Whether pack-sourced records contribute (D5). */
   includePacks: boolean;
-  /** Free-text search, matched by the search module. */
-  query?: string;
 }

@@ -144,9 +144,11 @@ export function tagUsage(timeline: Timeline, includePacks = true): TagUsage[] {
     if (event.pack && !includePacks) continue;
 
     // Deduped across the event's tags: something tagged both Norway and Europe
-    // must not count twice towards Europe.
+    // must not count twice towards Europe. The event's own list is deduped too —
+    // an import can hand us the same id twice, and `own` counting it once more
+    // than `total` did put a tag's direct count above the count that includes it.
     const rolled = new Set<Id>();
-    for (const tag of event.tags) {
+    for (const tag of new Set(event.tags)) {
       own.set(tag, (own.get(tag) ?? 0) + 1);
       for (const ancestor of ancestry.get(tag) ?? [tag]) rolled.add(ancestor);
     }

@@ -5,7 +5,7 @@
  * and testable without a canvas, the same as `time` and `density`.
  */
 
-export { PROJECTED_HALF_HEIGHT, PROJECTED_HALF_WIDTH, distanceKm, lonDelta, project, unproject } from './projection';
+export { PROJECTED_HALF_HEIGHT, PROJECTED_HALF_WIDTH, project, unproject } from './projection';
 export type { LonLat, Point } from './projection';
 export { landRings } from './land';
 export type { Ring } from './land';

@@ -23,7 +23,7 @@
  */
 
 import type { Id, TimeSpec, TimelineEvent } from './model/types';
-import { DAYS_PER_YEAR, midpoint } from './time';
+import { DAYS_PER_YEAR, compareTime, midpoint } from './time';
 
 export interface SearchHit {
   event: TimelineEvent;
@@ -121,20 +121,22 @@ function foldEvent(event: TimelineEvent): FoldedEvent {
 }
 
 /**
- * Folded text for a whole corpus, cached against the array it came from.
+ * Folded text, cached **per event record** and, as a fast path, per array.
  *
- * A `WeakMap` keyed by each *event* is the obvious shape and is the wrong one:
- * measured at 50k records it costs around 400 ns per lookup, which is most of a
- * keystroke's budget spent before any matching happens. Keyed by the array
- * instead, it costs one lookup per search and the per-event check becomes an
- * identity comparison.
+ * The per-array cache was here alone, on the theory that one lookup per search
+ * beats one per event. It is a real saving and it is kept — but on its own it
+ * cached nothing at all in the app, because the caller filters the store and so
+ * hands a *fresh array of the same events* on every keystroke. Every search
+ * re-folded the whole corpus: 96 ms per keystroke at 50k events, of which 85 ms
+ * was work already done. The record-level `WeakMap` is what survives that, and
+ * it costs a hash lookup only where the array slot misses.
  *
- * Staleness is handled by that same comparison rather than by invalidation:
- * every entry remembers the record it was built from, so an edited event — the
- * store replaces records rather than mutating them — simply re-folds on the next
- * search. Nothing has to remember to clear anything.
+ * Staleness needs no invalidation. Both caches are keyed by object identity and
+ * the store replaces records rather than mutating them, so an edited event is a
+ * new object that simply folds again. Nothing has to remember to clear anything.
  */
 const corpusCache = new WeakMap<readonly TimelineEvent[], FoldedEvent[]>();
+const recordCache = new WeakMap<TimelineEvent, FoldedEvent>();
 
 function foldedCorpus(events: readonly TimelineEvent[]): FoldedEvent[] {
   const cached = corpusCache.get(events);
@@ -150,7 +152,13 @@ function foldedCorpus(events: readonly TimelineEvent[]): FoldedEvent[] {
 function foldedAt(folded: FoldedEvent[], event: TimelineEvent, index: number): FoldedEvent {
   const cached = folded[index];
   if (cached !== undefined && cached.event === event) return cached;
+  const shared = recordCache.get(event);
+  if (shared !== undefined) {
+    folded[index] = shared;
+    return shared;
+  }
   const fresh = foldEvent(event);
+  recordCache.set(event, fresh);
   folded[index] = fresh;
   return fresh;
 }
@@ -327,8 +335,7 @@ export function searchEvents(
   hits.sort(
     (x, y) =>
       y.score - x.score ||
-      x.event.when.b - y.event.when.b ||
-      x.event.when.a - y.event.when.a ||
+      compareTime(x.event.when, y.event.when) ||
       compareStrings(x.event.title, y.event.title) ||
       compareStrings(x.event.id, y.event.id),
   );
@@ -482,7 +489,7 @@ export function findPossibleDuplicates(
     (x, y) =>
       y.similarity - x.similarity ||
       x.gap - y.gap ||
-      x.event.when.b - y.event.when.b ||
+      compareTime(x.event.when, y.event.when) ||
       compareStrings(x.event.title, y.event.title) ||
       compareStrings(x.event.id, y.event.id),
   );

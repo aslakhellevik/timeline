@@ -159,16 +159,22 @@ export function isValidCivilDate(
  * are named the same way but counted in BC years, so "the 250s BC" is
  * 259..250 BC, i.e. astronomical -258..-249. Year 0 (1 BC) is therefore in
  * the 0s BC, not in an AD decade.
+ *
+ * The two decades either side of the epoch are nine years long, not ten: there
+ * is no year 0 in the reader's numbering, so the 0s BC runs 9 BC..1 BC and the
+ * AD 0s runs AD 1..AD 9. Letting either span the full ten would make them
+ * overlap, and a decade that claims a year belonging to the other era formats
+ * under the wrong one.
  */
 export function decadeYears(year: number): [number, number] {
   if (year > 0) {
     const start = Math.floor(year / 10) * 10;
-    return [start, start + 10];
+    return [Math.max(start, 1), start + 10];
   }
   const bc = 1 - year; // BC year number, >= 1
   const label = Math.floor(bc / 10) * 10;
   const start = 1 - (label + 9);
-  return [start, start + 10];
+  return [start, Math.min(start + 10, 1)];
 }
 
 /**

@@ -95,8 +95,7 @@ interface DateMatch {
  * `1914-1918` beats `1914` — but it breaks a tie between equally long candidates
  * by taking the leftmost. That is the wrong default *here*, because of how this
  * box is actually typed: you write down what happened and then when it happened.
- * So this walks the whole line and keeps the longest match, preferring the
- * **rightmost** of equals.
+ * So it is asked for the **rightmost** of equals instead.
  *
  * The consequence, and the rule for the ambiguous case in the brief:
  * `the 1848 revolutions in Hungary 1849` dates the event to 1849 and keeps
@@ -105,26 +104,15 @@ interface DateMatch {
  * the capture box is built around. The quick-add UI shows the parsed date back,
  * so the rare wrong guess is visible before it is saved.
  *
- * Scanning by successive slices is safe: `extractTime` will not end a match
- * inside a word or a number, so a slice never begins mid-token and cannot invent
- * a date the whole string does not contain.
+ * One call, not one per candidate: this used to rescan the remainder after every
+ * hit, which is quadratic in the number of dates and cost half a second on a
+ * pasted page. `extractTime` sees every candidate in its own single pass anyway.
  */
 function findDate(text: string): DateMatch | null {
-  let best: DateMatch | null = null;
-  let offset = 0;
-  while (offset < text.length) {
-    const found = extractTime(text.slice(offset));
-    if (!found.ok) break;
-    const [relStart, relEnd] = found.consumed;
-    const match: DateMatch = {
-      spec: found.value,
-      start: offset + relStart,
-      end: offset + relEnd,
-    };
-    if (best === null || match.end - match.start >= best.end - best.start) best = match;
-    offset = match.end;
-  }
-  return best;
+  const found = extractTime(text, { prefer: 'rightmost' });
+  if (!found.ok) return null;
+  const [start, end] = found.consumed;
+  return { spec: found.value, start, end };
 }
 
 // ---------------------------------------------------------------------------

@@ -228,7 +228,15 @@ describe('named periods', () => {
     expect(decadeYears(-258)).toEqual([-258, -248]); // 259 BC
     expect(decadeYears(-249)).toEqual([-258, -248]); // 250 BC
     expect(decadeYears(-248)).toEqual([-248, -238]); // 249 BC
-    expect(decadeYears(0)).toEqual([-8, 2]); // 1 BC sits in the 0s BC
+    expect(decadeYears(0)).toEqual([-8, 1]); // 1 BC sits in the 0s BC
+  });
+
+  it('stops the decades either side of the epoch at the era boundary', () => {
+    // 9 BC..1 BC and AD 1..AD 9: nine years each, because there is no year 0.
+    expect(decadeYears(-8)).toEqual([-8, 1]); // 9 BC
+    expect(decadeYears(1)).toEqual([1, 10]); // AD 1
+    expect(decadeYears(9)).toEqual([1, 10]);
+    expect(decadeYears(10)).toEqual([10, 20]);
   });
 
   it('counts centuries as historians do', () => {
@@ -248,11 +256,23 @@ describe('named periods', () => {
       const [ds, de] = decadeYears(year);
       expect(year).toBeGreaterThanOrEqual(ds);
       expect(year).toBeLessThan(de);
-      expect(de - ds).toBe(10);
+      // Ten years everywhere except the two that stop at the era boundary.
+      expect(de - ds).toBe(ds === -8 || ds === 1 ? 9 : 10);
       const [cs, ce] = centuryYears(year);
       expect(year).toBeGreaterThanOrEqual(cs);
       expect(year).toBeLessThan(ce);
       expect(ce - cs).toBe(100);
+    }
+  });
+
+  it('tiles the axis: each period starts exactly where the previous one ended', () => {
+    // Containment alone cannot see an overlap; this walks the joins, including
+    // the one at the epoch where two decades used to double-claim years 0 and 1.
+    for (let year = -400; year <= 400; year += 1) {
+      const [ds] = decadeYears(year);
+      expect(decadeYears(ds - 1)[1]).toBe(ds);
+      const [cs] = centuryYears(year);
+      expect(centuryYears(cs - 1)[1]).toBe(cs);
     }
   });
 });

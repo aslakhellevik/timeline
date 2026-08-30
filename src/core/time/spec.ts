@@ -143,6 +143,33 @@ export function midpoint(spec: TimeSpec): Days {
   return trapezoidStats(spec.a, spec.b, spec.c, spec.d).mean;
 }
 
+const MODES: readonly TimeMode[] = ['instant', 'interval', 'fuzzy'];
+const CALENDARS: readonly Calendar[] = ['gregorian', 'julian'];
+const GRANULARITIES: readonly Granularity[] = ['day', 'month', 'year', 'decade', 'century'];
+
+/**
+ * Whether a spec is one this code could have produced: four finite numbers in
+ * order, a positive sigma, and the three discriminators inside their vocabulary.
+ *
+ * Every constructor above guarantees this, so nothing built in the app needs
+ * checking. What needs checking is what arrives from outside — an imported file,
+ * a pack bundle, a hand-edited export. One `-Infinity` there is enough to turn
+ * the whole density grid into NaN and blank the view, with nothing on screen to
+ * say which record did it, so the boundary rejects rather than the estimator
+ * defending itself.
+ */
+export function isWellFormedSpec(spec: TimeSpec | null | undefined): boolean {
+  if (spec === null || spec === undefined || typeof spec !== 'object') return false;
+  const { a, b, c, d, sigma } = spec;
+  if (![a, b, c, d, sigma].every((n) => typeof n === 'number' && Number.isFinite(n))) return false;
+  if (!(a <= b && b <= c && c <= d)) return false;
+  if (!(sigma > 0)) return false;
+  if (!MODES.includes(spec.mode)) return false;
+  if (!CALENDARS.includes(spec.calendar)) return false;
+  if (!GRANULARITIES.includes(spec.granularity)) return false;
+  return spec.text === undefined || typeof spec.text === 'string';
+}
+
 /**
  * Sort order for the timeline: likely start, then earliest possible start
  * (design.md's sort key is `b -> a -> title -> id`). Returns 0 when both agree —

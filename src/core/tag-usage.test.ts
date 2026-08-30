@@ -66,6 +66,15 @@ describe('tagUsage', () => {
     expect(usage.get('europe')?.own).toBe(1);
   });
 
+  it('counts an event once even if its tag list repeats a tag', () => {
+    // An import can hand us the same id twice. `total` deduped and `own` did
+    // not, so a tag's direct count could exceed the count that contains it.
+    const usage = usageOf(build([event('a', ['europe', 'europe', 'norway'])]));
+    expect(usage.get('europe')?.own).toBe(1);
+    expect(usage.get('europe')?.total).toBe(1);
+    expect(usage.get('europe')?.own).toBeLessThanOrEqual(usage.get('europe')?.total ?? 0);
+  });
+
   it('keeps unrelated branches apart', () => {
     const usage = usageOf(build([event('a', ['oslo']), event('b', ['asia'])]));
     expect(usage.get('europe')?.total).toBe(1);

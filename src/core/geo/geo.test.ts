@@ -7,8 +7,6 @@ import { landRings } from './land';
 import {
   PROJECTED_HALF_HEIGHT,
   PROJECTED_HALF_WIDTH,
-  distanceKm,
-  lonDelta,
   project,
   unproject,
 } from './projection';
@@ -87,28 +85,6 @@ describe('Equal Earth projection', () => {
       expect(Number.isFinite(x)).toBe(true);
       expect(Number.isFinite(y)).toBe(true);
     }
-  });
-});
-
-describe('lonDelta', () => {
-  it('takes the short way round the date line', () => {
-    expect(lonDelta(170, -170)).toBe(20);
-    expect(lonDelta(-170, 170)).toBe(-20);
-    expect(lonDelta(10, 20)).toBe(10);
-  });
-});
-
-describe('distanceKm', () => {
-  it('matches known distances to within a percent', () => {
-    // Oslo to Paris, about 1340 km.
-    const oslo = { lon: 10.75, lat: 59.91 };
-    const paris = { lon: 2.35, lat: 48.86 };
-    expect(distanceKm(oslo, paris)).toBeGreaterThan(1300);
-    expect(distanceKm(oslo, paris)).toBeLessThan(1380);
-  });
-
-  it('is zero for a point against itself', () => {
-    expect(distanceKm({ lon: 5, lat: 5 }, { lon: 5, lat: 5 })).toBeCloseTo(0);
   });
 });
 

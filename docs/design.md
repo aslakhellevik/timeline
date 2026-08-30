@@ -55,6 +55,7 @@ map are deferred — but the data model is shaped so that none of them require a
 | D41 | The map uses **Equal Earth** — equal-area, because the view is about how much |
 | D42 | The map draws **coastlines, not borders**: borders move on the timescale the timeline covers, coastlines do not |
 | D43 | Events with no coordinates are placed by their **region tag**, drawn with a halo at the region's true radius |
+| D44 | Tag names are matched **normalised**, and a built-in may carry aliases — a `#tag` is one word and half the premade regions are not |
 
 Conventions, settled and not worth further discussion:
 
@@ -118,6 +119,13 @@ alone lose. `1848` entered as an instant with year granularity and `1848` entere
 have the same `(a,b,c,d)` but should be edited and displayed differently.
 
 The trapezoid is what gets drawn; `sigma` is what feeds the density (§3).
+
+**As built, a period phrase is `fuzzy`, not an instant at a coarse granularity.** `12th century`
+and `1180s` name a span the event sits *somewhere in*, which is a claim about vagueness rather
+than a moment measured roughly, and the editor should offer it as one — so the parser gives them
+`fuzzy` with `granularity: 'century'` or `'decade'`. The `instant` row's "widened by
+`granularity`" still describes a typed `1848`, where the widening is the precision of the
+writing and not the shape of the claim.
 
 **There is no undated state, and none is needed.** "Something in the Song dynasty" is not a
 missing date, it is a very wide fuzzy interval — which is both true and more useful, because it
@@ -502,6 +510,19 @@ Exactly what fixed namespaced ids were meant to prevent. First run now creates t
 brings the ones it references, emitted without `pack` since they are shared and an uninstall must
 not take away a tag the user's own events also carry.
 
+**The premade names have to be typeable (D44).** D39 materialised the tags, and the fork came
+back anyway through the other end of the same pipe: a `#tag` is one word, and eight of the twenty
+premade regions are not — "Britain and Ireland", "the Nordics", "the Near East". `ensureTags`
+compared names exactly, so `#britain` and `#north-america` each invented a private tag beside the
+built-in one, and because the map places an event by its region tag, the event simply never
+appeared on the map. Names are now compared normalised — `-`, `_` and a space are the same
+character, a leading article is dropped — and a built-in may declare `aliases` for genuine
+synonyms (`#germany` for "German lands"), never for its parts, which deserve the user's own tag.
+The normalisation applies to the user's own tags too, so "Reading List" answers to
+`#reading-list`. A name that means a premade tag now materialises that tag at its fixed id rather
+than waiting for first run, which makes D39 a convenience rather than the thing correctness rests
+on.
+
 **Pack upgrades must not overwrite your work.** Merge-by-`id` on a newer pack version would
 otherwise clobber an event you adopted and rewrote, since the pack's `updated_at` is newer. Rule:
 a pack upgrade skips any record whose `pack` has been cleared, or whose `updated_at` is later
@@ -639,7 +660,13 @@ size a real personal timeline will reach for years, and roughly one frame at the
 The cost is the scan itself, not the sorting or the fuzzy path — capping results barely moves it —
 so the next step, if it is ever needed, is an inverted index rather than a smarter scan. Folded
 text is cached against the event array, which is what keeps the scan to one pass over already-
-lowercased strings.
+lowercased strings — and, since the caller filters the store and so hands over a *fresh array of
+the same records* on every keystroke, against each event record as well. The array cache alone
+cached nothing in the app: 85 of the 96 ms a keystroke cost at 50k events went on re-folding text
+that had already been folded.
+
+The fuzzy path is a subsequence match, so it forgives a dropped or an extra letter — `lepnto`
+finds Lepanto — but not a transposition: `seige` does not find `siege`.
 
 Search doubles as the event picker in the connection flow (M3) and as the target for a command
 palette later.

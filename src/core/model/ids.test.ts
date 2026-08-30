@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isBuiltinId, nowIso, uuidv7 } from './ids';
-import { BUILTIN_TAGS, tagAncestry } from './builtin-tags';
+import { BUILTIN_TAGS, builtinTagByName, normaliseTagName } from './builtin-tags';
 
 describe('uuidv7', () => {
   it('has the right shape, version and variant', () => {
@@ -49,16 +49,36 @@ describe('builtin tags', () => {
     }
   });
 
-  it('rolls a nested region up to its ancestors', () => {
-    expect(tagAncestry('tag.region.norway')).toEqual([
-      'tag.region.norway',
-      'tag.region.nordics',
-      'tag.region.europe',
-    ]);
+  it('can be typed as a single quick-add word (D44)', () => {
+    // A tag is entered as `#one-word`, so a premade tag nobody can type is a
+    // premade tag nobody uses — and its events never reach the map.
+    const QUICK_ADD_TAG = /^[\p{L}\p{N}_]+(?:-[\p{L}\p{N}_]+)*$/u;
+    for (const tag of BUILTIN_TAGS) {
+      const typed = normaliseTagName(tag.name).replace(/ /g, '-');
+      expect(QUICK_ADD_TAG.test(typed), typed).toBe(true);
+      expect(builtinTagByName(typed)?.id, typed).toBe(tag.id);
+    }
   });
 
-  it('returns an unknown tag unchanged', () => {
-    expect(tagAncestry('tag.user.whatever')).toEqual(['tag.user.whatever']);
+  it('resolves a typed name to the premade tag it means', () => {
+    expect(builtinTagByName('#britain'.slice(1))?.id).toBe('tag.region.britain');
+    expect(builtinTagByName('nordics')?.id).toBe('tag.region.nordics');
+    expect(builtinTagByName('near-east')?.id).toBe('tag.region.near-east');
+    expect(builtinTagByName('North_America')?.id).toBe('tag.region.north-america');
+    expect(builtinTagByName('the Nordics')?.id).toBe('tag.region.nordics');
+    expect(builtinTagByName('WAR')?.id).toBe('tag.theme.war');
+    expect(builtinTagByName('atlantis')).toBeUndefined();
+  });
+
+  it('has no two tags answering to the same spelling', () => {
+    const seen = new Set<string>();
+    for (const tag of BUILTIN_TAGS) {
+      for (const spelling of [tag.name, ...(tag.aliases ?? [])]) {
+        const key = normaliseTagName(spelling);
+        expect(seen.has(key), key).toBe(false);
+        seen.add(key);
+      }
+    }
   });
 });
 

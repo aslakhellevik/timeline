@@ -103,32 +103,3 @@ function clampLat(lat: number): number {
   return Math.max(-89.99, Math.min(89.99, lat));
 }
 
-/**
- * Shortest signed longitude difference, in degrees.
- *
- * Needed because the map wraps: Kamchatka and Alaska are neighbours, and a naive
- * subtraction puts them 340° apart.
- */
-export function lonDelta(from: number, to: number): number {
-  let delta = (to - from) % 360;
-  if (delta > 180) delta -= 360;
-  if (delta < -180) delta += 360;
-  return delta;
-}
-
-/**
- * Great-circle distance in kilometres, by the haversine formula.
- *
- * Used to decide whether two events are near enough to cluster into one dot.
- */
-export function distanceKm(a: LonLat, b: LonLat): number {
-  const R = 6371;
-  const dLat = (b.lat - a.lat) * RADIANS;
-  const dLon = lonDelta(a.lon, b.lon) * RADIANS;
-  const lat1 = a.lat * RADIANS;
-  const lat2 = b.lat * RADIANS;
-
-  const h =
-    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
-}

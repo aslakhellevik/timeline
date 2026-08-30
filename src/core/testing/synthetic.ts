@@ -47,7 +47,7 @@ import type {
   TimelineEvent,
   TimeSpec,
 } from '../model/types';
-import { fromGregorian, fuzzy, instant, interval, toGregorian } from '../time';
+import { compareTime, fromGregorian, fuzzy, instant, interval, toGregorian } from '../time';
 
 // ---------------------------------------------------------------------------
 // Options and PRNG
@@ -1185,7 +1185,7 @@ function generateEras(rng: Rng, count: number): Era[] {
     };
   });
 
-  eras.sort((x, y) => x.when.b - y.when.b || x.when.a - y.when.a || compareStrings(x.name, y.name));
+  eras.sort((x, y) => compareTime(x.when, y.when) || compareStrings(x.name, y.name));
   return eras;
 }
 
@@ -1233,7 +1233,7 @@ export function generateTimeline(options: SyntheticOptions = {}): Timeline {
 
   // Sort before assigning ids, so ev-0001 is the earliest event and the ids read in
   // timeline order when debugging. Sort key per §1: b → a → title → id.
-  drafts.sort((x, y) => x.when.b - y.when.b || x.when.a - y.when.a || compareStrings(x.title, y.title));
+  drafts.sort((x, y) => compareTime(x.when, y.when) || compareStrings(x.title, y.title));
 
   const events: TimelineEvent[] = drafts.map((d, i) => ({
     id: seqId('ev', i, drafts.length),
