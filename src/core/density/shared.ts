@@ -34,7 +34,22 @@ export interface DensityResult {
   total: number;
 }
 
-export const DEFAULT_BETA = 5;
+/**
+ * Kernel bandwidth in pixels — β in §3.1.
+ *
+ * Three, not the design's five. β and the height exponent `p` cannot be chosen
+ * independently: the drawn hill is `λ^p`, and raising a Gaussian to the power
+ * `p` widens it by exactly `√(1/p)`, so at `p = 1/3` every feature reaches the
+ * eye √3 ≈ 1.73 times wider than the density says it is. Measured against the
+ * synthetic corpus, a lone day-granularity event at β = 5 painted a hill 30 px
+ * across — 107 years at full extent, for something that happened on a Tuesday.
+ *
+ * Three keeps a lone event's peak at `1/(β√2π) = 0.133`, comfortably under the
+ * 0.25 floor of the crossfade, so an isolated event still dissolves into a mark
+ * rather than sitting there as a permanent bump; and the far view stays an
+ * order of magnitude smoother than the width at which the grid starts to comb.
+ */
+export const DEFAULT_BETA = 3;
 export const DEFAULT_LAMBDA_REF = 8;
 export const DEFAULT_SUPERSAMPLE = 4;
 

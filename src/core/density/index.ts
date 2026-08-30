@@ -226,12 +226,71 @@ export function heightFraction(
 }
 
 /**
+ * Width the corpus is measured at when calibrating. Arbitrary: the result is a
+ * rate, and `calibrateRate` divides the width back out again.
+ */
+const CALIBRATION_WIDTH = 1600;
+
+/**
+ * Headroom over the corpus peak, so the tallest hill does not sit flush against
+ * the top of the frame — or, worse, get clipped flat across it.
+ */
+export const MASS_HEADROOM = 1.3;
+
+/**
+ * The corpus peak, as **events per day** rather than events per pixel (§3.4).
+ *
+ * A rate is a property of the data. λ is not: it counts events in a *pixel
+ * column*, so it scales with `span / width` and a λ calibrated at one canvas
+ * width is simply wrong at another. Measured on the 800-event corpus, a λ_ref
+ * fixed at 1600 px left eleven columns saturated at 1100 px and seventeen at
+ * 390 px — two different centuries drawn at exactly the same height, which is
+ * the one thing the far view promises never happens.
+ */
+export function calibrateRate(
+  specs: readonly TimeSpec[],
+  extent: { start: Days; end: Days },
+): number {
+  const span = extent.end - extent.start;
+  if (!(span > 0) || specs.length === 0) return 0;
+
+  const { lambdaMax } = computeDensity(specs, { ...extent, width: CALIBRATION_WIDTH });
+  return (lambdaMax * CALIBRATION_WIDTH) / span;
+}
+
+/**
+ * The λ that counts as full height, for a canvas of `width` showing a corpus
+ * spanning `span` days.
+ *
+ * Derived per frame from the rate, which is what makes the drawing honest at
+ * every canvas size. `span` is the **corpus** extent, not the viewport: §3.4's
+ * scale is fixed with respect to the viewport, so panning and zooming shrink
+ * the hills rather than re-ranging under them, and a sparse stretch of history
+ * honestly looks sparse.
+ */
+export function lambdaRefFor(
+  rateRef: number,
+  span: number,
+  width: number,
+  headroom: number = MASS_HEADROOM,
+): number {
+  if (!(rateRef > 0) || !(span > 0) || !(width > 0)) return DEFAULT_LAMBDA_REF;
+  return (rateRef * span * headroom) / width;
+}
+
+/**
  * Opacity of the far (mass) view during the semantic-zoom crossfade (§3.4).
  *
  * Driven by the same λ as the height, so there is one scalar governing the whole
  * transition and no zoom thresholds to tune. Individual marks fade in as this
  * fades out: above one event per pixel there is nothing to draw individually,
  * below a quarter there is no mass worth drawing.
+ *
+ * Both canvas renderers feed it a **local** λ — per row in the depth view, per
+ * column in the flat one (D35, D50). One number for the whole frame is a
+ * different claim, and a false one: it says the frame is dense because its
+ * busiest column is, so a lone event in 400 BC stays dissolved for as long as
+ * the twentieth century is on screen with it.
  */
 export function farViewOpacity(lambdaMax: number): number {
   const lo = 0.25;

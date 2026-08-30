@@ -20,9 +20,17 @@ export interface Tick {
   major: boolean;
 }
 
-/** Round year steps. Decimal-ish, but with the 25/250 rungs history actually uses. */
+/**
+ * Round year steps. Decimal-ish, but with the 25/250 rungs history actually
+ * uses.
+ *
+ * The rungs above 500 are close together on purpose. A 1000 → 2500 jump is a
+ * 2.5× change in tick count, and a five-thousand-year corpus lands squarely in
+ * it: asking for one tick per 625 years gives 1000, which is five ticks across
+ * the whole of history, and there is nothing between that and twelve.
+ */
 const YEAR_STEPS = [
-  1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10_000, 25_000, 50_000, 100_000,
+  1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 2500, 5000, 10_000, 25_000, 50_000, 100_000,
 ] as const;
 
 const MONTH_STEPS = [1, 3, 6] as const;
@@ -56,7 +64,20 @@ function pickStep<T extends number>(steps: readonly T[], wanted: number): T {
   return steps[steps.length - 1] as T;
 }
 
-export function generateTicks(vp: Viewport, minSpacingPx = 90): Tick[] {
+/**
+ * Minimum room between ticks, for a canvas of `width`.
+ *
+ * A flat 90 px is a desktop number, and on a phone it is most of the axis: at
+ * 390 px it allows four ticks, of which the edge cases then eat all but one. A
+ * label is around 45 px wide, so 56 is the floor at which two can stand next to
+ * each other, and the sixth-of-the-width term keeps a wide canvas from becoming
+ * a ruler.
+ */
+export function tickSpacingFor(width: number): number {
+  return Math.max(56, Math.min(90, width / 6));
+}
+
+export function generateTicks(vp: Viewport, minSpacingPx = tickSpacingFor(vp.width)): Tick[] {
   const span = vp.end - vp.start;
   if (!(span > 0) || !(vp.width > 0)) return [];
 

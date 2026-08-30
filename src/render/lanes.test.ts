@@ -219,3 +219,44 @@ describe('hitTestLanes', () => {
     expect(hitTestLanes(vague, 550, 505, 500, 10)).toBeNull();
   });
 });
+
+describe('label reservation', () => {
+  // A bar is never widened to fit its name — the width is a claim about how
+  // long something lasted — so a name too long for its bar is set beside it,
+  // and the room that takes has to be held against the next era in the row.
+  const measure = (name: string) => name.length * 6;
+
+  it('marks a name that will not fit inside its bar', () => {
+    const { bars } = layout([era('short', 0, 20), era('roomy', 200, 800)], 1000, {
+      labelWidth: (e) => measure(e.name),
+    });
+    expect(bars.find((bar) => bar.era.id === 'short')?.labelOutside).toBe(true);
+    expect(bars.find((bar) => bar.era.id === 'roomy')?.labelOutside).toBe(false);
+  });
+
+  it('holds the room an outside name takes, so the next era clears it', () => {
+    // "short" is 20 px of bar with 30 px of name beside it; "next" starts at 40,
+    // which clears the bar and lands on the text.
+    const withoutLabels = layout([era('short', 0, 20), era('next', 40, 200)]);
+    expect(withoutLabels.bars.map((bar) => bar.lane)).toEqual([0, 0]);
+
+    const withLabels = layout([era('short', 0, 20), era('next', 40, 200)], 1000, {
+      labelWidth: () => 30,
+    });
+    expect(withLabels.bars.map((bar) => bar.lane)).toEqual([0, 1]);
+  });
+
+  it('leaves the geometry alone: only the row allocation changes', () => {
+    const [plain] = layout([era('a', 100, 400)]).bars;
+    const [labelled] = layout([era('a', 100, 400)], 1000, { labelWidth: () => 500 }).bars;
+    expect(labelled?.x1).toBe(plain?.x1);
+    expect(labelled?.x2).toBe(plain?.x2);
+    expect(labelled?.labelWidth).toBe(500);
+  });
+
+  it('asks for nothing when the caller cannot measure text', () => {
+    const [bar] = layout([era('a', 100, 400)]).bars;
+    expect(bar?.labelWidth).toBe(0);
+    expect(bar?.labelOutside).toBe(false);
+  });
+});

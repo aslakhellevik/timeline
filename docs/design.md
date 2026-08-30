@@ -59,6 +59,11 @@ map are deferred — but the data model is shaped so that none of them require a
 | D45 | Uninstalling a pack **tombstones the user's own connections** into departing events, though it still hard-removes the pack's own (D37 is about pack records) |
 | D46 | Import **validates every record** and **clamps absurd future timestamps**, reversing §8.7's decision to leave both out of v1 |
 | D47 | An export is recorded as an **export**, never as a backup: the app hands the browser a file and never learns whether it was saved |
+| D48 | The mass scale is calibrated as a **rate**, and turned into a λ for whatever width the frame is drawn at |
+| D49 | Event marks are drawn as their **trapezoid**, like eras; an instant stays a hairline whatever its granularity |
+| D50 | The flat view's semantic zoom is **per column**, not one number for the frame — D35 for the canvas |
+| D51 | The kernel bandwidth is **β = 3 px**: β and the height exponent `p` cannot be chosen independently |
+| D52 | The pannable frame is events **and** eras, and a stated default when there is neither |
 
 Conventions, settled and not worth further discussion:
 
@@ -210,12 +215,29 @@ where `fᵢ` is event *i*'s own temporal distribution and `K_h` is a Gaussian ke
 bandwidth is chosen **in screen space**:
 
 ```
-h = β · Δt_px          β ≈ 5 px,  Δt_px = time units per pixel
+h = β · Δt_px          β = 3 px,  Δt_px = time units per pixel
 ```
 
 This is the key trick. A screen-space bandwidth means the plot is scale-stable: zooming in
 genuinely *resolves* clumps into structure rather than stretching the same curve. "Zooming in
 dissolves the mass" is exactly `h → 0`.
+
+**β is 3, not the 5 this section first guessed (D51), and the reason is that β cannot be chosen
+without `p`.** The drawn height is `λ^p` (§3.4), and raising a Gaussian to the power `p` widens
+it by exactly `√(1/p)` — so at `p = 1/3` every feature reaches the eye **√3 ≈ 1.73 times wider
+than the density says it is**. Measured against the synthetic corpus at β = 5, a lone
+day-granularity event had a density FWHM of 13 px and a *drawn* FWHM of 21 px: thirty pixels of
+hill, a hundred and seven years at full extent, for something that happened on a Tuesday. The
+two constants are one decision, and the identity
+
+```
+drawn FWHM = √(1/p) · density FWHM
+```
+
+is what ties them. Three keeps a lone event's peak at `1/(β√2π) = 0.133`, comfortably under the
+0.25 floor of the crossfade below, so an isolated event still dissolves into a mark rather than
+sitting on the axis as a permanent bump; and the far view stays an order of magnitude smoother
+than the bandwidth at which the sub-pixel grid begins to comb.
 
 ### 3.2 Closed form
 
@@ -296,12 +318,48 @@ everything:
 
   The scale remains *fixed with respect to the viewport* — it is not re-ranged as you pan or
   zoom — so sparse regions honestly look sparse, which is the property the far view exists for.
-- **Semantic zoom:** far view while `λ_max > 1`; crossfade over `1 → 0.25`; tick marks below.
+- **Semantic zoom:** far view while `λ > 1`; crossfade over `1 → 0.25`; tick marks below.
   Tying the transition to the same quantity as the height means there is no popping and no
   arbitrary zoom thresholds to tune. Labels appear on a separate, simpler test (available label
   width without collision).
 
 Offer auto-ranging as a toggle, off by default.
+
+**What is calibrated is a rate, not a λ (D48).** λ counts events in a *pixel column*, so it
+scales with `span / width` — and the first implementation measured λ_ref once on a hard-coded
+1600 px canvas and then used it at whatever width the browser actually gave it. Measured on the
+800-event corpus, the 1.15 of headroom was gone by 1400 px, eleven columns were clipped flat at
+1100 px and seventeen at 390 px: two different centuries drawn at exactly the same height, which
+is the one thing this section promises never happens. Calibration now divides the width back
+out —
+
+```
+rate_ref = λ_max(extent, w) · w / span            calibrated once per corpus
+λ_ref    = rate_ref · span / width · headroom     derived per frame,  headroom = 1.3
+```
+
+— where `span` is the **corpus** extent and `width` is the canvas, so the scale is still fixed
+with respect to the viewport and the same corpus draws at the same height on a phone and on a
+desktop. The rate is only approximately width-invariant, since a peak narrower than the kernel
+spreads rather than concentrating; the error is in the safe direction, leaving the peak a little
+short rather than clipping it.
+
+**The crossfade is per column, not per frame (D50).** `farViewOpacity` was fed `λ_max` — one
+number for the whole canvas — which says the frame is dense because its busiest column is. With
+the twentieth century on screen, a single event alone in 400 BC never resolved into anything at
+any zoom short of panning the modern peak off the edge, which is precisely the reading the far
+view is supposed to make possible. Each column now crossfades on its own λ: the mass fill and
+its edge are drawn through a horizontal gradient sampling `farViewOpacity(λ)` every 16 px, and a
+mark's opacity is `1 − farViewOpacity(λ at its column)`. This is D35 arriving in the flat view,
+two milestones after the depth view had it.
+
+That costs the mass fill its vertical ramp — a canvas gradient runs in one direction only — so
+the height of the curve stands in for it, with tall columns taking the bright end. It also
+retires `farViewOpacity(λ_max)` as the frame-wide "how near are we" signal, since it no longer
+means anything: the share of visible events that resolved into marks is used instead, and it is
+what decides how many rows of labels the frame may spend. Hit-testing scales its tolerance by
+the same per-mark opacity, so a mark still dissolved into the mass is not a click target —
+clicking apparently empty canvas used to select whatever invisible event happened to be nearest.
 
 ### 3.5 Filtering (D22, D30, D31)
 
@@ -565,6 +623,30 @@ eras, viewport, filters)`. No framework imports. This is the one architectural r
 enforcing: the renderer is the part of this project with real value, and it should survive any
 UI framework decision.
 
+**Marks are trapezoids too (D49).** An event drawn as a hairline at its mean says it happened at
+a moment, and for `1914–1918` that is a lie the store does not tell — the four numbers are right
+there, and 27–40 % of a real corpus is not an instant. A mark is now the same shape as an era
+bar: a stem at the likely middle, and over it a crossbar solid from `b` to `c` with ramps to
+transparent over `a`→`b` and `c`→`d`. It collapses back to the bare stem below `2β` of drawn
+width, which is the zoom at which the trapezoid starts to beat the kernel in the density — so
+both layers agree about when an interval becomes an interval.
+
+Two details are the difference between honest and unreadable. The crossbar is a three-pixel
+ribbon rather than a filled block: this corpus has thirty-eight multi-year events overlapping
+any given decade of the twentieth century, and thirty-eight translucent blocks are a solid strip
+at any alpha, whereas ribbons leave the stems underneath individually countable. And the bar is
+drawn only for `interval` and `fuzzy` events. `1848` is stored as a whole year — an instant
+"widened by granularity" (§2.2) — so its numbers are shaped exactly like an interval's, and
+drawing every year-granularity event as a year-wide bar turns a decade into one continuous
+strip. `mode` is what separates them, and it is in the model precisely because the numbers
+cannot: an instant claims *then*, an interval claims *from-to*, and an instant's granularity is
+a statement about precision that the density's kernel already carries.
+
+Hit-testing follows the drawing: a mark's target is its span, not the distance to its midpoint,
+and where two spans contain the point the narrower one wins — it is the more specific claim, and
+the wider one is still reachable everywhere else along its length. The selection ring and arc
+endpoints stay on the midpoint, which is the one place a span has that is a single number.
+
 **Connection arcs** (`src/render/arcs.ts`, built in M3). Quadratic Béziers above the axis, over
 the mass and under the marks: the mass is the ground — what you know — and the connections are
 the figure on it.
@@ -639,7 +721,49 @@ That fix needed the allocator to track the *intervals* taken in each row rather 
 rightmost edge. The cheap version is only correct when eras arrive in start order, and they no
 longer do.
 
-Eras beyond the row cap are dropped and counted, rather than shrinking every row.
+Eras beyond the row cap are dropped and counted, rather than shrinking every row. The count is
+drawn, as a "+N eras" note at the band's right edge: it is the only thing that can say the band
+is incomplete, and a nonzero one means the view is lying.
+
+**Naming an era without widening its bar.** A bar's width is a claim about how long something
+lasted, so stretching it to hold six more glyphs is a false statement about the world rather
+than a cosmetic liberty — which left the band reading `the…`, `the Ro…` and a row of unlabelled
+slivers, and nothing at all at 390 px. Three layers instead, in order of how much room they
+need. A name that fits inside its bar is drawn there, with its ink chosen by the **composited**
+luminance rather than the palette entry, since the bar is drawn at half alpha and what a reader
+sees is never the colour in the theme. A name that does not fit is set to the right of the bar
+in the same row, tinted with the bar's colour and joined to it by a short leader — and
+`layoutLanes` reserves that width in the row, or the next era lands on top of it. Below about
+five glyphs nothing is drawn: `the Ro…` names nothing, and three of them in a row read as a
+rendering fault. What that leaves unnamed, hovering names: the era under the cursor gets its
+full name in a chip, which is the only way to read a sliver twelve pixels wide.
+
+Personal eras have their own hue rather than the selection yellow they were first given. Yellow
+already means "selected" and "this arc is being drawn"; a third meaning made the whole band look
+permanently half-selected and made a genuinely selected personal era indistinguishable from an
+idle one. A warm neutral says *yours* against the grey of canonical eras without claiming to be
+lit up, and it fixed a 2.4:1 contrast on the label at the same time.
+
+**The axis.** Ticks are generated in calendar space (`src/render/ticks.ts`) and the spacing floor
+is a function of the canvas: `max(56, min(90, width/6))`. A flat 90 px is a desktop number, and
+on a phone it is most of the axis — at 390 px it allowed four ticks, of which an 18 px edge cull
+then ate all but one, leaving a five-thousand-year span labelled "2500 BC" and nothing else.
+Edge ticks are now *aligned* rather than culled: the first label is pushed right and the last
+pushed left by half their measured width. A couple of pixels of drift against their own rule is
+a far smaller lie than not saying which century this is, and the first and last labels are
+precisely the two that say what range is on screen. The year ladder gained a 2000 rung, because
+1000 → 2500 is a 2.5× jump and a corpus a few thousand years long lands squarely inside it.
+
+**Nothing to draw is still something to say.** With no events at all the canvas was blank —
+indistinguishable from a broken one — and worse, the pannable range came from the events alone,
+so on a first-run timeline it was empty, the viewport fell back to a one-day window at the
+epoch, and `clamp` then capped the widest zoom at three days: the "my life" era D26 had just
+created sat nineteen thousand days away and could not be reached. The frame is now the union of
+events **and** eras (D52), with a stated `now − 100 y … now + 2 y` when there is neither, so the
+axis, the ticks and the era band always have something to describe. Over that, one muted line:
+how to add an event when the store is empty, or — when the window holds no events and no mass
+and lies entirely outside the corpus — where the corpus actually is, since panning into the
+twenty-second century otherwise looks like the data has gone.
 
 **Interaction.** Wheel = zoom at cursor, drag = pan, pinch on touch, double-click = zoom in,
 arrow keys pan / `+`/`-` zoom. Zoom is continuous in log-scale space, animated with a short

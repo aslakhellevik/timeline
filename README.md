@@ -84,6 +84,12 @@ becomes a density plot of your own historical knowledge, and its gaps are visibl
 2. **Mid** — individual events resolve as tick marks
 3. **Near** — labels and text appear
 
+They are not three modes but one continuous crossfade, and it runs **per column** rather than
+per frame: a single event alone in 400 BC resolves into a mark and a name while the twentieth
+century beside it is still a solid hill. An event that lasted — `1914–1918`, or the years you
+were reading Russian novels — draws its span as a bar over its tick, so the marks say the same
+thing about duration that the mass underneath them does.
+
 **Connections** are drawn as colourful lines/arcs across the timeline, colour-coded (by tag,
 by type of connection — to be decided). Zoomed out, the connection structure should be the
 most visually striking thing on screen.

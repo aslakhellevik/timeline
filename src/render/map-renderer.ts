@@ -39,8 +39,9 @@ import { toGregorian } from '../core/time';
 import type { CanvasSize } from './canvas-host';
 import { DARK_THEME } from './timeline-renderer';
 import type { TimelineTheme } from './timeline-renderer';
+import { LABEL_FONT, fitText } from './text';
+import { withAlpha } from './colour';
 
-const LABEL_FONT = '11px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
 /** Height of the time scrubber along the bottom. */
 const SCRUB_HEIGHT = 54;
 const PADDING = 16;
@@ -508,26 +509,6 @@ export class MapRenderer {
 
 function yearOf(days: number): string {
   return formatYear(toGregorian(days).year);
-}
-
-function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
-  if (ctx.measureText(text).width <= maxWidth) return text;
-  let lo = 0;
-  let hi = text.length;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (ctx.measureText(`${text.slice(0, mid)}…`).width <= maxWidth) lo = mid;
-    else hi = mid - 1;
-  }
-  return `${text.slice(0, lo).trimEnd()}…`;
-}
-
-function withAlpha(hex: string, alpha: number): string {
-  const value = hex.replace('#', '');
-  const r = parseInt(value.slice(0, 2), 16);
-  const g = parseInt(value.slice(2, 4), 16);
-  const b = parseInt(value.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 export const MAP_SCRUBBER_HEIGHT = SCRUB_HEIGHT;

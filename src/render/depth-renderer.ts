@@ -45,10 +45,11 @@ import { MassTransition, clamp01 } from './mass-transition';
 import { DepthProjection, depthGeometry } from './projection';
 import { generateTicks, formatYear } from './ticks';
 import type { CanvasSize } from './canvas-host';
+import { LABEL_FONT, LABEL_WIDTH, fitText, formatMoment } from './text';
+import { withAlpha } from './colour';
 import { DARK_THEME } from './timeline-renderer';
 import type { Selection, Target, TimelineData, TimelineTheme } from './timeline-renderer';
 
-const LABEL_FONT = '11px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
 const TOP_PADDING = 12;
 /** Widest the river gets, in lateral units (1 = the corridor's half-width). */
 const MAX_RIVER = 0.5;
@@ -582,7 +583,7 @@ export class DepthRenderer {
     const t = projection.timeAtY(labelY);
     if (projection.scaleAt(t) < LEGIBLE_SCALE) return;
 
-    const text = fitText(ctx, bar.era.name, 150);
+    const text = fitText(ctx, bar.era.name, LABEL_WIDTH.era);
     ctx.fillStyle = selected ? this.theme.ink : this.theme.inkSecondary;
     ctx.textAlign = side < 0 ? 'right' : 'left';
     ctx.fillText(text, projection.xAt(t, side * outer) + side * 6, labelY);
@@ -680,7 +681,7 @@ export class DepthRenderer {
 
       const w = this.riverLateralAt(projection, mark.t);
       const anchorX = projection.xAt(mark.t, side * (w + 0.08));
-      const text = fitText(ctx, mark.event.title, 190);
+      const text = fitText(ctx, mark.event.title, LABEL_WIDTH.depthMark);
       const width = ctx.measureText(text).width;
       const textX = side < 0 ? anchorX - 8 - width : anchorX + 8;
       if (textX < 4 || textX + width > geometry.width - 4) continue;
@@ -981,47 +982,4 @@ interface DepthGeometryLike {
 function bowDirection(source: ArcSource): number {
   const id = source.connection.id;
   return id.charCodeAt(id.length - 1) % 2 === 0 ? 1 : -1;
-}
-
-const MONTHS = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-] as const;
-
-function formatMoment(t: Days, spanDays: number): string {
-  const { year, month, day } = toGregorian(t);
-  const spanYears = spanDays / 365.2425;
-  if (spanYears > 24) return formatYear(year);
-  if (spanYears > 2) return `${MONTHS[month - 1]} ${formatYear(year)}`;
-  return `${day} ${MONTHS[month - 1]} ${formatYear(year)}`;
-}
-
-function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
-  if (ctx.measureText(text).width <= maxWidth) return text;
-  let lo = 0;
-  let hi = text.length;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (ctx.measureText(`${text.slice(0, mid)}…`).width <= maxWidth) lo = mid;
-    else hi = mid - 1;
-  }
-  return `${text.slice(0, lo).trimEnd()}…`;
-}
-
-function withAlpha(hex: string, alpha: number): string {
-  const value = hex.replace('#', '');
-  const r = parseInt(value.slice(0, 2), 16);
-  const g = parseInt(value.slice(2, 4), 16);
-  const b = parseInt(value.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }

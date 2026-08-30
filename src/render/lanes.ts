@@ -11,6 +11,7 @@
  */
 
 import type { Days, Era, Id } from '../core/model/types';
+import { spanBar } from './span-bar';
 
 /** One era bar, in device-independent pixels. */
 export interface EraBar {
@@ -27,6 +28,20 @@ export interface EraBar {
   /** Whether the span continues beyond the viewport, so the bar can say so. */
   clippedLeft: boolean;
   clippedRight: boolean;
+  /**
+   * Pixels the name needs, as measured by the caller. 0 when it was not asked.
+   */
+  labelWidth: number;
+  /**
+   * Whether the name goes to the *right* of the bar rather than inside it.
+   *
+   * A bar is never widened to fit its name — the width is a claim about how
+   * long something lasted, and stretching it to hold six more glyphs is a lie
+   * about the world. So a name too long for its bar is set beside it, and the
+   * room that takes is reserved here so the next era in the row does not land
+   * on top of it.
+   */
+  labelOutside: boolean;
 }
 
 export interface LaneLayout {
@@ -53,10 +68,22 @@ export interface LaneOptions {
   canonicalColour: string;
   /** Personal eras — your life, other people's — get their own hue. */
   personalColour: string;
+  /**
+   * Pixels the era's name needs, measured by the caller.
+   *
+   * A callback rather than a font and a string, so this module stays free of
+   * the canvas: measuring text needs a `CanvasRenderingContext2D` and the whole
+   * value of this file is that it does not have one.
+   */
+  labelWidth?: (era: Era) => number;
 }
 
 const DEFAULT_GAP = 6;
 const DEFAULT_MAX_LANES = 6;
+/** Space between a bar and a name set beside it, leader line included. */
+export const LABEL_LEAD = 10;
+/** Padding inside a bar, either side of a name that fits within it. */
+export const LABEL_INSET = 8;
 
 /**
  * Assigns lanes and computes bar geometry for the current viewport.
@@ -110,6 +137,17 @@ export function layoutLanes(
     const left = toPx(era.when.a);
     const right = toPx(era.when.d);
 
+    // The flanks are the era's own uncertainty, drawn as a fade rather than an
+    // edge: "the years I was reading Russian novels" has no first day. Shared
+    // with event marks, which are the same trapezoid (§6.1).
+    const geometry = spanBar(era.when, toPx, width);
+
+    const labelWidth = options.labelWidth?.(era) ?? 0;
+    const labelOutside = labelWidth > 0 && labelWidth + LABEL_INSET > right - left;
+    // Reserve the room a name set beside the bar will take, or the next era in
+    // this row lands on top of it.
+    const reach = labelOutside ? right + LABEL_LEAD + labelWidth : right;
+
     let lane = -1;
     for (let candidate = 0; candidate < maxLanes; candidate++) {
       const taken = occupied[candidate];
@@ -117,7 +155,7 @@ export function layoutLanes(
         lane = candidate;
         break;
       }
-      if (taken.every((span) => left >= span.right + gap || right + gap <= span.left)) {
+      if (taken.every((span) => left >= span.right + gap || reach + gap <= span.left)) {
         lane = candidate;
         break;
       }
@@ -127,19 +165,14 @@ export function layoutLanes(
       return;
     }
 
-    (occupied[lane] ??= []).push({ left, right });
+    (occupied[lane] ??= []).push({ left, right: reach });
     bars.push({
       era,
       lane,
-      x1: clamp(toPx(era.when.b), width),
-      x2: clamp(toPx(era.when.c), width),
-      // The flanks are the era's own uncertainty, drawn as a fade rather than an
-      // edge: "the years I was reading Russian novels" has no first day.
-      fadeLeft: Math.max(0, toPx(era.when.b) - left),
-      fadeRight: Math.max(0, right - toPx(era.when.c)),
+      ...geometry,
       colour: colourOf(era, tagColours, options),
-      clippedLeft: left < 0,
-      clippedRight: right > width,
+      labelWidth,
+      labelOutside,
     });
   };
 
@@ -151,11 +184,6 @@ export function layoutLanes(
 
 function overlaps(era: Era, toPx: (t: Days) => number, width: number): boolean {
   return toPx(era.when.d) >= 0 && toPx(era.when.a) <= width;
-}
-
-/** Keeps coordinates finite when an era extends far outside the viewport. */
-function clamp(x: number, width: number): number {
-  return Math.min(width * 2, Math.max(-width, x));
 }
 
 function colourOf(

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { formatYear, generateTicks } from './ticks';
-import { fromGregorian, toGregorian } from '../core/time';
+import { formatYear, generateTicks, tickSpacingFor } from './ticks';
+import { DAYS_PER_YEAR, fromGregorian, toGregorian } from '../core/time';
 import type { Viewport } from '../core/model/types';
 
 const view = (fromYear: number, toYear: number, width = 1200): Viewport => ({
@@ -104,5 +104,55 @@ describe('generateTicks', () => {
     expect(generateTicks({ start: 0, end: 0, width: 100 })).toEqual([]);
     expect(generateTicks({ start: 0, end: 100, width: 0 })).toEqual([]);
     expect(generateTicks({ start: 100, end: 0, width: 100 })).toEqual([]);
+  });
+});
+
+describe('narrow canvases', () => {
+  it('loosens the spacing floor rather than giving up on ticks', () => {
+    // A flat 90 px is a desktop number. On a phone it allows four ticks across
+    // the whole axis, and the axis then says almost nothing about where you are.
+    expect(tickSpacingFor(1400)).toBe(90);
+    expect(tickSpacingFor(800)).toBe(90);
+    expect(tickSpacingFor(390)).toBe(65);
+    expect(tickSpacingFor(200)).toBe(56);
+  });
+
+  it('still labels the span at 390 and 800 px', () => {
+    for (const width of [390, 800]) {
+      for (const [from, to] of [
+        [-3000, 2026],
+        [1000, 2000],
+        [1900, 2000],
+      ] as const) {
+        const ticks = generateTicks(view(from, to, width));
+        expect(ticks.length).toBeGreaterThanOrEqual(3);
+        expect(ticks.length).toBeLessThanOrEqual(Math.floor(width / 40));
+      }
+    }
+  });
+
+  it('has a rung between 1000 and 2500 years', () => {
+    // Asking for one tick per 1500 years used to round up to 2500 — a 67 per
+    // cent overshoot, and the widest jump anywhere in the ladder.
+    const ticks = generateTicks(view(-10_000, 2000, 800));
+    const gaps = ticks
+      .slice(1)
+      .map((tick, i) => (tick.t - (ticks[i] as { t: number }).t) / DAYS_PER_YEAR);
+    // Ignore the BC/AD step, which spans two rungs because there is no year 0.
+    const regular = gaps.filter((gap) => gap < 3000);
+    expect(regular.length).toBeGreaterThan(2);
+    for (const gap of regular) expect(gap).toBeCloseTo(2000, -1);
+  });
+
+  it('keeps the spacing floor it was given', () => {
+    for (const width of [390, 800, 1400]) {
+      const vp = view(-3000, 2026, width);
+      const ticks = generateTicks(vp);
+      const perDay = vp.width / (vp.end - vp.start);
+      for (let i = 1; i < ticks.length; i++) {
+        const gap = ((ticks[i] as { t: number }).t - (ticks[i - 1] as { t: number }).t) * perDay;
+        expect(gap).toBeGreaterThanOrEqual(tickSpacingFor(width) - 1);
+      }
+    }
   });
 });

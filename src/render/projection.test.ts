@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Viewport } from '../core/model/types';
-import { computeDensity } from '../core/density';
+import { DEFAULT_BETA, computeDensity } from '../core/density';
 import { interval } from '../core/time';
 import { DEFAULT_Z_FAR, DepthProjection, depthGeometry } from './projection';
 
@@ -146,7 +146,7 @@ describe('density under the projection', () => {
   it('leaves the linear path untouched when no mapping is given', () => {
     // The flat view must be bit-for-bit unaffected by the depth view existing.
     const a = computeDensity(specs, flat);
-    const b = computeDensity(specs, flat, { beta: 5 });
+    const b = computeDensity(specs, flat, { beta: DEFAULT_BETA });
     expect([...b.lambda]).toEqual([...a.lambda]);
   });
 

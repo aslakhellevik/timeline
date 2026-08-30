@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest';
 import type { TimeSpec, Viewport } from '../model/types';
 import { fromGregorian, fuzzy, instant, interval } from '../time';
 import {
+  DEFAULT_BETA,
+  MASS_HEADROOM,
+  calibrateRate,
   computeDensity,
   computeDensityReference,
   farViewOpacity,
   heightFraction,
+  lambdaRefFor,
   normalCdf,
   psi,
 } from './index';
@@ -430,5 +434,97 @@ describe('performance budget', () => {
     const perRun = (performance.now() - started) / runs;
 
     expect(perRun).toBeLessThan(16);
+  });
+});
+
+describe('mass calibration', () => {
+  /** A corpus with a dense modern century and a thin antiquity, as real ones are. */
+  const corpus = sorted([
+    ...Array.from({ length: 300 }, (_, i) => instant(1900 + (i % 60), 1 + (i % 12), 1 + (i % 28))),
+    ...Array.from({ length: 40 }, (_, i) => instant(-2500 + i * 60)),
+  ]);
+  const extent = { start: year(-2600), end: year(2000) };
+
+  it('is a rate, so the reference it yields is right at any canvas width', () => {
+    // λ counts events in a *pixel column*, so it scales with span/width. The
+    // rate divides that back out, and `lambdaRefFor` puts it back for whatever
+    // canvas the frame turns out to be drawn on.
+    const rate = calibrateRate(corpus, extent);
+    expect(rate).toBeGreaterThan(0);
+
+    const span = extent.end - extent.start;
+    expect(lambdaRefFor(rate, span, 800)).toBeCloseTo(lambdaRefFor(rate, span, 1600) * 2, 9);
+    expect(lambdaRefFor(rate, span * 2, 800)).toBeCloseTo(lambdaRefFor(rate, span, 800) * 2, 9);
+  });
+
+  it('clips nothing at any canvas width, where a fixed reference did', () => {
+    // The bug this replaces: λ_ref measured once at 1600 px left eleven columns
+    // saturated at 1100 px and seventeen at 390 px — two different centuries
+    // drawn at exactly the same height, which is the one thing the far view
+    // promises never happens.
+    const rate = calibrateRate(corpus, extent);
+    const span = extent.end - extent.start;
+    const fixed = computeDensity(corpus, { ...extent, width: 1600 }).lambdaMax * 1.15;
+
+    const saturated = (lambda: Float64Array, reference: number) => {
+      let count = 0;
+      for (const value of lambda) if (heightFraction(value, reference) >= 1) count += 1;
+      return count;
+    };
+
+    for (const width of [390, 800, 1100, 1400, 1600, 2000]) {
+      const { lambda, lambdaMax } = computeDensity(corpus, { ...extent, width });
+      expect(saturated(lambda, lambdaRefFor(rate, span, width))).toBe(0);
+
+      // And the peak still fills the frame: not clipped is not the same as flat.
+      const peak = heightFraction(lambdaMax, lambdaRefFor(rate, span, width));
+      expect(peak).toBeGreaterThan(0.7);
+      expect(peak).toBeLessThanOrEqual(Math.cbrt(1 / MASS_HEADROOM) + 1e-9);
+    }
+
+    const narrow = computeDensity(corpus, { ...extent, width: 390 });
+    expect(saturated(narrow.lambda, fixed)).toBeGreaterThan(0);
+  });
+
+  it('states a usable scale when there is nothing to calibrate on', () => {
+    expect(calibrateRate([], extent)).toBe(0);
+    expect(calibrateRate(corpus, { start: 0, end: 0 })).toBe(0);
+    expect(lambdaRefFor(0, 1000, 800)).toBeGreaterThan(0);
+    expect(lambdaRefFor(1, 0, 800)).toBeGreaterThan(0);
+    expect(lambdaRefFor(1, 1000, 0)).toBeGreaterThan(0);
+  });
+});
+
+describe('bandwidth', () => {
+  it('keeps a lone event under the crossfade floor', () => {
+    // β and p cannot be chosen independently: the drawn hill is λ^p, and raising
+    // a Gaussian to the power p widens it by √(1/p) — √3 at p = 1/3. A lone
+    // event has to stay below 0.25 or it is a permanent bump rather than
+    // something that resolves into a mark.
+    const peak = 1 / (DEFAULT_BETA * Math.sqrt(2 * Math.PI));
+    expect(peak).toBeLessThan(0.25);
+
+    const { lambdaMax } = computeDensity([instant(1969, 7, 20)], view(1900, 2000, 1000));
+    // Within a per-cent or two: the three-pass box blur is not exactly Gaussian.
+    expect(lambdaMax / peak).toBeGreaterThan(0.9);
+    expect(lambdaMax / peak).toBeLessThan(1.1);
+    expect(farViewOpacity(lambdaMax)).toBe(0);
+  });
+
+  it('paints a lone event narrow enough to read as one event', () => {
+    // Measured as the width at half the *drawn* height, which is √3 times the
+    // density's own half-width and the number the eye actually sees.
+    const { lambda, lambdaMax } = computeDensity([instant(1969, 7, 20)], view(1900, 2000, 1000));
+    const half = heightFraction(lambdaMax, 1) / 2;
+    let wide = 0;
+    for (const value of lambda) if (heightFraction(value, 1) >= half) wide += 1;
+
+    expect(wide).toBeGreaterThan(2);
+    expect(wide).toBeLessThan(16);
+    // The identity: drawn FWHM = √(1/p) × density FWHM.
+    const densityHalf = lambdaMax / 2;
+    let narrow = 0;
+    for (const value of lambda) if (value >= densityHalf) narrow += 1;
+    expect(wide / narrow).toBeCloseTo(Math.sqrt(3), 0);
   });
 });

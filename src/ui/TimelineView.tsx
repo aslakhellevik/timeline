@@ -79,7 +79,12 @@ export function TimelineView({
     const host = new CanvasHost(canvas, (ctx, size) => renderer.draw(ctx, size));
     hostRef.current = host;
 
-    const extent = renderer.getExtent() ?? { start: 0, end: 1 };
+    // `getFrame`, not `getExtent`: eras count towards what the view may pan
+    // over, and with neither it states a default. The old `{0, 1}` fallback was
+    // a one-day window at the epoch, which `clamp` then read as a three-day
+    // zoom limit — so a timeline with no events but a "my life" era could not
+    // be zoomed out far enough to see it.
+    const extent = renderer.getFrame();
     boundsRef.current = boundsOf(extent);
     const width = host.getSize().width || 1000;
 
@@ -187,16 +192,17 @@ export function TimelineView({
     const host = hostRef.current;
     if (!renderer || !host) return;
 
+    // Whether there were *events* before, which is the thing worth refitting
+    // for: the frame may already be wide because of an era, and the first event
+    // can easily land outside it.
     const before = renderer.getExtent();
     renderer.setData({ events, connections, tags, eras, calibration: allEvents });
-    const after = renderer.getExtent();
+    const after = renderer.getFrame();
 
-    if (after) {
-      boundsRef.current = boundsOf(after);
-      if (!before) {
-        const width = host.getSize().width || 1000;
-        renderer.setViewport(fitTo(after.start, after.end, width, boundsRef.current, 0.01));
-      }
+    boundsRef.current = boundsOf(after);
+    if (!before && renderer.getExtent()) {
+      const width = host.getSize().width || 1000;
+      renderer.setViewport(fitTo(after.start, after.end, width, boundsRef.current, 0.01));
     }
     host.requestDraw();
   }, [events, connections, tags, eras, allEvents]);
