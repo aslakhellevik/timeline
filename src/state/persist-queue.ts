@@ -11,15 +11,25 @@ import type { Base } from '../core/model/types';
 import type { RecordKind, Store } from '../store/contract';
 import type { Touched } from './timeline-model';
 
+/** Ceiling on the retry backoff, so a store that is simply full stops thrashing. */
+const MAX_RETRY_MS = 30_000;
+
 export class PersistQueue {
   private readonly pending = new Map<RecordKind, Map<string, Base>>();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private inFlight: Promise<void> | null = null;
+  /** Zero while healthy; doubles per consecutive failure. */
+  private retryMs = 0;
 
   constructor(
     private readonly store: Store,
     private readonly delayMs = 200,
-    private readonly onError?: (error: unknown) => void,
+    /**
+     * Reports a failed write, and `null` once a later one succeeds. Without the
+     * second half the app shows "quota exceeded" for the rest of the session,
+     * long after the write it refers to has landed.
+     */
+    private readonly onError?: (error: unknown | null) => void,
   ) {}
 
   enqueue(touched: readonly Touched[]): void {
@@ -33,15 +43,15 @@ export class PersistQueue {
       // state needs to reach disk.
       for (const record of group.records) bucket.set(record.id, record);
     }
-    this.schedule();
+    this.schedule(this.delayMs);
   }
 
-  private schedule(): void {
+  private schedule(delayMs: number): void {
     if (this.timer !== null) return;
     this.timer = setTimeout(() => {
       this.timer = null;
       void this.flush();
-    }, this.delayMs);
+    }, delayMs);
   }
 
   /** Writes everything pending. Safe to call at any time; used on unload. */
@@ -53,6 +63,22 @@ export class PersistQueue {
     // Serialise flushes so two overlapping bursts cannot interleave transactions.
     this.inFlight = (this.inFlight ?? Promise.resolve()).then(() => this.writePending());
     return this.inFlight;
+  }
+
+  /**
+   * Drops everything pending and cancels the timer.
+   *
+   * For "start over" (§8.7a): a record still queued when the database is
+   * emptied is written back a moment later and resurrects on the next load,
+   * which is the one way to lose the reset the user just asked for.
+   */
+  clear(): void {
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    this.pending.clear();
+    this.retryMs = 0;
   }
 
   private async writePending(): Promise<void> {
@@ -72,6 +98,21 @@ export class PersistQueue {
         this.pending.set(kind, bucket);
       }
       this.onError?.(error);
+      // Re-queueing alone only helps if something else writes later. A tab left
+      // idle after a failed write would never try again and would lose the
+      // batch on close, so the retry is scheduled here, backing off because the
+      // usual causes — quota, a blocked upgrade — do not clear in a moment.
+      this.retryMs = Math.min(
+        this.retryMs === 0 ? Math.max(this.delayMs, 1) * 2 : this.retryMs * 2,
+        MAX_RETRY_MS,
+      );
+      this.schedule(this.retryMs);
+      return;
+    }
+
+    if (this.retryMs !== 0) {
+      this.retryMs = 0;
+      this.onError?.(null);
     }
   }
 

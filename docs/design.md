@@ -508,7 +508,9 @@ distinction everyone can see.
 invented a private tag beside the one every pack event carried, and the vocabulary forked in two.
 Exactly what fixed namespaced ids were meant to prevent. First run now creates them, and a pack
 brings the ones it references, emitted without `pack` since they are shared and an uninstall must
-not take away a tag the user's own events also carry.
+not take away a tag the user's own events also carry — and with a floor timestamp, so that
+installing a pack adds a missing tag without ever overwriting one the user has renamed or
+recoloured (§8.7).
 
 **The premade names have to be typeable (D44).** D39 materialised the tags, and the fork came
 back anyway through the other end of the same pipe: a `#tag` is one word, and eight of the twenty
@@ -725,6 +727,19 @@ Viewport (centre and span) and selection live in the URL hash. Cheap now, awkwar
 once React state and the renderer's viewport have grown into each other. It buys bookmarkable
 periods immediately — "the 1840s, art history only" is a link — and shareable links for free when
 the social layer arrives.
+
+**The pan has to write it too.** For a while it did not: the hash was mirrored from a React effect
+watching selection, tags and view, and panning changes none of them — so the one half of the state
+the section names first never reached the address bar, and the link said "art history only"
+without the 1840s. The write is now scheduled by the viewport callback as well, on the same ~300 ms
+debounce, and it reads everything it needs at write time from a ref and from the store rather than
+from a closure. That keeps the property §6.1 depends on: **React never re-renders on a pan.**
+
+Restoring runs in the opposite direction and exactly once, on mount. It has to set the selection
+*directly* rather than through the store's `select`, because while a connection is pending `select`
+completes it (§6.4) — a bookmark is not a click, and routing it through the connect rule let a
+re-render write a connection nobody asked for.
+
 ### 6.7 The depth view (D33–D35)
 
 A second view of the same data, in which time runs *into* the screen: you stand at the newest
@@ -938,6 +953,20 @@ the timeline stops being an experiment.
 An in-memory operation stack, plus soft deletes making destructive actions recoverable after the
 stack is gone. Cascading deletes (D21) are a single entry.
 
+**Consecutive edits of one field coalesce.** Every keystroke in a note is a mutation, so an entry
+per mutation meant a fifty-deep stack was emptied by a single typed sentence: the more work you
+had done, the less of it undo could reach. Edits of the same field of the same record, within a
+second of each other, are merged into the entry already on top, keeping the *older* record as the
+one to restore. Changing field breaks
+the merge on purpose: going back to before you touched the title is a different step from going
+back to before you touched the note. Each entry carries the label of the mutation that made it, so
+the footer can say what the next undo would take back.
+
+Undoing the creation of a record tombstones it rather than dropping it, since the store is
+upsert-only (D9). One exception: a tag another live record still carries is left alone. Undoing
+the quick-add that invented `#war` must not take the tag away from the four events that have since
+been given it.
+
 ### 8.7 Known limitations of the merge rule
 
 Found while building it, and worth writing down before the sync layer inherits them:
@@ -962,7 +991,22 @@ Found while building it, and worth writing down before the sync layer inherits t
   to be its own operation.
 - **`replaceAll` broadcasts the union of removed and written ids**, since the change signal
   carries ids only and a receiving tab must learn about removals too. The receiver's rule is
-  "re-read these ids, drop the ones that are gone".
+  "re-read these ids, drop the ones that are gone" — and the receiver now actually implements it.
+  It ignored the payload for a while and simply reloaded everything, which threw away whatever the
+  receiving tab had typed since its last flush; the record it *had* just been told about was the
+  only one it was entitled to overwrite. The splice keeps the local record where that is the newer
+  of the two, and clears the undo stack outright, because every step on it was computed against a
+  timeline that no longer exists. A `replaceAll` announces once per kind, so the five messages are
+  gathered into one reload.
+- **An undo is a new write, not an old one.** Restoring a record put its old `updated_at` back, so
+  a backup taken between the action and the undo compared as newer and silently re-applied the
+  change the user had just taken back. The content is old; the write is new, and it is stamped
+  accordingly.
+- **The premade tags a pack carries are upsert-if-absent.** They are references, not content: a
+  pack that mentions Europe needs Europe to exist and has nothing to say about what it is called.
+  Emitted with `now`, they were newer than the user's own rename and the merge rule dutifully
+  undid it on every install. They now carry a floor timestamp, so they are added when missing and
+  never preferred over anything already there.
 - **On iOS there is no layer 2 at all.** The plan reads as three layers; on the one platform with
   a 7-day storage cap it is one and a half, and the home-screen prompt is the actual durability
   mechanism rather than an onboarding nicety.
@@ -975,6 +1019,12 @@ Found while building it, and worth writing down before the sync layer inherits t
 The data panel also offers a reset: empty everything and return to the first-run screen. Added
 when showing the app to someone a second time made it obvious there was no way to show them the
 beginning.
+
+It has to empty the **write queue** as well as the database, and in that order. A record still
+waiting on the debounce was written back a moment after the store was cleared and came back on the
+next load, which is a startling thing for the one irreversible action in the app to do. Nothing in
+memory is cleared until the write has actually landed, either: a failed reset that had already
+blanked the screen would look exactly like a successful one that lost everything.
 
 Two steps, an export offered beside the confirmation, and last in the panel — this is the only
 genuinely unrecoverable action in the app, and it sits in the one panel whose whole purpose is to

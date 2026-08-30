@@ -7,7 +7,7 @@
  */
 
 import { create } from 'zustand';
-import type { Era, Filter, Id, Timeline, TimelineEvent } from '../core/model/types';
+import type { Base, Era, Filter, Id, Timeline, TimelineEvent } from '../core/model/types';
 import { adoptRecord, expandPack, uninstallPack } from '../core/packs';
 import type { PackBundle } from '../core/packs';
 import { NO_FILTER } from '../core/filter';
@@ -15,9 +15,9 @@ import { nowIso } from '../core/model/ids';
 import { parseQuickAdd } from '../core/quick-add';
 import { findPossibleDuplicates } from '../core/search';
 import { fromGregorian, interval } from '../core/time';
-import type { Store, TimelineDocument } from '../store/contract';
+import type { RecordKind, Store, StoreChange, TimelineDocument } from '../store/contract';
 import { SCHEMA_VERSION } from '../store/contract';
-import { mergeDocument } from '../store/serialise';
+import { compareTimestamps, mergeDocument } from '../store/serialise';
 import { PersistQueue } from './persist-queue';
 import {
   EMPTY_TIMELINE,
@@ -31,6 +31,7 @@ import {
   ensureTags,
   findConnectionBetween,
   installBuiltinTags,
+  pushUndo,
   removeConnection,
   removeEra,
   removeEvent,
@@ -42,11 +43,25 @@ import type {
   EventDraft,
   Mutation,
   Patch,
-  UndoStep,
+  UndoEntry,
 } from './timeline-model';
 
-/** How many undo steps to keep. Beyond this, soft deletes are the safety net. */
+/** How many undo entries to keep. Beyond this, soft deletes are the safety net. */
 const UNDO_DEPTH = 50;
+
+/** Write debounce (§8.1): long enough to coalesce typing, short enough to lose little. */
+const PERSIST_DELAY_MS = 200;
+
+/**
+ * How long cross-tab announcements are gathered before one reload.
+ *
+ * `replaceAll` announces once per record kind, and each arrives as its own
+ * message, so without this an import in another tab costs five reloads.
+ */
+const REMOTE_COALESCE_MS = 50;
+
+/** The era first run creates (D26). Named so `seedLife` can tell it is already there. */
+const LIFE_ERA_NAME = 'my life';
 
 export interface QuickAddOutcome {
   ok: boolean;
@@ -78,7 +93,9 @@ interface TimelineStoreState {
    */
   pickerOpen: boolean;
   query: string;
-  undoStack: UndoStep[][];
+  undoStack: UndoEntry[];
+  /** What the next undo would take back, e.g. "delete event". Null when empty. */
+  undoLabel: string | null;
   error: string | null;
   /** True until the user has anything of their own — drives first run (D26). */
   isFirstRun: boolean;
@@ -102,8 +119,8 @@ interface TimelineStoreState {
   updateConnection(id: Id, patch: { note?: string; tags?: Id[] }): void;
   deleteConnection(id: Id): void;
 
-  installPack(bundle: PackBundle): void;
-  removePack(packId: Id): void;
+  installPack(bundle: PackBundle): Promise<void>;
+  removePack(packId: Id): Promise<void>;
 
   addEra(draft: EraDraft): Id | null;
   updateEra(id: Id, patch: Patch<Omit<Era, 'id' | 'created_at' | 'updated_at'>>): void;
@@ -111,9 +128,11 @@ interface TimelineStoreState {
   selectEra(id: Id | null): void;
 
   seedLife(birthYear: number): void;
-  replaceTimeline(timeline: Timeline): void;
+  replaceTimeline(timeline: Timeline): Promise<void>;
   /** Empties everything and returns to first run. Unrecoverable. */
   resetAll(): Promise<void>;
+  /** Applies a bookmarked filter and selection (D24). Mount-only. */
+  restoreBookmark(bookmark: { tags?: readonly Id[]; selectedId?: Id }): void;
 
   setFilter(filter: Filter): void;
   /** Adds or removes one tag, leaving the rest of the filter alone. */
@@ -127,50 +146,299 @@ interface TimelineStoreState {
 
 let backing: Store | null = null;
 let queue: PersistQueue | null = null;
+/** Undoes `store.subscribe`, so re-attaching does not leave the old one running. */
+let unsubscribe: (() => void) | null = null;
+/** Cross-tab changes gathered since the last reload, by kind (§8.7). */
+let incoming: Map<RecordKind, Set<Id>> | null = null;
+let incomingTimer: ReturnType<typeof setTimeout> | null = null;
+/** Attaches run one at a time; StrictMode starts two before either finishes. */
+let attaching: Promise<unknown> = Promise.resolve();
+
+interface Adoption {
+  timeline: Timeline;
+  /** The adopted copy, or null when there was nothing to adopt. */
+  record: Base | null;
+}
 
 /**
- * Clears `pack` on one record, in place in a new timeline, and queues the
- * adopted copy for the database.
+ * Clears `pack` on one record, in place in a new timeline.
  *
  * Returns the timeline unchanged when the record is not a pack record, so
- * callers adopt unconditionally rather than testing first.
+ * callers adopt unconditionally rather than testing first. The adopted copy is
+ * handed back rather than queued here: a mutation that then refuses — a
+ * connection to an endpoint deleted a moment ago — used to leave the adoption
+ * written to disk while memory still said `pack`. The caller folds it into the
+ * mutation's `touched`, so one thing lands or nothing does.
  */
 function adoptIn(
   timeline: Timeline,
   kind: 'events' | 'connections' | 'eras',
   id: Id,
-  queue: PersistQueue | null,
   now: string,
-): Timeline {
+): Adoption {
   const records = timeline[kind];
   const index = records.findIndex((record) => record.id === id);
-  if (index === -1) return timeline;
+  if (index === -1) return { timeline, record: null };
 
   const adopted = adoptRecord(records[index] as never, now);
-  if (!adopted) return timeline;
+  if (!adopted) return { timeline, record: null };
 
   const next = records.slice();
   next[index] = adopted;
-  queue?.enqueue([{ kind, records: [adopted] }]);
-  return { ...timeline, [kind]: next };
+  return { timeline: { ...timeline, [kind]: next }, record: adopted };
+}
+
+/**
+ * Merges one record kind after another tab's write (§8.7).
+ *
+ * Only the announced ids are considered: an id the database no longer has is
+ * dropped, one it has is taken unless the local copy is newer — an edit typed
+ * here a moment ago and not yet flushed. Returns `null` when nothing changed,
+ * so a change this tab already knew about costs no re-render.
+ */
+function spliceRemote<T extends Base>(
+  local: readonly T[],
+  remote: readonly T[],
+  ids: ReadonlySet<Id>,
+): T[] | null {
+  const fresh = new Map<Id, T>();
+  for (const record of remote) if (ids.has(record.id)) fresh.set(record.id, record);
+
+  const next: T[] = [];
+  let changed = false;
+
+  for (const record of local) {
+    if (!ids.has(record.id)) {
+      next.push(record);
+      continue;
+    }
+    const theirs = fresh.get(record.id);
+    if (!theirs) {
+      // Gone from the database — a `replaceAll` in the other tab removed it.
+      changed = true;
+      continue;
+    }
+    fresh.delete(record.id);
+    // Last writer wins by instant, as everywhere else (§8.7). The pack clause
+    // `mergeDocument.accepts` carries does not belong here: both sides are the
+    // same store, so a cleared `pack` is already the newer write.
+    if (compareTimestamps(theirs.updated_at, record.updated_at) > 0) {
+      next.push(theirs);
+      changed = true;
+    } else {
+      next.push(record);
+    }
+  }
+
+  for (const record of fresh.values()) {
+    next.push(record);
+    changed = true;
+  }
+
+  return changed ? next : null;
 }
 
 export const useTimeline = create<TimelineStoreState>((set, get) => {
-  const adopt = (timeline: Timeline, kind: 'events' | 'connections' | 'eras', id: Id): Timeline =>
-    adoptIn(timeline, kind, id, queue, nowIso());
+  /**
+   * The undo stack and its label, always set together — a label kept in step by
+   * hand at seven call sites would be out of step at one of them.
+   */
+  const undoState = (undoStack: UndoEntry[]) => ({
+    undoStack,
+    undoLabel: undoStack[undoStack.length - 1]?.label ?? null,
+  });
+
+  const adopt = (timeline: Timeline, kind: 'events' | 'connections' | 'eras', id: Id): Adoption =>
+    adoptIn(timeline, kind, id, nowIso());
+
+  /** Folds adopted endpoint events into the mutation that adopted them (§5). */
+  const withAdoptedEvents = (
+    mutation: Mutation | null,
+    ...adopted: (Base | null)[]
+  ): Mutation | null => {
+    if (!mutation) return null;
+    const records = adopted.filter((record): record is Base => record !== null);
+    return records.length === 0
+      ? mutation
+      : { ...mutation, touched: [...mutation.touched, { kind: 'events', records }] };
+  };
 
   /** Commits a model mutation: new state, records queued, undo recorded. */
   const commit = (mutation: Mutation | null): void => {
-    if (!mutation) return;
+    // A mutation that changed nothing — `installBuiltinTags` on a timeline that
+    // already has them — is not a write, and enqueuing its empty batch woke the
+    // persist timer for no reason.
+    if (!mutation || mutation.touched.length === 0) return;
+
     queue?.enqueue(mutation.touched);
+
+    // `isFirstRun` means "the user has nothing of their own", which `attach`
+    // defines over events and eras — so materialising the premade tag set does
+    // not end first run halfway through the screen that asks for a birth year.
+    const owned = mutation.touched.some(
+      (group) => group.kind === 'events' || group.kind === 'eras',
+    );
+
     set((state) => ({
       timeline: mutation.timeline,
-      undoStack:
-        mutation.undo.length > 0
-          ? [...state.undoStack, mutation.undo].slice(-UNDO_DEPTH)
-          : state.undoStack,
-      isFirstRun: false,
+      ...(mutation.undo.length > 0
+        ? undoState(
+            pushUndo(
+              state.undoStack,
+              {
+                steps: mutation.undo,
+                label: mutation.label,
+                ...(mutation.coalesce !== undefined ? { coalesce: mutation.coalesce } : {}),
+                at: Date.now(),
+              },
+              UNDO_DEPTH,
+            ),
+          )
+        : {}),
+      ...(owned ? { isFirstRun: false } : {}),
     }));
+  };
+
+  /** Awaits a wholesale write and reports failure rather than dropping it. */
+  const writeAll = async (timeline: Timeline): Promise<boolean> => {
+    try {
+      await backing?.replaceAll(timeline);
+      return true;
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : String(error) });
+      return false;
+    }
+  };
+
+  /**
+   * Applies another tab's write to the in-memory timeline (§8.1, §8.7).
+   *
+   * The naive answer — reload everything — silently threw away whatever this
+   * tab had typed since its last flush. §8.7 states the rule instead: re-read
+   * exactly the ids the change names, drop the ones that are gone, and keep the
+   * local record where it is the newer of the two.
+   */
+  const applyRemote = async (store: Store, batch: Map<RecordKind, Set<Id>>): Promise<void> => {
+    let remote: Timeline;
+    try {
+      remote = await store.load();
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : String(error) });
+      return;
+    }
+    // Re-attached while the load was in flight: this batch is about a database
+    // the store is no longer bound to.
+    if (backing !== store) return;
+
+    let { events, connections, tags, eras, packs } = get().timeline;
+    let changed = false;
+
+    for (const [kind, ids] of batch) {
+      if (ids.size === 0) continue;
+      switch (kind) {
+        case 'events': {
+          const next = spliceRemote(events, remote.events, ids);
+          if (next) {
+            events = sortEvents(next);
+            changed = true;
+          }
+          break;
+        }
+        case 'connections': {
+          const next = spliceRemote(connections, remote.connections, ids);
+          if (next) {
+            connections = next;
+            changed = true;
+          }
+          break;
+        }
+        case 'tags': {
+          const next = spliceRemote(tags, remote.tags, ids);
+          if (next) {
+            tags = next;
+            changed = true;
+          }
+          break;
+        }
+        case 'eras': {
+          const next = spliceRemote(eras, remote.eras, ids);
+          if (next) {
+            eras = next;
+            changed = true;
+          }
+          break;
+        }
+        case 'packs': {
+          const next = spliceRemote(packs, remote.packs, ids);
+          if (next) {
+            packs = next;
+            changed = true;
+          }
+          break;
+        }
+      }
+    }
+
+    // Every step on the stack was computed against a timeline that no longer
+    // exists; replaying one would put a record back over another tab's newer
+    // version, which is the failure this whole path is here to prevent.
+    const clearing = get().undoStack.length > 0;
+    if (!changed && !clearing) return;
+
+    set({
+      ...(changed ? { timeline: { events, connections, tags, eras, packs } } : {}),
+      ...(clearing ? undoState([]) : {}),
+    });
+  };
+
+  const receive = (store: Store, change: StoreChange): void => {
+    const batch = (incoming ??= new Map());
+    let ids = batch.get(change.kind);
+    if (!ids) batch.set(change.kind, (ids = new Set()));
+    for (const id of change.ids) ids.add(id);
+
+    if (incomingTimer !== null) return;
+    incomingTimer = setTimeout(() => {
+      incomingTimer = null;
+      const collected = incoming;
+      incoming = null;
+      if (collected) void applyRemote(store, collected);
+    }, REMOTE_COALESCE_MS);
+  };
+
+  /** The body of `attach`; called only through the serialising wrapper below. */
+  const attachTo = async (store: Store): Promise<void> => {
+    await queue?.flush();
+    unsubscribe?.();
+    unsubscribe = null;
+    if (incomingTimer !== null) {
+      clearTimeout(incomingTimer);
+      incomingTimer = null;
+    }
+    incoming = null;
+
+    backing = store;
+    queue = new PersistQueue(store, PERSIST_DELAY_MS, (error) =>
+      set({
+        error: error === null ? null : error instanceof Error ? error.message : String(error),
+      }),
+    );
+
+    try {
+      const timeline = await store.load();
+      set({
+        timeline: { ...timeline, events: sortEvents(timeline.events) },
+        status: 'ready',
+        isFirstRun: timeline.events.length === 0 && timeline.eras.length === 0,
+      });
+    } catch (error) {
+      set({ status: 'error', error: error instanceof Error ? error.message : String(error) });
+      return;
+    }
+
+    // Another tab wrote something; both hold in-memory state and would
+    // otherwise overwrite each other silently (§8.1).
+    unsubscribe = store.subscribe((change) => receive(store, change));
   };
 
   return {
@@ -184,34 +452,26 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
     pickerOpen: false,
     query: '',
     undoStack: [],
+    undoLabel: null,
     error: null,
     isFirstRun: true,
 
-    async attach(store) {
-      backing = store;
-      queue = new PersistQueue(store, 200, (error) =>
-        set({ error: error instanceof Error ? error.message : String(error) }),
-      );
-
-      try {
-        const timeline = await store.load();
-        set({
-          timeline: { ...timeline, events: sortEvents(timeline.events) },
-          status: 'ready',
-          isFirstRun: timeline.events.length === 0 && timeline.eras.length === 0,
-        });
-      } catch (error) {
-        set({ status: 'error', error: error instanceof Error ? error.message : String(error) });
-        return;
-      }
-
-      // Another tab wrote something; both hold in-memory state and would
-      // otherwise overwrite each other silently (§8.1).
-      store.subscribe(() => {
-        void store.load().then((timeline) => {
-          set({ timeline: { ...timeline, events: sortEvents(timeline.events) } });
-        });
-      });
+    /**
+     * Binds the store to a database.
+     *
+     * Called more than once in practice — StrictMode mounts the app twice — so
+     * it takes the previous wiring down first: overwriting `queue` lost whatever
+     * it still held, and dropping the subscribe's unsubscribe left a listener
+     * writing into this store from a database nobody would close.
+     *
+     * Attaches are also **serialised**, because the double mount starts the
+     * second before the first has finished. Interleaved, the two could leave
+     * the store loaded from one database and subscribed to the other.
+     */
+    attach(store) {
+      const run = attaching.then(() => attachTo(store));
+      attaching = run.catch(() => {});
+      return run;
     },
 
     async flush() {
@@ -267,39 +527,44 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
      * skips any record whose `pack` has been cleared, and every edit clears it.
      */
     updateEvent(id, patch) {
-      const timeline = adopt(get().timeline, 'events', id);
+      // The adoption needs no folding here: the patched record *is* the adopted
+      // one, so the edit's own `touched` already carries the cleared `pack` —
+      // and a patch that finds no record persists nothing at all.
+      const { timeline } = adopt(get().timeline, 'events', id);
       commit(editEvent(timeline, id, patch));
     },
 
     deleteEvent(id) {
-      // Read the doomed connections before the mutation, so a connection the
-      // cascade (D21) is about to tombstone does not stay open in the pane.
+      const mutation = removeEvent(get().timeline, id);
+      // The cascade (D21) is computed once, by the model. A connection it is
+      // about to tombstone must not stay open in the detail pane.
       const orphaned = new Set(
-        get()
-          .timeline.connections.filter((c) => c.from === id || c.to === id)
-          .map((c) => c.id),
+        (mutation?.undo ?? [])
+          .filter((step) => step.kind === 'connections')
+          .map((step) => step.id),
       );
 
-      commit(removeEvent(get().timeline, id));
+      commit(mutation);
 
       const state = get();
-      set({
+      const patch = {
         ...(state.selectedId === id ? { selectedId: null } : {}),
         ...(state.selectedConnectionId && orphaned.has(state.selectedConnectionId)
           ? { selectedConnectionId: null }
           : {}),
         ...(state.connectFrom === id ? { connectFrom: null, pickerOpen: false } : {}),
-      });
+      };
+      if (Object.keys(patch).length > 0) set(patch);
     },
 
     undo() {
       const stack = get().undoStack;
-      const steps = stack[stack.length - 1];
-      if (!steps) return;
+      const entry = stack[stack.length - 1];
+      if (!entry) return;
 
-      const mutation = applyUndo(get().timeline, steps);
+      const mutation = applyUndo(get().timeline, entry.steps);
       queue?.enqueue(mutation.touched);
-      set({ timeline: mutation.timeline, undoStack: stack.slice(0, -1) });
+      set({ timeline: mutation.timeline, ...undoState(stack.slice(0, -1)) });
     },
 
     beginConnect(from) {
@@ -341,18 +606,20 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
       if (existing) return existing.id;
 
       // Connecting a pack event adopts it too (§5) — a connection is a claim
-      // you have made about it, which makes the event yours.
-      let timeline = adopt(get().timeline, 'events', draft.from);
-      timeline = adopt(timeline, 'events', draft.to);
+      // you have made about it, which makes the event yours. Both adoptions
+      // ride on the connection's own write, so a refused pair leaves neither
+      // the adoption nor the connection behind.
+      const from = adopt(get().timeline, 'events', draft.from);
+      const to = adopt(from.timeline, 'events', draft.to);
 
-      const mutation = createConnection(timeline, draft);
+      const mutation = createConnection(to.timeline, draft);
       if (!mutation) return null;
-      commit(mutation);
+      commit(withAdoptedEvents(mutation, from.record, to.record));
       return mutation.undo[0]?.id ?? null;
     },
 
     updateConnection(id, patch) {
-      const timeline = adopt(get().timeline, 'connections', id);
+      const { timeline } = adopt(get().timeline, 'connections', id);
       commit(editConnection(timeline, id, patch));
     },
 
@@ -369,7 +636,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
      * the pack id and the author's key, so version two lands on version one's
      * records and `mergeDocument` skips anything the user has adopted.
      */
-    installPack(bundle) {
+    async installPack(bundle) {
       const expanded = expandPack(bundle, { source: bundle.id });
       const document: TimelineDocument = {
         schema_version: SCHEMA_VERSION,
@@ -387,8 +654,11 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
       // Undo is not offered for an install: it is a bulk operation with an
       // explicit inverse of its own, and pushing several hundred records onto
       // the undo stack would evict everything the user actually did.
-      set({ timeline: sorted, undoStack: [], isFirstRun: false });
-      void backing?.replaceAll(sorted);
+      set({ timeline: sorted, ...undoState([]), isFirstRun: false });
+      // Anything still queued would otherwise land *after* the wholesale write
+      // and reinstate the record it replaced.
+      await queue?.flush();
+      await writeAll(sorted);
     },
 
     /**
@@ -398,7 +668,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
      * user's data and a tombstone would carry a newer timestamp than the bundle
      * — reinstalling later would merge into it and restore nothing.
      */
-    removePack(packId) {
+    async removePack(packId) {
       const next = uninstallPack(get().timeline, packId);
       const state = get();
       const gone = (id: Id | null) =>
@@ -406,7 +676,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
 
       set({
         timeline: next,
-        undoStack: [],
+        ...undoState([]),
         ...(gone(state.selectedId) ? { selectedId: null } : {}),
         ...(state.selectedConnectionId &&
         !next.connections.some((c) => c.id === state.selectedConnectionId)
@@ -416,19 +686,31 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
           ? { selectedEraId: null }
           : {}),
       });
-      void backing?.replaceAll(next);
+      await queue?.flush();
+      await writeAll(next);
     },
 
     addEra(draft) {
       const mutation = createEra(get().timeline, draft);
       commit(mutation);
       const id = mutation.undo[0]?.id ?? null;
-      if (id) set({ selectedEraId: id, selectedId: null, selectedConnectionId: null });
+      // A pending pick has to be disarmed with the rest of the selection: the
+      // era pane replaces the picker's banner, so the arm would survive
+      // invisibly and complete on the next click anywhere.
+      if (id) {
+        set({
+          selectedEraId: id,
+          selectedId: null,
+          selectedConnectionId: null,
+          connectFrom: null,
+          pickerOpen: false,
+        });
+      }
       return id;
     },
 
     updateEra(id, patch) {
-      const timeline = adopt(get().timeline, 'eras', id);
+      const { timeline } = adopt(get().timeline, 'eras', id);
       commit(editEra(timeline, id, patch));
     },
 
@@ -444,15 +726,26 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
     /**
      * First run (D26): one question, and the timeline is never blank — the
      * personal frame of reference exists before the user has added anything.
+     *
+     * Idempotent, because the first-run screen is reachable a second time
+     * through "start over" (§8.7a) and because StrictMode will happily submit
+     * the form's effect twice — two overlapping lives on the axis is a mess
+     * only a manual delete gets out of.
      */
     seedLife(birthYear) {
       const thisYear = new Date().getFullYear();
       // The premade vocabulary first, so `#war` typed a minute later attaches to
       // the built-in tag rather than inventing a private one beside it.
       commit(installBuiltinTags(get().timeline));
+
+      const already = get().timeline.eras.some(
+        (era) => era.kind === 'personal' && !era.deleted_at && era.name === LIFE_ERA_NAME,
+      );
+      if (already) return;
+
       commit(
         createEra(get().timeline, {
-          name: 'my life',
+          name: LIFE_ERA_NAME,
           when: interval(fromGregorian(birthYear, 1, 1), fromGregorian(thisYear + 1, 1, 1)),
           kind: 'personal',
         }),
@@ -473,10 +766,21 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
      * makes it matter.
      */
     async resetAll() {
+      // The queue first, and dropped rather than flushed: a record still
+      // pending is written back a moment after the database is emptied and
+      // resurrects on the next load — verified, and the only way to lose the
+      // reset the user just asked for.
+      queue?.clear();
+
       const empty = EMPTY_TIMELINE;
+      // Nothing in memory is cleared until the write has actually landed. A
+      // failed reset that had already blanked the screen would look exactly
+      // like a successful one that lost everything.
+      if (!(await writeAll(empty))) return;
+
       set({
         timeline: empty,
-        undoStack: [],
+        ...undoState([]),
         selectedId: null,
         selectedConnectionId: null,
         selectedEraId: null,
@@ -487,13 +791,31 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
         error: null,
         isFirstRun: true,
       });
-      await backing?.replaceAll(empty);
     },
 
-    replaceTimeline(timeline) {
+    async replaceTimeline(timeline) {
       const sorted = { ...timeline, events: sortEvents(timeline.events) };
-      set({ timeline: sorted, undoStack: [], isFirstRun: false });
-      void backing?.replaceAll(sorted);
+      set({ timeline: sorted, ...undoState([]), isFirstRun: false });
+      await queue?.flush();
+      await writeAll(sorted);
+    },
+
+    /**
+     * Applies a bookmarked filter and selection (D24).
+     *
+     * Selection is set **directly**, not through `select`: while a connection
+     * is pending `select` completes it, so restoring a bookmark used to be able
+     * to write a connection between the armed event and whatever the URL named.
+     * Restoring a bookmark is not a click.
+     */
+    restoreBookmark(bookmark) {
+      const { tags, selectedId } = bookmark;
+      set({
+        ...(tags && tags.length > 0 ? { filter: { ...get().filter, tags: [...tags] } } : {}),
+        ...(selectedId
+          ? { selectedId, selectedConnectionId: null, selectedEraId: null }
+          : {}),
+      });
     },
 
     setFilter(filter) {

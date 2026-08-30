@@ -22,6 +22,14 @@ import { TimelineView } from './TimelineView';
 import { decodeUrlState, encodeUrlState } from './url-state';
 import type { UrlState } from './url-state';
 
+/**
+ * How long the hash waits before catching up.
+ *
+ * Long enough that a pan is one `replaceState` rather than one per frame, short
+ * enough that the address bar is right by the time anyone reads it.
+ */
+const HASH_DEBOUNCE_MS = 300;
+
 export function App() {
   const status = useTimeline((state) => state.status);
   const isFirstRun = useTimeline((state) => state.isFirstRun);
@@ -38,7 +46,7 @@ export function App() {
   const beginConnect = useTimeline((state) => state.beginConnect);
   const select = useTimeline((state) => state.select);
   const selectConnection = useTimeline((state) => state.selectConnection);
-  const setFilter = useTimeline((state) => state.setFilter);
+  const restoreBookmark = useTimeline((state) => state.restoreBookmark);
   const undo = useTimeline((state) => state.undo);
   const undoDepth = useTimeline((state) => state.undoStack.length);
   const attach = useTimeline((state) => state.attach);
@@ -70,24 +78,37 @@ export function App() {
   const [backup, setBackup] = useState<BackupStatus | null>(null);
 
   // Open the database and load whatever is there.
+  //
+  // StrictMode mounts twice, and the old cleanup read a variable that was still
+  // null while the open was in flight — so the first database was never closed
+  // and its channel went on listening for the life of the tab. The close now
+  // waits on the open *and* on this effect's own attach: closing a database
+  // half-way through `load` fails the transaction already in flight.
   useEffect(() => {
-    let store: Awaited<ReturnType<typeof createIndexedDbStore>> | null = null;
-    void createIndexedDbStore().then((opened) => {
-      store = opened;
-      return attach(opened);
+    const attached = createIndexedDbStore().then((store) => attach(store).then(() => store));
+    attached.catch((error: unknown) => {
+      useTimeline.setState({
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error),
+      });
     });
-    return () => store?.close();
+    return () => {
+      void attached.then((store) => store.close()).catch(() => {});
+    };
   }, [attach]);
 
-  // Restore the filter from the URL once the tags are known.
+  // Restore the bookmarked filter and selection, once, on mount.
+  //
+  // The dependency list is empty on purpose. It used to include
+  // `filter.includePacks`, so ticking the packs checkbox re-ran the whole
+  // restore — re-applying the bookmarked tags, and re-selecting the bookmarked
+  // event, which while a pick was armed silently wrote a connection.
   useEffect(() => {
-    if (initial.tags && initial.tags.length > 0) {
-      setFilter({ tags: initial.tags, includePacks: filter.includePacks });
-    }
-    if (initial.selectedId) select(initial.selectedId);
-    // Deliberately runs once, on mount: this restores a bookmark, it does not
-    // track later changes — those flow the other way, into the URL.
-  }, [initial, select, setFilter, filter.includePacks]);
+    restoreBookmark({
+      ...(initial.tags ? { tags: initial.tags } : {}),
+      ...(initial.selectedId ? { selectedId: initial.selectedId } : {}),
+    });
+  }, []);
 
   // Anything still queued must reach disk before the tab goes away.
   useEffect(() => {
@@ -100,24 +121,52 @@ export function App() {
     };
   }, [flush]);
 
-  // Mirror state into the hash. `replaceState`, not `pushState` — panning should
-  // not fill the back button with hundreds of entries.
-  useEffect(() => {
-    const handle = setTimeout(() => {
+  /*
+   * Mirror state into the hash. `replaceState`, not `pushState` — panning should
+   * not fill the back button with hundreds of entries.
+   *
+   * Everything the write needs is read at write time, from refs and from the
+   * store, so panning can schedule one without React re-rendering. That is the
+   * property the renderer depends on (§6.1) and the reason a pan never reached
+   * the hash before: the effect only fired on selection, tags and view, and
+   * "the 1840s, art history only" is supposed to be a link (D24).
+   */
+  const viewRef = useRef(view);
+  const hashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleHashWrite = useCallback(() => {
+    if (hashTimer.current !== null) clearTimeout(hashTimer.current);
+    hashTimer.current = setTimeout(() => {
+      hashTimer.current = null;
+      const { selectedId: id, filter: current } = useTimeline.getState();
       const state: UrlState = {
         ...(viewportRef.current ?? {}),
-        ...(selectedId ? { selectedId } : {}),
-        ...(filter.tags.length > 0 ? { tags: [...filter.tags] } : {}),
-        view,
+        ...(id ? { selectedId: id } : {}),
+        ...(current.tags.length > 0 ? { tags: [...current.tags] } : {}),
+        view: viewRef.current,
       };
       history.replaceState(null, '', `${window.location.pathname}${encodeUrlState(state)}`);
-    }, 300);
-    return () => clearTimeout(handle);
-  }, [selectedId, filter.tags, view]);
-
-  const onViewportChange = useCallback((viewport: { centre: number; span: number }) => {
-    viewportRef.current = viewport;
+    }, HASH_DEBOUNCE_MS);
   }, []);
+
+  useEffect(() => {
+    viewRef.current = view;
+    scheduleHashWrite();
+    return () => {
+      if (hashTimer.current !== null) {
+        clearTimeout(hashTimer.current);
+        hashTimer.current = null;
+      }
+    };
+  }, [selectedId, filter.tags, view, scheduleHashWrite]);
+
+  const onViewportChange = useCallback(
+    (viewport: { centre: number; span: number }) => {
+      viewportRef.current = viewport;
+      scheduleHashWrite();
+    },
+    [scheduleHashWrite],
+  );
 
   /**
    * A new era over the middle half of what is on screen.
@@ -142,25 +191,30 @@ export function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === 'z') {
-        event.preventDefault();
-        undo();
-        return;
-      }
       if (event.key === 'Escape' && connectFrom) {
         event.preventDefault();
         cancelConnect();
         return;
       }
 
-      // `c` connects the selected event, but only when nothing is being typed
-      // into — a single-letter shortcut that fires inside quick-add would make
-      // capture, the thing the app is built around, impossible.
+      // Both shortcuts stand down while something is being typed into. A
+      // single-letter `c` firing inside quick-add would make capture — the
+      // thing the app is built around — impossible; and Ctrl+Z belongs to the
+      // text field the cursor is in, which the app's own undo used to steal by
+      // calling `preventDefault` before this test was ever reached.
       const target = event.target as HTMLElement | null;
       const typing =
         target instanceof HTMLInputElement ||
         target instanceof HTMLTextAreaElement ||
         target?.isContentEditable === true;
+
+      // Shift is redo's key everywhere else, so Ctrl+Shift+Z must not undo.
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key === 'z' && !typing) {
+        event.preventDefault();
+        undo();
+        return;
+      }
+
       if (event.key === 'c' && !typing && !event.ctrlKey && !event.metaKey && selectedId) {
         event.preventDefault();
         beginConnect(selectedId);
@@ -182,6 +236,17 @@ export function App() {
   }, [status, isFirstRun]);
 
   const visible = useMemo(() => applyFilter(timeline, filter), [timeline, filter]);
+
+  /*
+   * Where a freshly mounted view starts.
+   *
+   * Each view reads the prop once, at mount — which is exactly when a switch
+   * between them happens — so it has to be where the user last was, not where
+   * the URL said when the tab opened. Panning the timeline and then pressing
+   * "depth" used to land back at the load-time viewport. The ref is seeded from
+   * the hash, so a fresh load still honours the bookmark.
+   */
+  const startViewport = viewportRef.current;
 
   if (status === 'loading') {
     return <Centred>opening your timeline…</Centred>;
@@ -247,9 +312,7 @@ export function App() {
                 onSelectEvent={select}
                 onSelectConnection={selectConnection}
                 onSelectEra={selectEra}
-                {...(initial.centre !== undefined && initial.span !== undefined
-                  ? { initialViewport: { centre: initial.centre, span: initial.span } }
-                  : {})}
+                {...(startViewport ? { initialViewport: startViewport } : {})}
                 onViewportChange={onViewportChange}
               />
             ) : view === 'depth' ? (
@@ -266,9 +329,7 @@ export function App() {
                 onSelectEvent={select}
                 onSelectConnection={selectConnection}
                 onSelectEra={selectEra}
-                {...(initial.centre !== undefined && initial.span !== undefined
-                  ? { initialViewport: { centre: initial.centre, span: initial.span } }
-                  : {})}
+                {...(startViewport ? { initialViewport: startViewport } : {})}
                 onViewportChange={onViewportChange}
               />
             ) : view === 'map' ? (
@@ -278,9 +339,7 @@ export function App() {
                 allEvents={timeline.events}
                 selectedId={selectedId}
                 onSelectEvent={select}
-                {...(initial.centre !== undefined && initial.span !== undefined
-                  ? { initialViewport: { centre: initial.centre, span: initial.span } }
-                  : {})}
+                {...(startViewport ? { initialViewport: startViewport } : {})}
                 onViewportChange={onViewportChange}
               />
             ) : (

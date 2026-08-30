@@ -74,6 +74,21 @@ export function packRecordId(packId: Id, key: string): Id {
   return `${packId}/${key}`;
 }
 
+/**
+ * The stamp on the premade tags a pack carries with it.
+ *
+ * Those tags are *references*, not content: a pack that mentions Europe needs
+ * Europe to exist, and has nothing whatever to say about what it is called or
+ * what colour it is. Stamped `now` they were newer than the user's own rename,
+ * and the merge rule dutifully undid it on every install — the pack quietly
+ * winning an argument it was not having.
+ *
+ * The floor makes them **upsert-if-absent**: added when missing, and never
+ * preferred over anything already there. The date is a claim about precedence,
+ * not about when the tag was made.
+ */
+export const REFERENCE_STAMP = '1970-01-01T00:00:00.000Z';
+
 export interface InstallOptions {
   now?: string;
   /** Where the bundle came from, for the record. */
@@ -91,7 +106,9 @@ export interface PackDocument {
    * a timeline that has never materialised the premade set would carry ids
    * pointing at nothing — filterable by neither the pack's events nor the
    * user's. They are emitted **without** `pack`, because they are shared: an
-   * uninstall must not take away a tag the user's own events also carry.
+   * uninstall must not take away a tag the user's own events also carry — and
+   * stamped `REFERENCE_STAMP`, so installing a pack never overwrites a tag the
+   * user has renamed or recoloured.
    */
   tags: Tag[];
   pack: InstalledPack;
@@ -157,7 +174,7 @@ export function expandPack(bundle: PackBundle, options: InstallOptions = {}): Pa
     }
   }
   const tags = BUILTIN_TAGS.filter((tag) => referenced.has(tag.id)).map(
-    (tag): Tag => ({ ...tag, created_at: now, updated_at: now }),
+    (tag): Tag => ({ ...tag, created_at: REFERENCE_STAMP, updated_at: REFERENCE_STAMP }),
   );
 
   return {

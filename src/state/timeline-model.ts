@@ -12,6 +12,7 @@ import type {
   Connection,
   Era,
   Id,
+  InstalledPack,
   Tag,
   TagKind,
   TimeSpec,
@@ -39,15 +40,41 @@ export interface Mutation {
   touched: Touched[];
   undo: UndoStep[];
   label: string;
+  /**
+   * Key under which consecutive mutations merge into one undo entry (§8.6).
+   * Unset means "never merge" — a delete and its cascade are one step and the
+   * next thing the user does is a different one.
+   */
+  coalesce?: string;
 }
 
-export const EMPTY_TIMELINE: Timeline = {
-  events: [],
-  connections: [],
-  tags: [],
-  eras: [],
-  packs: [],
-};
+/** One undoable action: what to put back, and what to call it in the UI. */
+export interface UndoEntry {
+  steps: UndoStep[];
+  label: string;
+  coalesce?: string;
+  /** `Date.now()` when it was recorded, for the coalescing window. */
+  at: number;
+}
+
+/**
+ * The empty timeline — the store's initial state and the value "start over"
+ * writes, so it is deep-frozen: a consumer that pushed into one of these arrays
+ * would corrupt every later reset, and the failure would surface nowhere near
+ * the code that caused it.
+ */
+export const EMPTY_TIMELINE: Timeline = Object.freeze({
+  events: frozenList<TimelineEvent>(),
+  connections: frozenList<Connection>(),
+  tags: frozenList<Tag>(),
+  eras: frozenList<Era>(),
+  packs: frozenList<InstalledPack>(),
+});
+
+/** Frozen at runtime, but still the mutable type `Timeline` declares. */
+function frozenList<T>(): T[] {
+  return Object.freeze([]) as unknown as T[];
+}
 
 /**
  * The sort key from the conventions list: `b → a → title → id`, fully
@@ -101,6 +128,49 @@ function applyPatch<T extends object>(record: T, patch: object, now: string): T 
     else next[key] = value;
   }
   return next as T;
+}
+
+/** How long consecutive edits of one field stay a single undo entry (§8.6). */
+export const COALESCE_MS = 1000;
+
+/**
+ * The key consecutive edits merge under.
+ *
+ * Typing into a note fires a mutation per keystroke, and one undo entry per
+ * keystroke emptied a fifty-deep stack inside a single sentence. Edits of the
+ * *same field of the same record*, moments apart, are one thing the user did.
+ *
+ * Changing field breaks the key deliberately: going back to before you touched
+ * the title is a different step from going back to before you touched the note.
+ */
+function coalesceKey(kind: RecordKind, id: Id, patch: object): string {
+  return `${kind}:${id}:${Object.keys(patch).sort().join(',')}`;
+}
+
+/**
+ * Pushes an undo entry, merging it into the top one when it continues the same
+ * edit (§8.6).
+ *
+ * The merge keeps the *older* entry's steps — its "before" is what undo has to
+ * restore — and only moves the clock forward, so a continuous burst of typing
+ * stays one step no matter how long it runs. A cascading delete carries no key
+ * and is therefore never merged (D21).
+ */
+export function pushUndo(
+  stack: readonly UndoEntry[],
+  entry: UndoEntry,
+  depth: number,
+  windowMs: number = COALESCE_MS,
+): UndoEntry[] {
+  const top = stack[stack.length - 1];
+  if (
+    entry.coalesce !== undefined &&
+    top?.coalesce === entry.coalesce &&
+    entry.at - top.at < windowMs
+  ) {
+    return [...stack.slice(0, -1), { ...top, at: entry.at }];
+  }
+  return [...stack, entry].slice(-depth);
 }
 
 export interface EventDraft {
@@ -159,6 +229,7 @@ export function editEvent(
     touched: [{ kind: 'events', records: [updated] }],
     undo: [{ kind: 'events', id, record: existing }],
     label: 'edit event',
+    coalesce: coalesceKey('events', id, patch),
   };
 }
 
@@ -296,6 +367,7 @@ export function editConnection(
     touched: [{ kind: 'connections', records: [updated] }],
     undo: [{ kind: 'connections', id, record: existing }],
     label: 'edit connection',
+    coalesce: coalesceKey('connections', id, patch),
   };
 }
 
@@ -457,6 +529,7 @@ export function editEra(
     touched: [{ kind: 'eras', records: [updated] }],
     undo: [{ kind: 'eras', id, record: existing }],
     label: 'edit era',
+    coalesce: coalesceKey('eras', id, patch),
   };
 }
 
@@ -481,6 +554,20 @@ export function removeEra(timeline: Timeline, id: Id, now: string = nowIso()): M
   };
 }
 
+/** Tag ids a live record still carries, so undo cannot take one away. */
+function referencedTags(
+  events: readonly TimelineEvent[],
+  connections: readonly Connection[],
+  eras: readonly Era[],
+): Set<Id> {
+  const used = new Set<Id>();
+  for (const record of [...events, ...connections, ...eras]) {
+    if (record.deleted_at) continue;
+    for (const tag of record.tags) used.add(tag);
+  }
+  return used;
+}
+
 /**
  * Applies undo steps, returning the restored timeline and what to persist.
  *
@@ -489,6 +576,11 @@ export function removeEra(timeline: Timeline, id: Id, now: string = nowIso()): M
  * needs them — so a record merely removed from memory would come back on the
  * next load. A tombstone disappears from every view (the filter excludes
  * `deleted_at`) and stays gone.
+ *
+ * Restored records are stamped with the current `updated_at`. The *content* is
+ * old; the *write* is new, and leaving the old stamp on it meant a backup taken
+ * between the action and the undo looked newer to the merge rule and silently
+ * re-applied the change the user had just taken back (§8.7).
  */
 export function applyUndo(
   timeline: Timeline,
@@ -513,12 +605,17 @@ export function applyUndo(
       return list.map((item) => (item.id === step.id ? tombstoned : item));
     }
 
-    const record = step.record as T;
+    const record: T = { ...(step.record as T), updated_at: now };
     touched.push({ kind: step.kind, records: [record] });
     return list.some((item) => item.id === step.id)
       ? list.map((item) => (item.id === step.id ? record : item))
       : [...list, record];
   };
+
+  // Tag removals are decided after the rest of the batch: undoing a quick-add
+  // takes back the event *and* the tag it invented, and while the event is
+  // still there the tag trivially looks in use.
+  const removedTags: UndoStep[] = [];
 
   for (const step of steps) {
     switch (step.kind) {
@@ -529,11 +626,21 @@ export function applyUndo(
         connections = restore(connections, step);
         break;
       case 'tags':
-        tags = restore(tags, step);
+        if (step.record === null) removedTags.push(step);
+        else tags = restore(tags, step);
         break;
       case 'eras':
         eras = restore(eras, step);
         break;
+    }
+  }
+
+  if (removedTags.length > 0) {
+    const inUse = referencedTags(events, connections, eras);
+    for (const step of removedTags) {
+      // Undoing the quick-add that invented `#war` must not take the tag away
+      // from the four other events that have since been given it by hand.
+      if (!inUse.has(step.id)) tags = restore(tags, step);
     }
   }
 
