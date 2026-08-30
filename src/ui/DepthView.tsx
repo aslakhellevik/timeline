@@ -47,8 +47,11 @@ export function DepthView(props: DepthViewProps) {
     <div
       ref={frameRef}
       tabIndex={0}
-      role="img"
-      aria-label={`${props.events.length} historical events along a corridor receding into the past, with ${props.connections.length} connections drawn as arcs. Switch to the list view for a keyboard-navigable equivalent.`}
+      // Focusable and driven from the keyboard — see TimelineView for why that
+      // rules out `role="img"`.
+      role="application"
+      aria-roledescription="depth canvas"
+      aria-label={`${props.events.length} historical events along a corridor receding into the past, with ${props.connections.length} connections drawn as arcs. Arrow keys pan and + or − zooms; press ? for the rest, or switch to the list view for a keyboard-navigable equivalent.`}
       className="h-full w-full cursor-crosshair touch-none outline-none focus-visible:ring-1 focus-visible:ring-paper-dim/40"
     >
       <canvas ref={canvasRef} className="block h-full w-full" />

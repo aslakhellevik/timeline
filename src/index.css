@@ -13,6 +13,18 @@
   --color-paper: #ffffff; /* primary ink */
   --color-paper-soft: #c3c2b7; /* secondary ink */
   --color-paper-dim: #898781; /* muted: axis and labels */
+  /*
+   * The faint register, and the floor under it.
+   *
+   * The dim ink used to be faded with an alpha for anything secondary —
+   * `text-paper-dim/70` on the group labels, `/60` on placeholders — which
+   * measured 2.6:1 to 3.2:1 against the surfaces behind them, well under the
+   * 4.5:1 that small text needs. Nothing dimmer than `paper-dim` itself clears
+   * 4.5:1 on the *chart surface*, so there is one faint token and it is for the
+   * page plane only: 4.6:1 on ink. On `surface` — every input in the app — the
+   * dim token at full opacity is the floor, at 4.9:1.
+   */
+  --color-paper-faint: #7d7b75; /* faint: group labels on the page plane */
   --color-accent: #3987e5; /* sequential hue, dark step */
   --color-connection: #ffd43b; /* selection, and the pending connection arc */
 }

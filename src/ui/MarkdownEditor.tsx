@@ -36,10 +36,25 @@ export function MarkdownEditor({
   const id = useId();
   const html = useMemo(() => (mode === 'read' ? renderMarkdown(value) : ''), [mode, value]);
 
+  /*
+   * Two fixes to the same mistake: the tabs were not wired to anything.
+   *
+   * `role="tab"` without `aria-controls` and without a `tabpanel` to point at is
+   * a button announced as a tab that governs nothing, and the `<label htmlFor>`
+   * addressed a textarea that does not exist in read mode — so in the mode where
+   * the field is *read*, its name pointed at nothing at all. Both modes now sit
+   * inside one panel: the tabs control it, and the label names whichever of the
+   * two is in it.
+   */
+  const panelId = `${id}-panel`;
   return (
     <section className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between gap-2">
-        <label htmlFor={id} className="text-xs text-paper-dim">
+        <label
+          htmlFor={mode === 'write' ? id : undefined}
+          id={`${id}-label`}
+          className="text-xs text-paper-dim"
+        >
           {label}
         </label>
         <div className="flex gap-1" role="tablist" aria-label={`${label} mode`}>
@@ -47,7 +62,9 @@ export function MarkdownEditor({
             <button
               key={option}
               role="tab"
+              id={`${id}-tab-${option}`}
               aria-selected={mode === option}
+              aria-controls={panelId}
               onClick={() => setMode(option)}
               disabled={option === 'read' && value.trim().length === 0}
               className={`rounded px-1.5 py-0.5 text-[11px] disabled:opacity-30 ${
@@ -60,27 +77,35 @@ export function MarkdownEditor({
         </div>
       </div>
 
-      {mode === 'write' ? (
-        <textarea
-          id={id}
-          value={value}
-          onChange={(change) => onChange(change.target.value)}
-          rows={rows}
-          autoFocus={autoFocus}
-          placeholder={placeholder}
-          className="resize-y rounded border border-line bg-surface px-2 py-1.5 font-mono text-[13px]
-                     leading-relaxed text-paper placeholder:text-paper-dim/60
-                     focus:border-accent focus:outline-none"
-        />
-      ) : (
-        <div
-          className="prose-note min-h-24 rounded border border-line/60 bg-surface/60 px-2 py-1.5
-                     text-sm text-paper-soft"
-          // Safe by construction: see core/markdown.ts. No input path produces
-          // markup; the tags below are the ones that module emits itself.
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
-      )}
+      <div
+        role="tabpanel"
+        id={panelId}
+        aria-labelledby={`${id}-tab-${mode}`}
+        className="flex flex-col"
+      >
+        {mode === 'write' ? (
+          <textarea
+            id={id}
+            value={value}
+            onChange={(change) => onChange(change.target.value)}
+            rows={rows}
+            autoFocus={autoFocus}
+            placeholder={placeholder}
+            className="resize-y rounded border border-line bg-surface px-2 py-1.5 font-mono text-[13px]
+                       leading-relaxed text-paper placeholder:text-paper-dim
+                       focus:border-accent focus:outline-none"
+          />
+        ) : (
+          <div
+            aria-labelledby={`${id}-label`}
+            className="prose-note min-h-24 rounded border border-line/60 bg-surface/60 px-2 py-1.5
+                       text-sm text-paper-soft"
+            // Safe by construction: see core/markdown.ts. No input path produces
+            // markup; the tags below are the ones that module emits itself.
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        )}
+      </div>
     </section>
   );
 }

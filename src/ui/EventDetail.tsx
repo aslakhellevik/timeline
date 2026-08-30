@@ -3,6 +3,7 @@ import { markdownExcerpt } from '../core/markdown';
 import { formatTime } from '../core/time';
 import { connectionsFor } from '../state/timeline-model';
 import { useTimeline } from '../state/timeline-store';
+import { useTagNames } from '../state/tag-names';
 import { DetailPane } from './DetailPane';
 import { MarkdownEditor } from './MarkdownEditor';
 import { PlaceField } from './PlaceField';
@@ -22,10 +23,7 @@ export function EventDetail({ onShowOnCanvas }: { onShowOnCanvas?: () => void })
     [timeline.events, selectedId],
   );
 
-  const tagNames = useMemo(
-    () => new Map(timeline.tags.map((tag) => [tag.id, tag.name])),
-    [timeline.tags],
-  );
+  const tagNames = useTagNames();
 
   const titles = useMemo(
     () => new Map(timeline.events.map((candidate) => [candidate.id, candidate.title])),
@@ -40,7 +38,7 @@ export function EventDetail({ onShowOnCanvas }: { onShowOnCanvas?: () => void })
   if (!event) return null;
 
   return (
-    <DetailPane label="Event" onClose={() => select(null)}>
+    <DetailPane label="event" onClose={() => select(null)}>
       <div>
         <h2 className="text-sm font-semibold text-paper">{event.title}</h2>
         <p className="mt-0.5 flex items-baseline gap-2 text-xs text-paper-dim">
@@ -54,7 +52,7 @@ export function EventDetail({ onShowOnCanvas }: { onShowOnCanvas?: () => void })
           {onShowOnCanvas && (
             <button
               onClick={onShowOnCanvas}
-              className="text-paper-dim/80 underline decoration-line
+              className="text-paper-faint underline decoration-line
                          underline-offset-2 hover:text-paper"
             >
               show on timeline
@@ -90,6 +88,7 @@ export function EventDetail({ onShowOnCanvas }: { onShowOnCanvas?: () => void })
           </h3>
           <button
             onClick={() => beginConnect(event.id)}
+            title="connect (c)"
             className="rounded border border-line px-1.5 py-0.5 text-[11px] text-paper-soft
                        hover:border-accent hover:text-paper"
           >
@@ -98,7 +97,7 @@ export function EventDetail({ onShowOnCanvas }: { onShowOnCanvas?: () => void })
         </div>
 
         {connections.length === 0 ? (
-          <p className="text-xs text-paper-dim/80">
+          <p className="text-xs text-paper-faint">
             nothing yet — a connection carries its own argument for why two events belong together
           </p>
         ) : (
@@ -148,7 +147,7 @@ export function EventDetail({ onShowOnCanvas }: { onShowOnCanvas?: () => void })
           onChange={(change) => updateEvent(event.id, { learned_from: change.target.value })}
           placeholder="Gombrich, ch. 4 · conversation with M"
           className="rounded border border-line bg-surface px-2 py-1 text-sm text-paper
-                     placeholder:text-paper-dim/60 focus:border-accent focus:outline-none"
+                     placeholder:text-paper-dim focus:border-accent focus:outline-none"
         />
       </label>
 

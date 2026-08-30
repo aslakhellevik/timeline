@@ -44,8 +44,15 @@ export function TimelineView(props: TimelineViewProps) {
     <div
       ref={frameRef}
       tabIndex={0}
-      role="img"
-      aria-label={`Density of ${props.events.length} historical events over time, with ${props.connections.length} connections drawn as arcs. Switch to the list view for a keyboard-navigable equivalent.`}
+      /*
+        `application`, not `img`: it is focusable, the arrows pan it and `+`/`−`
+        zoom it, and a screen reader that treats it as a picture swallows every
+        one of those keys. The label says what it is, what it does with the
+        keyboard, and where the same data is available as text (D23).
+      */
+      role="application"
+      aria-roledescription="timeline canvas"
+      aria-label={`Density of ${props.events.length} historical events over time, with ${props.connections.length} connections drawn as arcs. Arrow keys pan and + or − zooms; press ? for the rest, or switch to the list view for a keyboard-navigable equivalent.`}
       className="h-full w-full cursor-crosshair touch-none outline-none focus-visible:ring-1 focus-visible:ring-paper-dim/40"
     >
       <canvas ref={canvasRef} className="block h-full w-full" />

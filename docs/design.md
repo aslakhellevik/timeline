@@ -69,6 +69,13 @@ map are deferred — but the data model is shaped so that none of them require a
 | D55 | Clustering is a grid **plus agglomerative passes**, merging against the radii the dots are actually **drawn** at |
 | D56 | Additive arc ink falls as `1/√n`, so a bundle brightens as `√n` instead of saturating to white |
 | D57 | Selecting an event **reveals** it: every view moves to show it, and a window more than four times the event's own period counts as not showing it |
+| D58 | The footer is **status**; everything that creates something is header chrome — and first run is a takeover, not a layer over live chrome |
+| D59 | First run **offers** the "my life" era rather than always creating one: skipping creates no era, only the premade tags — revising D26 |
+| D60 | One Escape stack, **topmost wins**; a modal traps focus and silences the window-level shortcuts while it is up |
+| D61 | The list is a `listbox` and the three canvases are `application` — revising the `grid`-of-`span`s and `img`-with-`tabIndex` roles, which announced the opposite of what they are |
+| D62 | Faint ink is **one token at full opacity**, and only on the page plane: on the chart surface `paper-dim` is the contrast floor |
+| D63 | Below `sm` the wordmark and the view switcher leave the header — capture keeps the width (§9) |
+| D64 | The app checks for a newer build hourly and **says when one has installed itself**, because the worker evicts the assets the running tab is using |
 
 Conventions, settled and not worth further discussion:
 
@@ -81,6 +88,14 @@ Conventions, settled and not worth further discussion:
 - The note editor is a plain Markdown textarea with preview. No rich editor in v1.
 - `learned_at` is local wall-clock ISO with offset.
 - Dates format as `20 July 1969` (D19).
+- **Two registers of copy, and only two** (D19). Controls, labels and panel titles are
+  lower-case — `your data`, `packs`, `event`, `regions`. Prose addressed to the reader is
+  sentence case, in whole sentences. There is no third: the screen had lower-case controls,
+  Sentence-case headings *and* UPPERCASE labels at once, and the same panel was `your data` in
+  the footer and `Your data` in its own heading. A title that names a control takes the
+  control's case.
+- Counts go through one `plural` helper, because "0 events · 1 eras" is what a `n === 1 ? '' :
+  's'` at every call site eventually produces.
 - Testing is heavy on the time and density libraries, light on the store, none on canvas output.
 - Quick-add grammar: the date is parsed from anywhere in the string, `#tags` are extracted, and
   whatever remains is the title. Nothing else in v1.
@@ -861,6 +876,24 @@ the very row it is hiding.
 the row there (§6.1). The same link sits under the date in the event panel, which is where
 someone reading about an event is when they wonder where it sits.
 
+**A `listbox`, not a `grid` (D61).** The accessibility claim above was, for a while, only a
+claim: the rows were `role="row"` over bare `<span>`s inside `role="grid"`, and a grid whose
+rows contain no cells announces nothing at all — the one view that exists to be the accessible
+presentation of the canvas was the least accessible thing in the app. There was no
+`aria-activedescendant` either, so a screen reader following the arrow keys was told nothing
+about where they had got to. It is a single-column list of options, which is what a listbox is
+and what the connect picker had been declaring correctly all along; the container carries
+`aria-activedescendant`, each row an `id`, and the two wrappers the windowing needs are
+`presentation`, since a listbox owns its options directly. `aria-selected` stays the selection
+and `aria-current` stays the cursor, for the reason §6.4 gives.
+
+The canvases were mislabelled in the opposite direction: `role="img"` on a focusable element
+whose arrow keys pan it and whose `+`/`−` zoom it, which is a picture as far as a screen reader
+is concerned — so it swallows exactly those keys. They are `role="application"` with an
+`aria-roledescription` and a label that says what the keyboard does and where the same data is
+available as text. The map keeps the role and admits in its label that it is pointer-only for
+now.
+
 The list takes the filtered corpus from the app rather than filtering again. It was running
 `applyFilter` over the whole timeline inside the same memo as the search, so every keystroke in
 the search box re-filtered everything before searching it — twice the work of any other view,
@@ -922,6 +955,39 @@ it on the way past. The cursored row is ringed in the pending-connection yellow 
 still the connection's first endpoint.
 
 Finishing the pick lands in the note editor with the cursor in it. The note is the point.
+
+**Dismissing is not cancelling.** The picker's backdrop called `cancelConnect` while the footer
+beside it called `closePicker`, so the same modal had two exits that disagreed about whether the
+pick survived — and the accidental one, a click beside the dialog, was the one that threw the
+pick away. The backdrop now dismisses and leaves the pick armed, which is what the banner then
+explains; Escape cancels, because that is the exit you mean.
+
+**Escape, and what a modal is (D60).** Every dismissible thing wanted the same key and each one
+answered for itself: the data panel closed on it, the packs panel ignored it, the detail pane
+ignored it, and an armed pick cancelled from a window listener underneath all of them — so the
+app had no answer to "what does Escape do here" beyond which component had happened to bind it.
+There is now one stack: layers register in mount order, only the topmost acts, and the ones
+beneath stay bound so closing the top hands the key back. A keystroke a field has already spent
+on itself — quick-add clearing its own box — is left alone, which is what `defaultPrevented` is
+for. With a panel open over an armed pick, Escape therefore closes the panel and a second Escape
+cancels the pick, in that order.
+
+The same stack settles what "modal" means here, which was previously nothing: three panels
+carried `aria-modal="true"` while Tab walked straight out of them into the chrome behind,
+closing one dropped focus onto the document, and the window shortcuts went on firing underneath
+— `c` stacked a second dialog on top of the first, and `/` focused the capture box *behind* the
+overlay so the next keystrokes went somewhere invisible. A modal is now exactly the thing that
+takes the keyboard: it traps Tab, restores focus to wherever it came from, and registers itself
+so the global handlers can stand down. The one key a modal does not block is `?`, since the
+overlay it opens is the only one it can close. The data panel also carried its dialog role on
+the *backdrop*, which told a screen reader that the whole screen was the modal — including the
+chrome the overlay exists to take out of play.
+
+**The shortcuts are written down.** `/`, `c`, `⌘Z` and the rest existed in a window listener and
+nowhere in the interface, so the only way to learn them was to read the source. A `?` overlay
+lists them, in the picker's idiom; `?` is registered in the same handler as `c` so the typing
+guard covers it, a dim `/` sits inside the right edge of the capture box, and the pane's
+`connect…` button carries `connect (c)` as its title.
 
 ### 6.5 Notes and Markdown (D27)
 
@@ -1082,6 +1148,33 @@ eighty at your feet, which is why `depth-interaction.ts` exists rather than a fl
 `interaction.ts`. Zoom still goes through `zoomAt` by converting the cursor's height to the
 equivalent position on a linear axis.
 
+### 6.8 The chrome around them (D58, D62)
+
+The chrome is deliberately quiet, and quiet chrome degrades in a particular way: everything ends
+up the same size, in the same grey, in whichever row it was added to. The footer had become a
+status readout (`800 events · 133 connections · 10 eras`, the backup age), a creating action
+(`+ era`), an undo, and two panel openers — five things of three different kinds, set in the
+same eleven-pixel word, in one row.
+
+**Sorted by kind rather than by history.** The footer is status: what is on screen, how long
+since a copy of the timeline was written, what went wrong — plus the two things that are *about*
+that state, undoing the last change and the panel that explains the backup age. `+ era` moved
+to the header beside the view nav, because an era is derived from the viewport — you zoom to
+the period you mean and press the button — which makes it the same kind of act as choosing a
+view. `?` sits at the far right of the header. `packs` stays in the footer, since what is
+installed changes what the picture *means* (D38), which is the same sort of claim as the counts
+beside it; it is underlined so it reads as a way in rather than as another reading. Undo names
+what it will undo — `undo add event` — which the store has always known and the button never
+said.
+
+**One faint ink, at full opacity (D62).** Secondary text was written as a fade of the muted
+token: `text-paper-dim/70` on the tag-group labels, `/60` on placeholders. Measured against the
+surfaces behind them those are 2.6:1 to 3.2:1, well under the 4.5:1 small text needs, and the
+worst of them were the ten-pixel labels. Nothing dimmer than `paper-dim` itself clears 4.5:1 on
+the *chart surface*, though, so a single "faint" token cannot serve both planes: `paper-faint`
+is `#7d7b75`, 4.6:1 on the page plane and used only there, and on `surface` — which is every
+input in the app — `paper-dim` at full opacity is the floor at 4.9:1. Alpha on ink is gone
+either way, because a colour you cannot name is a colour nobody measures.
 
 ---
 
@@ -1116,6 +1209,27 @@ behave exactly as before.
 The density view does turn out to be legible at 390 px, which was the stated risk. It has less to
 say at that size, but the shape of the corpus survives.
 
+**Three things measured at 390 px say the chrome was still a desktop's** (D63, and the touch
+targets are D58's other half).
+
+- **The header cannot hold capture plus four nav words.** The placeholder truncated at
+  `#europe #`, cutting off the tag half of the grammar — and the placeholder is the only place
+  that grammar is written down. Below `sm` the view switcher moves to a segmented control across
+  the top of the footer and the wordmark goes; capture keeps the width, which is the priority
+  §9 sets. `+ era` and `?` stay in the header, at 44 px.
+- **Nothing was tappable.** The nav buttons were 24 px tall, `filters` — the only route to
+  filtering on a phone — was 27×17, the packs checkbox was 13×13 and the footer's buttons were
+  16 px. Every single-row control is now at least 44 px tall below `sm`, with the visual size
+  unchanged; the two checkboxes became labelled toggle buttons, which say their own state and
+  match the tag chips they sit beside. The chips themselves stop at 32 px on purpose: they wrap
+  into a grid four pixels apart, and a 44 px target there would overlap the row above it and
+  swallow the tap meant for another tag.
+- **The sheet is capped at 50vh** and padded for the home indicator with
+  `env(safe-area-inset-bottom)` (`viewport-fit=cover` was already set). At 62vh a 844 px phone
+  had 320 px of "context" left, most of it header and filter bar. The argument for a sheet over
+  a takeover is that you can still see what you selected, and with the selection now revealed on
+  the canvas (D57) there is something there worth seeing.
+
 ### 7.2 The service worker (D40)
 
 Written in `scripts/pwa-plugin.ts` rather than taken as a dependency, for the reason the Markdown
@@ -1146,6 +1260,19 @@ URL is one immutable body whoever asks.
 Verified by cutting the network through the DevTools protocol and reloading — `scripts/shot.mjs
 --offline` — rather than by stopping the server, which races Chrome's own start-up and fails for
 reasons unrelated to the worker.
+
+**A third silent failure, on the page's side of it (D64).** The registration was made once and
+never looked at again, while the worker it registers calls `skipWaiting` and deletes the old
+cache the moment it activates. So a deployment can claim an open tab and evict the assets that
+tab is still running: it keeps working until it asks for something it has not already loaded,
+and then fails for no visible reason. Nothing on the page can prevent that — the swap is the
+worker's own decision — so the page notices it instead. It asks for an update hourly and watches
+three edges, each of which the other two miss: a worker already `waiting` when the tab opened, a
+`statechange` to `installed` while it is open, and a `controllerchange` from a swap another tab
+triggered. The last is filtered on whether the page was controlled to begin with, since the very
+first install claims an uncontrolled page and that is the app arriving, not a new version of it.
+The footer then carries one quiet status item, `a new version is ready · reload` — a state the
+app is in, not an offer.
 
 ---
 
@@ -1425,6 +1552,23 @@ That single question does real work: the timeline is never blank, the personal f
 exists from the first minute, and the idea the whole project rests on — *an event is not just in
 1847, it is during your great-grandmother's childhood* — is demonstrated before the user has
 added anything. Offer the packs immediately after, and no more onboarding than that.
+
+**Skip creates nothing, which revises D26 to an offer (D59).** `skip` used to seed the life era
+from `this year − 30`, so declining to answer left a personal era on the axis claiming to be
+your life, dated from a year you never gave — the one record in the app the user has no way to
+check against anything, sitting in the one place the whole reading depends on. Skipping now
+materialises the premade vocabulary and nothing else: the tags have nothing to do with the
+question and everything to do with a typed `#war` attaching to the built-in tag (D39). The offer
+does not disappear with the screen — while no personal era exists, the filter bar carries a
+small `add my life`, which asks the same question again and says so in its own words, without
+the onboarding prose or the pack step. And the form now gives a reason when it refuses a year:
+`1850` was rejected by `parsed > 1850` with nothing on screen but a disabled button.
+
+**Onboarding is a takeover (D58).** It used to render inside the shell, so the header and footer
+stayed live behind the one question the app asks: you could add an event, switch views or open
+the packs panel while being asked your birth year, and "never backed up" glowed amber before
+there was anything to back up. It returns before the shell now, as the loading and error states
+already did.
 
 ### Capture friction is the top product risk
 

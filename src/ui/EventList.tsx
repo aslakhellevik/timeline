@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { TimelineEvent } from '../core/model/types';
 import { searchEvents } from '../core/search';
 import { formatTime } from '../core/time';
+import { useTagNames } from '../state/tag-names';
 import { useTimeline } from '../state/timeline-store';
+import { Field } from './controls';
 
 /**
  * The list view (docs/design.md §6.2, D23) — v1 scope for two independent
@@ -35,7 +37,6 @@ export interface EventListProps {
 }
 
 export function EventList({ events, onShowOnCanvas }: EventListProps) {
-  const tags = useTimeline((state) => state.timeline.tags);
   const query = useTimeline((state) => state.query);
   const setQuery = useTimeline((state) => state.setQuery);
   const selectedId = useTimeline((state) => state.selectedId);
@@ -45,8 +46,9 @@ export function EventList({ events, onShowOnCanvas }: EventListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [height, setHeight] = useState(600);
+  const rowId = useId();
 
-  const tagNames = useMemo(() => new Map(tags.map((tag) => [tag.id, tag.name])), [tags]);
+  const tagNames = useTagNames();
 
   const rows = useMemo(() => {
     if (query.trim().length === 0) return events;
@@ -133,7 +135,7 @@ export function EventList({ events, onShowOnCanvas }: EventListProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-3 border-b border-line px-4 py-2">
-        <input
+        <Field
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
@@ -145,10 +147,12 @@ export function EventList({ events, onShowOnCanvas }: EventListProps) {
               commit();
             }
           }}
-          placeholder="search titles, notes, sources and tags"
-          aria-label="Search events"
-          className="w-full max-w-md rounded border border-line bg-surface px-3 py-1.5 text-sm
-                     text-paper placeholder:text-paper-dim/70 focus:border-accent focus:outline-none"
+          // What it actually searches (§6.3). It used to promise "sources",
+          // which is a field on an event that the index does not read; what it
+          // does read is where you learned the thing.
+          placeholder="search titles, notes, tags and where you learned it"
+          aria-label="search events"
+          className="w-full max-w-md"
         />
         <span className="whitespace-nowrap text-xs text-paper-dim">
           {rows.length.toLocaleString('en-GB')}
@@ -156,12 +160,24 @@ export function EventList({ events, onShowOnCanvas }: EventListProps) {
         </span>
       </div>
 
+      {/*
+        A listbox, not a grid (D23).
+
+        `role="grid"` over rows of bare `<span>`s announced nothing at all: a
+        grid promises cells, there were none, and there was no
+        `aria-activedescendant` either — so the one view that exists to be the
+        accessible presentation of the canvas was the least accessible thing in
+        the app. A single-column list of options is what this is, and it is what
+        the connect picker already declares.
+      */}
       <div
         ref={scrollRef}
         tabIndex={0}
-        role="grid"
-        aria-rowcount={rows.length}
-        aria-label="Events"
+        role="listbox"
+        aria-label="events"
+        aria-activedescendant={
+          (cursorId ?? selectedId) ? `${rowId}-${cursorId ?? selectedId}` : undefined
+        }
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown') {
@@ -186,16 +202,25 @@ export function EventList({ events, onShowOnCanvas }: EventListProps) {
       >
         {rows.length === 0 ? (
           <p className="px-4 py-6 text-sm text-paper-dim">
-            {query.trim().length > 0 ? 'nothing matches' : 'no events yet'}
+            {/* An empty state that says what to do next, rather than restating
+                that there is nothing here — which the reader can see. */}
+            {query.trim().length > 0
+              ? 'nothing matches that search'
+              : 'nothing here yet — type an event into the box at the top'}
           </p>
         ) : (
-          <div style={{ height: rows.length * ROW_HEIGHT, position: 'relative' }}>
-            <div style={{ transform: `translateY(${first * ROW_HEIGHT}px)` }}>
-              {windowed.map((event, index) => (
+          /*
+            The two elements the windowing needs are not part of the list: a
+            listbox owns its options directly, and `presentation` is how a
+            wrapper says it is only holding them up.
+          */
+          <div role="presentation" style={{ height: rows.length * ROW_HEIGHT, position: 'relative' }}>
+            <div role="presentation" style={{ transform: `translateY(${first * ROW_HEIGHT}px)` }}>
+              {windowed.map((event) => (
                 <Row
                   key={event.id}
+                  id={`${rowId}-${event.id}`}
                   event={event}
-                  rowIndex={first + index}
                   selected={event.id === selectedId}
                   cursored={event.id === cursorId}
                   tagNames={tagNames}
@@ -237,15 +262,16 @@ function scrollRowIntoView(
 }
 
 function Row({
+  id,
   event,
-  rowIndex,
   selected,
   cursored,
   tagNames,
   onSelect,
 }: {
+  /** Stable per event, because `aria-activedescendant` points at it by name. */
+  id: string;
   event: TimelineEvent;
-  rowIndex: number;
   selected: boolean;
   /** Where the keyboard is while a pick is armed — not a selection yet. */
   cursored: boolean;
@@ -254,8 +280,8 @@ function Row({
 }) {
   return (
     <div
-      role="row"
-      aria-rowindex={rowIndex + 1}
+      id={id}
+      role="option"
       aria-selected={selected}
       // Not a second `aria-selected`: while a pick is armed the selection is
       // still the connection's first endpoint, and the cursor is only where the

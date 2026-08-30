@@ -58,7 +58,7 @@ export function EraDetail() {
   };
 
   return (
-    <DetailPane label="Era" onClose={() => selectEra(null)}>
+    <DetailPane label="era" onClose={() => selectEra(null)}>
 
       <label className="flex flex-col gap-1 text-xs text-paper-dim">
         name
@@ -82,7 +82,7 @@ export function EraDetail() {
           }}
           placeholder="1837–1901 · the 1960s · c. 1900"
           className={`rounded border bg-surface px-2 py-1 text-sm tabular-nums text-paper
-                      placeholder:text-paper-dim/60 focus:outline-none
+                      placeholder:text-paper-dim focus:outline-none
                       ${spanError ? 'border-[#e66767]' : 'border-line focus:border-accent'}`}
         />
         {spanError && <span className="text-[11px] text-[#e66767]">{spanError}</span>}
@@ -108,7 +108,7 @@ export function EraDetail() {
             </button>
           ))}
         </div>
-        <p className="text-[11px] text-paper-dim/80">
+        <p className="text-[11px] text-paper-faint">
           {era.kind === 'personal'
             ? 'always visible, whatever the tag filter, and drawn nearest the axis'
             : 'filtered by its own tags, like everything else'}

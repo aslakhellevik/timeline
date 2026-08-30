@@ -349,8 +349,11 @@ export function MapView({
     <div
       ref={frameRef}
       tabIndex={0}
-      role="img"
-      aria-label={`A world map of ${events.length} events, with a time scrubber. Switch to the list view for a keyboard-navigable equivalent.`}
+      // The same role as the other two canvases, though this one is pointer-only
+      // so far: the label says so rather than promising keys it does not bind.
+      role="application"
+      aria-roledescription="map canvas"
+      aria-label={`A world map of ${events.length} events, with a time scrubber. Dragging and the wheel move it; the list view is the keyboard-navigable equivalent, and ? lists the shortcuts.`}
       className="h-full w-full cursor-grab touch-none outline-none focus-visible:ring-1 focus-visible:ring-paper-dim/40"
     >
       <canvas ref={canvasRef} className="block h-full w-full" />

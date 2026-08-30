@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
 import {
   RECORD_KINDS,
   SNAPSHOT_RETENTION,
@@ -21,6 +20,9 @@ import type {
   StorageEstimateResult,
 } from '../store';
 import { useTimeline } from '../state/timeline-store';
+import { Button, Section, plural } from './controls';
+import { useOnEscape } from './use-escape';
+import { useFocusTrap } from './use-focus-trap';
 
 /**
  * The three durability layers, made visible (docs/design.md §8.3).
@@ -42,7 +44,11 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
   const [estimate, setEstimate] = useState<StorageEstimateResult | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const [confirmingReset, setConfirmingReset] = useState(false);
+
+  useFocusTrap(panelRef);
+  useOnEscape(onClose);
 
   const resetEverything = useCallback(async () => {
     await resetAll();
@@ -62,14 +68,6 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
     void refresh();
   }, [refresh]);
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   const onImport = async (file: File) => {
     try {
       const incoming = parseDocument(await file.text());
@@ -88,9 +86,7 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
           // alone is the merge rule protecting newer work, a rejected one is
           // data that could not be read at all, and the user may want the file
           // looked at.
-          (rejected > 0
-            ? `, ${rejected} record${rejected === 1 ? '' : 's'} could not be read`
-            : ''),
+          (rejected > 0 ? `, ${plural(rejected, 'record')} could not be read` : ''),
       );
     } catch (error) {
       setNote(error instanceof Error ? error.message : 'could not read that file');
@@ -98,31 +94,40 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
   };
 
   return (
+    // The dialog is the panel, not the backdrop it floats on: with the roles on
+    // the outer element a screen reader was told the whole screen was the modal,
+    // including the chrome the overlay exists to take out of play.
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Your data"
       className="fixed inset-0 z-20 flex items-center justify-center bg-ink/80 p-6"
       onClick={onClose}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="your data"
         onClick={(event) => event.stopPropagation()}
         className="max-h-full w-full max-w-lg overflow-y-auto rounded border border-line bg-surface p-5"
       >
         <div className="flex items-start justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-paper">Your data</h2>
+            <h2 className="text-sm font-semibold text-paper">your data</h2>
             <p className="mt-1 text-xs leading-relaxed text-paper-dim">
               Everything lives in this browser. Nothing is sent anywhere. That also means clearing
               your browsing data would delete it — so keep a copy somewhere real.
             </p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="px-1.5 text-paper-dim hover:text-paper">
+          <button
+            onClick={onClose}
+            aria-label="close"
+            className="inline-flex min-h-11 items-center px-1.5 text-paper-dim hover:text-paper
+                       sm:min-h-0"
+          >
             ×
           </button>
         </div>
 
-        <Section title="Keep it from being evicted">
+        <Section title="keep it from being evicted">
           <p className="text-xs text-paper-dim">{persistence?.message ?? 'checking…'}</p>
           {persistence &&
             !persistence.persisted &&
@@ -139,17 +144,17 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
                 more, or installing it, usually changes that.
               </p>
             ) : (
-              <Action
+              <Button
                 onClick={async () => {
                   setPersistence(await requestPersistence());
                 }}
               >
                 ask the browser to keep it
-              </Action>
+              </Button>
             ))}
         </Section>
 
-        <Section title="Back up to a folder">
+        <Section title="back up to a folder">
           <p className="text-xs text-paper-dim">{backup?.message ?? 'checking…'}</p>
           {backup?.supported && backup.folder && (
             <p className="text-xs text-paper-dim">
@@ -160,7 +165,7 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
           )}
           {backup?.supported && (
             <div className="flex flex-wrap gap-2">
-              <Action
+              <Button
                 onClick={async () => {
                   const chosen = await chooseBackupFolder();
                   setNote(chosen.ok ? `backing up to ${chosen.name}` : chosen.message);
@@ -168,20 +173,20 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
                 }}
               >
                 {backup.folder ? 'change folder' : 'choose a folder'}
-              </Action>
+              </Button>
               {backup.folder && (
                 <>
                   {backup.permission !== 'granted' && (
-                    <Action
+                    <Button
                       onClick={async () => {
                         await requestBackupPermission();
                         await refresh();
                       }}
                     >
                       allow access
-                    </Action>
+                    </Button>
                   )}
-                  <Action
+                  <Button
                     onClick={async () => {
                       await flush();
                       const result = await writeSnapshot(timeline);
@@ -190,14 +195,14 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
                     }}
                   >
                     back up now
-                  </Action>
+                  </Button>
                 </>
               )}
             </div>
           )}
         </Section>
 
-        <Section title="Export and import">
+        <Section title="export and import">
           <p className="text-xs text-paper-dim">
             A single JSON file with everything in it. Importing merges by record rather than
             replacing, so restoring an old backup never discards newer work. An export counts as
@@ -205,7 +210,7 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
             app never learns whether you saved it.
           </p>
           <div className="flex flex-wrap gap-2">
-            <Action
+            <Button
               onClick={async () => {
                 await flush();
                 const result = await downloadExport(timeline);
@@ -214,8 +219,8 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
               }}
             >
               export
-            </Action>
-            <Action onClick={() => fileRef.current?.click()}>import</Action>
+            </Button>
+            <Button onClick={() => fileRef.current?.click()}>import</Button>
             <input
               ref={fileRef}
               type="file"
@@ -239,7 +244,7 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
           mode. Offering the export beside it is not politeness; it is the only
           safety net there is.
         */}
-        <Section title="Start over">
+        <Section title="start over">
           {confirmingReset ? (
             <>
               <p className="text-xs text-[#e66767]">
@@ -247,7 +252,7 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
                 undone, and nothing else has a copy.
               </p>
               <div className="flex flex-wrap gap-2">
-                <Action
+                <Button
                   onClick={async () => {
                     await flush();
                     const result = await downloadExport(timeline);
@@ -255,20 +260,13 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
                   }}
                 >
                   export first
-                </Action>
-                <button
-                  onClick={() => void resetEverything()}
-                  className="rounded border border-[#e66767] px-2 py-1 text-xs text-[#e66767]
-                             hover:bg-[#e66767]/10"
-                >
+                </Button>
+                <Button variant="danger" onClick={() => void resetEverything()}>
                   delete everything
-                </button>
-                <button
-                  onClick={() => setConfirmingReset(false)}
-                  className="px-1 text-xs text-paper-dim hover:text-paper"
-                >
+                </Button>
+                <Button variant="quiet" onClick={() => setConfirmingReset(false)}>
                   cancel
-                </button>
+                </Button>
               </div>
             </>
           ) : (
@@ -277,7 +275,7 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
                 Empty this timeline and go back to the first-run screen. Useful for showing someone
                 the app from the beginning.
               </p>
-              <Action onClick={() => setConfirmingReset(true)}>start over…</Action>
+              <Button onClick={() => setConfirmingReset(true)}>start over…</Button>
             </>
           )}
         </Section>
@@ -286,25 +284,5 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
         {note && <p className="mt-3 text-xs text-paper-soft">{note}</p>}
       </div>
     </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="mt-5 space-y-2 border-t border-line pt-4">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-paper-soft">{title}</h3>
-      {children}
-    </section>
-  );
-}
-
-function Action({ onClick, children }: { onClick: () => void | Promise<void>; children: ReactNode }) {
-  return (
-    <button
-      onClick={() => void onClick()}
-      className="rounded border border-line px-2 py-1 text-xs text-paper hover:border-accent"
-    >
-      {children}
-    </button>
   );
 }

@@ -536,6 +536,19 @@ describe('first run (D26)', () => {
     expect(state().timeline.eras).toHaveLength(1);
   });
 
+  it('seeds the vocabulary without an era, which is what skipping leaves', async () => {
+    await attach(fakeStore());
+
+    // Skipping the question used to invent a birth year — a personal era dated
+    // from nothing the user ever said. The tags are a separate matter: without
+    // them a typed `#war` invents a private tag beside the built-in one (D39).
+    state().seedTags();
+
+    expect(state().timeline.eras).toHaveLength(0);
+    expect(state().timeline.tags.length).toBeGreaterThan(0);
+    expect(state().isFirstRun).toBe(true);
+  });
+
   it('does not end first run until the user has an event or an era of their own', async () => {
     await attach(fakeStore());
 

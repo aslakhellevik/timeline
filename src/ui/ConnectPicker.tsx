@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { applyFilter } from '../core/filter';
 import { searchEvents } from '../core/search';
 import { formatTime } from '../core/time';
+import { useTagNames } from '../state/tag-names';
 import { findConnectionBetween } from '../state/timeline-model';
 import { useTimeline } from '../state/timeline-store';
+import { useOnEscape } from './use-escape';
+import { useFocusTrap } from './use-focus-trap';
 
 /**
  * Picking the second event of a connection (§6.2).
@@ -31,13 +34,17 @@ export function ConnectPicker() {
   const [query, setQuery] = useState('');
   const [cursor, setCursor] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const rowId = useId();
+
+  useFocusTrap(panelRef);
+  // Escape cancels the pick, rather than only dismissing the picker: dismissing
+  // is what the footer's "pick on the timeline instead" is for (§6.4).
+  useOnEscape(cancelConnect);
 
   const source = timeline.events.find((event) => event.id === connectFrom) ?? null;
 
-  const tagNames = useMemo(
-    () => new Map(timeline.tags.map((tag) => [tag.id, tag.name])),
-    [timeline.tags],
-  );
+  const tagNames = useTagNames();
 
   const results = useMemo(() => {
     if (!source) return [];
@@ -69,13 +76,20 @@ export function ConnectPicker() {
 
   return (
     <div
+      /*
+        Dismiss, not cancel. The backdrop used to call `cancelConnect` while the
+        footer beside it called `closePicker`, so the same modal had two exits
+        that disagreed about whether the pick survived — and clicking beside a
+        dialog is the most accidental of the two. Escape is how you mean it.
+      */
       className="fixed inset-0 z-30 flex items-start justify-center bg-black/60 pt-[12vh]"
-      onClick={cancelConnect}
+      onClick={closePicker}
     >
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Choose the other event"
+        aria-label="choose the other event"
         onClick={(event) => event.stopPropagation()}
         className="flex max-h-[70vh] w-full max-w-xl flex-col overflow-hidden rounded-lg border
                    border-line bg-ink shadow-2xl"
@@ -100,28 +114,36 @@ export function ConnectPicker() {
             } else if (event.key === 'Enter') {
               event.preventDefault();
               choose(cursor);
-            } else if (event.key === 'Escape') {
-              event.preventDefault();
-              cancelConnect();
             }
           }}
           placeholder="search for the other event"
-          aria-label="Search for the other event"
+          aria-label="search for the other event"
+          role="combobox"
+          aria-expanded
+          aria-controls={`${rowId}-list`}
+          aria-activedescendant={results[cursor] ? `${rowId}-${cursor}` : undefined}
           className="border-b border-line bg-transparent px-4 py-2.5 text-sm text-paper
-                     placeholder:text-paper-dim/70 focus:outline-none"
+                     placeholder:text-paper-faint focus:outline-none"
         />
 
-        <ul ref={listRef} role="listbox" aria-label="Matching events" className="min-h-0 flex-1 overflow-y-auto">
+        <ul
+          ref={listRef}
+          id={`${rowId}-list`}
+          role="listbox"
+          aria-label="matching events"
+          className="min-h-0 flex-1 overflow-y-auto"
+        >
           {results.length === 0 ? (
             <li className="px-4 py-6 text-sm text-paper-dim">
               {timeline.events.length < 2
                 ? 'add another event first — a connection needs two'
-                : 'nothing matches'}
+                : 'nothing matches that search'}
             </li>
           ) : (
             results.map((result, index) => (
               <li
                 key={result.event.id}
+                id={`${rowId}-${index}`}
                 role="option"
                 aria-selected={index === cursor}
                 onMouseEnter={() => setCursor(index)}
@@ -142,9 +164,12 @@ export function ConnectPicker() {
           )}
         </ul>
 
-        <footer className="flex items-center justify-between border-t border-line px-4 py-2 text-[11px] text-paper-dim">
+        <footer className="flex items-center justify-between gap-3 border-t border-line px-4 py-2 text-[11px] text-paper-dim">
           <span>↑↓ to move · ⏎ to connect · esc to cancel</span>
-          <button onClick={closePicker} className="hover:text-paper">
+          <button
+            onClick={closePicker}
+            className="inline-flex min-h-11 items-center hover:text-paper sm:min-h-0"
+          >
             pick on the timeline instead
           </button>
         </footer>

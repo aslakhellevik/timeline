@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { TimelineEvent } from '../core/model/types';
 import { formatTime } from '../core/time';
 import { useTimeline } from '../state/timeline-store';
+import { Field } from './controls';
+import { modalIsOpen } from './use-focus-trap';
 
 /**
  * Capture (docs/design.md §9).
@@ -27,6 +29,9 @@ export function QuickAdd() {
         event.target instanceof HTMLElement &&
         (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA');
       if (typingElsewhere) return;
+      // Not from under a dialog: `/` used to focus this box behind the overlay,
+      // so the next keystrokes went into a field nobody could see (§6.4).
+      if (modalIsOpen()) return;
 
       if (event.key === '/' || ((event.ctrlKey || event.metaKey) && event.key === 'k')) {
         event.preventDefault();
@@ -61,8 +66,8 @@ export function QuickAdd() {
 
   return (
     <div className="relative flex-1">
-      <input
-        ref={inputRef}
+      <Field
+        inputRef={inputRef}
         value={value}
         onChange={(event) => {
           setValue(event.target.value);
@@ -71,15 +76,19 @@ export function QuickAdd() {
         onKeyDown={(event) => {
           if (event.key === 'Enter') submit();
           if (event.key === 'Escape') {
+            // Claimed, so that clearing the box does not also close whatever
+            // pane is open behind it (§6.4).
+            event.preventDefault();
             setValue('');
             setFeedback(null);
             event.currentTarget.blur();
           }
         }}
         placeholder="battle of lepanto 1571 #europe #war"
-        aria-label="Add an event"
-        className="w-full rounded border border-line bg-surface px-3 py-1.5 text-sm text-paper
-                   placeholder:text-paper-dim/70 focus:border-accent focus:outline-none"
+        aria-label="add an event"
+        // The shortcut, where the shortcut takes you. A key that exists only in
+        // a window listener is a key nobody finds.
+        after="/"
       />
 
       {feedback && (

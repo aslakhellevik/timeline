@@ -40,7 +40,7 @@ export function ConnectionDetail() {
   const to = events.get(connection.to);
 
   return (
-    <DetailPane label="Connection" onClose={() => selectConnection(null)}>
+    <DetailPane label="connection" onClose={() => selectConnection(null)}>
 
       <div className="flex flex-col gap-1.5">
         {[from, to].map((event, index) => (

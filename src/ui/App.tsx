@@ -15,12 +15,20 @@ import { EventDetail } from './EventDetail';
 import { EventList } from './EventList';
 import { FilterBar } from './FilterBar';
 import { FirstRun } from './FirstRun';
+import { HelpOverlay } from './HelpOverlay';
 import { MapView } from './MapView';
 import { PackPanel } from './PackPanel';
 import { QuickAdd } from './QuickAdd';
 import { TimelineView } from './TimelineView';
+import { plural } from './controls';
+import { onUpdateReady } from './service-worker';
+import { useOnEscape } from './use-escape';
+import { modalIsOpen } from './use-focus-trap';
 import { decodeUrlState, encodeUrlState } from './url-state';
 import type { UrlState } from './url-state';
+
+const VIEWS = ['timeline', 'depth', 'map', 'list'] as const;
+type View = (typeof VIEWS)[number];
 
 /**
  * How long the hash waits before catching up.
@@ -50,15 +58,15 @@ export function App() {
   const revealSelected = useTimeline((state) => state.revealSelected);
   const restoreBookmark = useTimeline((state) => state.restoreBookmark);
   const undo = useTimeline((state) => state.undo);
-  const undoDepth = useTimeline((state) => state.undoStack.length);
+  // The label, not the depth: "undo" alone never said what would come back, and
+  // the store has known since W1.
+  const undoLabel = useTimeline((state) => state.undoLabel);
   const attach = useTimeline((state) => state.attach);
   const flush = useTimeline((state) => state.flush);
   const error = useTimeline((state) => state.error);
 
   const initial = useMemo(() => decodeUrlState(window.location.hash), []);
-  const [view, setView] = useState<'timeline' | 'depth' | 'map' | 'list'>(
-    initial.view ?? 'timeline',
-  );
+  const [view, setView] = useState<View>(initial.view ?? 'timeline');
   /*
    * Seeded from the URL, not left null.
    *
@@ -74,9 +82,17 @@ export function App() {
   );
   const [dataOpen, setDataOpen] = useState(false);
   const [packsOpen, setPacksOpen] = useState(false);
-  // Held separately from `isFirstRun`, which flips as soon as the birth year is
-  // answered — the pack offer that follows it has to survive that.
-  const [onboarding, setOnboarding] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [updateReady, setUpdateReady] = useState(false);
+  /*
+   * Held separately from `isFirstRun`, which flips as soon as the birth year is
+   * answered — the pack offer that follows it has to survive that.
+   *
+   * And it carries *why* the screen is up: the same question is asked again by
+   * "add my life", months later, of someone who skipped it and has since filled
+   * the timeline. "It starts empty" is the wrong sentence to say to them.
+   */
+  const [onboarding, setOnboarding] = useState<'first-run' | 'life' | null>(null);
   const [backup, setBackup] = useState<BackupStatus | null>(null);
 
   // Open the database and load whatever is there.
@@ -133,7 +149,7 @@ export function App() {
    * the hash before: the effect only fired on selection, tags and view, and
    * "the 1840s, art history only" is supposed to be a link (D24).
    */
-  const viewRef = useRef(view);
+  const viewRef = useRef<View>(view);
   const hashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /*
    * The canvas the user was last on, so "show on timeline" from the list has
@@ -216,15 +232,18 @@ export function App() {
     });
   }, [addEra, timeline.events]);
 
+  /*
+   * Escape cancels an armed pick — but only when nothing is on top of it.
+   *
+   * Through the shared stack rather than a window listener of its own, which is
+   * what it was: an open panel would close *and* the pick would cancel, from two
+   * handlers that did not know about each other (§6.4).
+   */
+  useOnEscape(cancelConnect, connectFrom !== null);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && connectFrom) {
-        event.preventDefault();
-        cancelConnect();
-        return;
-      }
-
-      // Both shortcuts stand down while something is being typed into. A
+      // All shortcuts stand down while something is being typed into. A
       // single-letter `c` firing inside quick-add would make capture — the
       // thing the app is built around — impossible; and Ctrl+Z belongs to the
       // text field the cursor is in, which the app's own undo used to steal by
@@ -234,22 +253,40 @@ export function App() {
         target instanceof HTMLInputElement ||
         target instanceof HTMLTextAreaElement ||
         target?.isContentEditable === true;
+      if (typing) return;
+
+      // `?` is the one key a modal does not block, because the modal it opens
+      // is the only one it can close.
+      if (event.key === '?') {
+        if (!helpOpen && modalIsOpen()) return;
+        event.preventDefault();
+        setHelpOpen((open) => !open);
+        return;
+      }
+
+      // Nothing else fires underneath a dialog. `c` used to stack a second
+      // `aria-modal` picker on top of an open panel, which is not a state the
+      // app has any way back out of.
+      if (modalIsOpen()) return;
 
       // Shift is redo's key everywhere else, so Ctrl+Shift+Z must not undo.
-      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key === 'z' && !typing) {
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key === 'z') {
         event.preventDefault();
         undo();
         return;
       }
 
-      if (event.key === 'c' && !typing && !event.ctrlKey && !event.metaKey && selectedId) {
+      if (event.key === 'c' && !event.ctrlKey && !event.metaKey && selectedId) {
         event.preventDefault();
         beginConnect(selectedId);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [undo, connectFrom, cancelConnect, selectedId, beginConnect]);
+  }, [undo, selectedId, beginConnect, helpOpen]);
+
+  // A newer build has installed itself under this tab (§7.2).
+  useEffect(() => onUpdateReady(setUpdateReady), []);
 
   // The "last backed up N days ago" indicator (§8.3, layer 3). Re-checked when
   // the panel closes, since that is when it is most likely to have changed.
@@ -279,7 +316,7 @@ export function App() {
   }, [status]);
 
   useEffect(() => {
-    if (status === 'ready' && isFirstRun) setOnboarding(true);
+    if (status === 'ready' && isFirstRun) setOnboarding('first-run');
   }, [status, isFirstRun]);
 
   const visible = useMemo(() => applyFilter(timeline, filter), [timeline, filter]);
@@ -301,29 +338,64 @@ export function App() {
   if (status === 'error') {
     return <Centred>could not open the database{error ? ` — ${error}` : ''}</Centred>;
   }
+  /*
+   * Onboarding is a takeover, like the loading state above it.
+   *
+   * It used to render inside the shell, so the header and the footer stayed live
+   * behind the one question the app asks: you could add an event, switch views
+   * or open the packs panel while being asked your birth year, and "never backed
+   * up" glowed amber before there was anything to back up. None of that chrome
+   * has anything to act on yet.
+   */
+  if (onboarding) {
+    return <FirstRun mode={onboarding} onDone={() => setOnboarding(null)} />;
+  }
 
   return (
     <div className="flex h-full flex-col bg-ink">
-      <header className="flex items-center gap-4 border-b border-line px-4 py-2">
-        <h1 className="shrink-0 text-base font-semibold tracking-tight text-paper">Årlinje</h1>
+      <header className="flex items-center gap-2 border-b border-line px-3 py-1 sm:gap-4 sm:px-4 sm:py-2">
+        {/*
+          The wordmark is the first thing to go below `sm`. Capture is the
+          surface the whole app is built around (§9) and the placeholder is the
+          only place its grammar is written down — `#europe #war` truncating
+          away costs more than a name the phone already shows on the tab.
+        */}
+        <h1 className="hidden shrink-0 text-base font-semibold tracking-tight text-paper sm:block">
+          Årlinje
+        </h1>
         <QuickAdd />
-        <nav className="flex shrink-0 gap-1" aria-label="View">
-          {(['timeline', 'depth', 'map', 'list'] as const).map((option) => (
-            <button
-              key={option}
-              onClick={() => setView(option)}
-              aria-pressed={view === option}
-              className={`rounded px-2 py-1 text-xs ${
-                view === option ? 'bg-line text-paper' : 'text-paper-dim hover:text-paper'
-              }`}
-            >
-              {option}
-            </button>
-          ))}
-        </nav>
+        {/*
+          Actions, not status (§7.1). An era is derived from the viewport — you
+          zoom to the period you mean and press the button — which makes it a
+          header-level act beside the view nav, not a word in the status bar it
+          used to share with the backup age.
+        */}
+        <button
+          onClick={addEraHere}
+          title="a new era over the middle of what is on screen"
+          className="inline-flex min-h-11 shrink-0 items-center rounded px-2 text-xs
+                     text-paper-dim hover:text-paper sm:min-h-0 sm:py-1"
+        >
+          + era
+        </button>
+        {/*
+          The nav is the first thing off the header on a phone: four words plus
+          capture left the placeholder truncating mid-grammar, at `#europe #`,
+          and capture is the surface the whole app is built around.
+        */}
+        <ViewNav view={view} onChange={setView} className="hidden sm:flex" />
+        <button
+          onClick={() => setHelpOpen(true)}
+          aria-label="keyboard shortcuts"
+          title="keyboard shortcuts (?)"
+          className="inline-flex min-h-11 shrink-0 items-center rounded px-2.5 text-xs
+                     text-paper-dim hover:text-paper sm:min-h-0 sm:px-2 sm:py-1"
+        >
+          ?
+        </button>
       </header>
 
-      <FilterBar />
+      <FilterBar onAddLife={() => setOnboarding('life')} />
 
       {/*
         The pick stays armed while the picker is dismissed, so the app needs to
@@ -332,7 +404,8 @@ export function App() {
       {connectFrom && !pickerOpen && (
         <div className="flex items-center gap-3 border-b border-[#ffd43b]/40 bg-[#ffd43b]/10 px-4 py-1.5 text-xs text-paper">
           <span>
-            pick the other event — click a mark on the timeline, or a row in the list
+            pick the other event — click a mark on the timeline, a dot on the map, or a row in the
+            list
           </span>
           <button onClick={cancelConnect} className="text-paper-dim hover:text-paper">
             cancel (esc)
@@ -340,116 +413,193 @@ export function App() {
         </div>
       )}
 
-      {onboarding ? (
-        <FirstRun onDone={() => setOnboarding(false)} />
-      ) : (
-        <div className="flex min-h-0 flex-1">
-          <main className="min-w-0 flex-1">
-            {view === 'timeline' ? (
-              <TimelineView
-                events={visible.events}
-                connections={visible.connections}
-                tags={visible.tags}
-                eras={visible.eras}
-                allEvents={timeline.events}
-                selectedId={selectedId}
-                selectedConnectionId={selectedConnectionId}
-                selectedEraId={selectedEraId}
-                connectFrom={connectFrom}
-                onSelectEvent={select}
-                onSelectConnection={selectConnection}
-                onSelectEra={selectEra}
-                revealRequest={revealRequest}
-                {...(startViewport ? { initialViewport: startViewport } : {})}
-                onViewportChange={onViewportChange}
-              />
-            ) : view === 'depth' ? (
-              <DepthView
-                events={visible.events}
-                connections={visible.connections}
-                tags={visible.tags}
-                eras={visible.eras}
-                allEvents={timeline.events}
-                selectedId={selectedId}
-                selectedConnectionId={selectedConnectionId}
-                selectedEraId={selectedEraId}
-                connectFrom={connectFrom}
-                onSelectEvent={select}
-                onSelectConnection={selectConnection}
-                onSelectEra={selectEra}
-                revealRequest={revealRequest}
-                {...(startViewport ? { initialViewport: startViewport } : {})}
-                onViewportChange={onViewportChange}
-              />
-            ) : view === 'map' ? (
-              <MapView
-                events={visible.events}
-                tags={visible.tags}
-                allEvents={timeline.events}
-                selectedId={selectedId}
-                connectFrom={connectFrom}
-                onSelectEvent={select}
-                revealRequest={revealRequest}
-                {...(startViewport ? { initialViewport: startViewport } : {})}
-                onViewportChange={onViewportChange}
-              />
-            ) : (
-              <EventList events={visible.events} onShowOnCanvas={showOnCanvas} />
-            )}
-          </main>
-          {selectedConnectionId ? (
-            <ConnectionDetail />
-          ) : selectedEraId ? (
-            <EraDetail />
+      <div className="flex min-h-0 flex-1">
+        <main className="min-w-0 flex-1">
+          {view === 'timeline' ? (
+            <TimelineView
+              events={visible.events}
+              connections={visible.connections}
+              tags={visible.tags}
+              eras={visible.eras}
+              allEvents={timeline.events}
+              selectedId={selectedId}
+              selectedConnectionId={selectedConnectionId}
+              selectedEraId={selectedEraId}
+              connectFrom={connectFrom}
+              onSelectEvent={select}
+              onSelectConnection={selectConnection}
+              onSelectEra={selectEra}
+              revealRequest={revealRequest}
+              {...(startViewport ? { initialViewport: startViewport } : {})}
+              onViewportChange={onViewportChange}
+            />
+          ) : view === 'depth' ? (
+            <DepthView
+              events={visible.events}
+              connections={visible.connections}
+              tags={visible.tags}
+              eras={visible.eras}
+              allEvents={timeline.events}
+              selectedId={selectedId}
+              selectedConnectionId={selectedConnectionId}
+              selectedEraId={selectedEraId}
+              connectFrom={connectFrom}
+              onSelectEvent={select}
+              onSelectConnection={selectConnection}
+              onSelectEra={selectEra}
+              revealRequest={revealRequest}
+              {...(startViewport ? { initialViewport: startViewport } : {})}
+              onViewportChange={onViewportChange}
+            />
+          ) : view === 'map' ? (
+            <MapView
+              events={visible.events}
+              tags={visible.tags}
+              allEvents={timeline.events}
+              selectedId={selectedId}
+              connectFrom={connectFrom}
+              onSelectEvent={select}
+              revealRequest={revealRequest}
+              {...(startViewport ? { initialViewport: startViewport } : {})}
+              onViewportChange={onViewportChange}
+            />
           ) : (
-            selectedId && <EventDetail onShowOnCanvas={showOnCanvas} />
+            <EventList events={visible.events} onShowOnCanvas={showOnCanvas} />
           )}
-        </div>
-      )}
-
-      <footer className="flex items-center gap-4 border-t border-line px-4 py-1.5 text-xs text-paper-dim">
-        <span className="tabular-nums">
-          {visible.events.length.toLocaleString('en-GB')} events
-          {visible.connections.length > 0 &&
-            ` · ${visible.connections.length.toLocaleString('en-GB')} connections`}
-          {visible.eras.length > 0 && ` · ${visible.eras.length.toLocaleString('en-GB')} eras`}
-        </span>
-        <button onClick={addEraHere} className="hover:text-paper">
-          + era
-        </button>
-        {undoDepth > 0 && (
-          <button onClick={undo} className="hover:text-paper">
-            undo
-          </button>
+        </main>
+        {selectedConnectionId ? (
+          <ConnectionDetail />
+        ) : selectedEraId ? (
+          <EraDetail />
+        ) : (
+          selectedId && <EventDetail onShowOnCanvas={showOnCanvas} />
         )}
-        <button onClick={() => setPacksOpen(true)} className="hover:text-paper">
-          {timeline.packs.length > 0
-            ? `${timeline.packs.length} pack${timeline.packs.length === 1 ? '' : 's'}`
-            : 'packs'}
-        </button>
-        <button
-          onClick={() => setDataOpen(true)}
-          className={backup?.stale ? 'text-[#c98500] hover:underline' : 'hover:text-paper'}
-        >
+      </div>
+
+      {/*
+        Status, and one undo (§7.1).
+
+        Everything that *did* something has left: the footer had `+ era`, `undo`,
+        `packs` and `your data` set in the same eleven-pixel word as the event
+        count, so a reading and four actions of three different kinds were one
+        undifferentiated row. What is left says what the timeline is — how much
+        of it is on screen, how long since a copy of it was written, what went
+        wrong — plus the two things that are about that state: undoing the last
+        change, and the panel that explains the backup.
+      */}
+      <footer className="border-t border-line text-xs text-paper-dim">
+        <ViewNav
+          view={view}
+          onChange={setView}
+          className="flex border-b border-line sm:hidden"
+          itemClassName="min-h-11 flex-1 justify-center"
+        />
+        <div className="flex flex-wrap items-center gap-x-4 px-4 py-1 sm:py-1.5">
+          <span className="tabular-nums">
+            {plural(visible.events.length, 'event')}
+            {visible.connections.length > 0 &&
+              ` · ${plural(visible.connections.length, 'connection')}`}
+            {visible.eras.length > 0 && ` · ${plural(visible.eras.length, 'era')}`}
+          </span>
+          <button
+            onClick={() => setDataOpen(true)}
+            className={`inline-flex min-h-11 items-center sm:min-h-0 ${
+              backup?.stale ? 'text-[#c98500] hover:underline' : 'hover:text-paper'
+            }`}
+          >
+            {/*
+              "exported" and "backed up" are not the same claim: the first is a
+              file the browser was asked to save, the second one this app wrote.
+            */}
+            {backup
+              ? backup.daysSinceCopy === null
+                ? 'never backed up'
+                : `${backup.lastCopyKind === 'export' ? 'exported' : 'backed up'} ${
+                    backup.daysSinceCopy === 0 ? 'today' : `${backup.daysSinceCopy}d ago`
+                  }`
+              : 'your data'}
+          </button>
           {/*
-            "exported" and "backed up" are not the same claim: the first is a
-            file the browser was asked to save, the second one this app wrote.
+            The worker replaces itself and drops the cache the running tab is
+            using, so this is a state the app is in, not an offer (§7.2).
           */}
-          {backup
-            ? backup.daysSinceCopy === null
-              ? 'never backed up'
-              : `${backup.lastCopyKind === 'export' ? 'exported' : 'backed up'} ${
-                  backup.daysSinceCopy === 0 ? 'today' : `${backup.daysSinceCopy}d ago`
-                }`
-            : 'your data'}
-        </button>
-        {error && <span className="text-[#e66767]">{error}</span>}
+          {updateReady && (
+            <button
+              onClick={() => window.location.reload()}
+              className="inline-flex min-h-11 items-center text-paper-soft hover:text-paper
+                         hover:underline sm:min-h-0"
+            >
+              a new version is ready · reload
+            </button>
+          )}
+          {error && <span className="text-[#e66767]">{error}</span>}
+
+          <span className="flex-1" />
+
+          {undoLabel && (
+            <button
+              onClick={undo}
+              className="inline-flex min-h-11 items-center hover:text-paper sm:min-h-0"
+            >
+              undo {undoLabel}
+            </button>
+          )}
+          {/*
+            Kept here rather than moved behind `?`: what is installed changes
+            what the picture means (D38), which is the same kind of claim as the
+            counts beside it. Underlined so it reads as a way in rather than as
+            another reading.
+          */}
+          <button
+            onClick={() => setPacksOpen(true)}
+            className="inline-flex min-h-11 items-center text-paper-dim underline
+                       decoration-line underline-offset-2 hover:text-paper sm:min-h-0"
+          >
+            {timeline.packs.length > 0 ? plural(timeline.packs.length, 'pack') : 'packs'}
+          </button>
+        </div>
       </footer>
 
       {dataOpen && <DataPanel onClose={() => setDataOpen(false)} />}
       {packsOpen && <PackPanel onClose={() => setPacksOpen(false)} />}
       {pickerOpen && <ConnectPicker />}
+      {helpOpen && <HelpOverlay onClose={() => setHelpOpen(false)} />}
     </div>
+  );
+}
+
+/**
+ * The view switcher, in the header on a desktop and the footer on a phone.
+ *
+ * One component in two places rather than two copies: the words and the pressed
+ * state are the same control, and only where it sits changes.
+ */
+function ViewNav({
+  view,
+  onChange,
+  className,
+  itemClassName,
+}: {
+  view: View;
+  onChange: (view: View) => void;
+  className?: string;
+  itemClassName?: string;
+}) {
+  return (
+    <nav className={`shrink-0 gap-1 ${className ?? ''}`} aria-label="view">
+      {VIEWS.map((option) => (
+        <button
+          key={option}
+          onClick={() => onChange(option)}
+          aria-pressed={view === option}
+          className={`inline-flex min-h-11 items-center rounded px-2 text-xs sm:min-h-0 sm:py-1 ${
+            view === option ? 'bg-line text-paper' : 'text-paper-dim hover:text-paper'
+          } ${itemClassName ?? ''}`}
+        >
+          {option}
+        </button>
+      ))}
+    </nav>
   );
 }
 

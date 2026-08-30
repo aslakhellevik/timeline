@@ -64,13 +64,13 @@ export function PlaceField({ event }: { event: TimelineEvent }) {
         }}
         placeholder="59.91, 10.75"
         className={`rounded border bg-surface px-2 py-1 text-sm tabular-nums text-paper
-                    placeholder:text-paper-dim/60 focus:outline-none
+                    placeholder:text-paper-dim focus:outline-none
                     ${error ? 'border-[#e66767]' : 'border-line focus:border-accent'}`}
       />
       {error ? (
         <span className="text-[11px] text-[#e66767]">{error}</span>
       ) : (
-        <span className="text-[11px] text-paper-dim/80">
+        <span className="text-[11px] text-paper-faint">
           {placed === null
             ? 'nowhere on the map — add a region tag or coordinates'
             : byTag

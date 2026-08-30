@@ -157,6 +157,8 @@ interface TimelineStoreState {
   selectEra(id: Id | null): void;
 
   seedLife(birthYear: number): void;
+  /** The premade vocabulary alone (D39) — what skipping the question leaves. */
+  seedTags(): void;
   replaceTimeline(timeline: Timeline): Promise<void>;
   /** Empties everything and returns to first run. Unrecoverable. */
   resetAll(): Promise<void>;
@@ -810,11 +812,23 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
      * the form's effect twice — two overlapping lives on the axis is a mess
      * only a manual delete gets out of.
      */
+    /**
+     * The premade vocabulary on its own.
+     *
+     * Separated from `seedLife` because skipping the birth-year question must
+     * create no era — an invented year is the one piece of data in the app the
+     * user cannot check — while the tags have nothing to do with the question
+     * and everything to do with a typed `#war` finding the built-in tag (D39).
+     */
+    seedTags() {
+      commit(installBuiltinTags(get().timeline));
+    },
+
     seedLife(birthYear) {
       const thisYear = new Date().getFullYear();
       // The premade vocabulary first, so `#war` typed a minute later attaches to
       // the built-in tag rather than inventing a private one beside it.
-      commit(installBuiltinTags(get().timeline));
+      get().seedTags();
 
       const already = get().timeline.eras.some(
         (era) => era.kind === 'personal' && !era.deleted_at && era.name === LIFE_ERA_NAME,

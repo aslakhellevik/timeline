@@ -1,8 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { packRecords, summarise, uninstallImpact } from '../core/packs';
 import type { PackBundle } from '../core/packs';
 import { CATALOGUE } from '../packs';
 import { useTimeline } from '../state/timeline-store';
+import { Button, plural } from './controls';
+import { useOnEscape } from './use-escape';
+import { useFocusTrap } from './use-focus-trap';
 
 /**
  * Installing and removing packs (docs/design.md §5).
@@ -23,7 +26,12 @@ export function PackPanel({ onClose }: { onClose: () => void }) {
   const includePacks = useTimeline((state) => state.filter.includePacks);
   const setIncludePacks = useTimeline((state) => state.setIncludePacks);
 
+  const panelRef = useRef<HTMLDivElement>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
+
+  useFocusTrap(panelRef);
+  useOnEscape(onClose);
+
   const summaries = useMemo(() => summarise(timeline, CATALOGUE), [timeline]);
 
   return (
@@ -32,16 +40,17 @@ export function PackPanel({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Packs"
+        aria-label="packs"
         onClick={(event) => event.stopPropagation()}
         className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg
                    border border-line bg-ink shadow-2xl"
       >
         <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-3">
           <div>
-            <h2 className="text-sm font-semibold text-paper">Packs</h2>
+            <h2 className="text-sm font-semibold text-paper">packs</h2>
             <p className="mt-1 max-w-lg text-xs leading-relaxed text-paper-dim">
               Canonical content, opt-in. Pack events are drawn dimmer than yours and can be left
               out of the mass entirely — because if the Second World War arrives pre-loaded, the
@@ -51,22 +60,35 @@ export function PackPanel({ onClose }: { onClose: () => void }) {
           </div>
           <button
             onClick={onClose}
-            aria-label="Close packs"
-            className="rounded px-1.5 text-paper-dim hover:text-paper"
+            aria-label="close packs"
+            className="inline-flex min-h-11 items-center rounded px-1.5 text-paper-dim
+                       hover:text-paper sm:min-h-0"
           >
             ×
           </button>
         </header>
 
-        <label className="flex items-center gap-2 border-b border-line px-5 py-2 text-xs text-paper-dim">
-          <input
-            type="checkbox"
-            checked={includePacks}
-            onChange={(change) => setIncludePacks(change.target.checked)}
-            className="accent-accent"
-          />
-          count pack events in the mass and the views
-        </label>
+        {/*
+          A toggle rather than a checkbox, and the same control as the one in the
+          filter bar: the box measured thirteen pixels square on a phone, which
+          is not a target — and a pressed button says its own state without a
+          label to parse (§7.1).
+        */}
+        <div className="flex items-center gap-3 border-b border-line px-5 py-2 text-xs text-paper-dim">
+          <button
+            onClick={() => setIncludePacks(!includePacks)}
+            aria-pressed={includePacks}
+            className={`inline-flex min-h-9 shrink-0 items-center rounded-full border px-3
+                        text-[11px] sm:min-h-0 sm:px-2.5 sm:py-0.5 ${
+                          includePacks
+                            ? 'border-accent text-paper'
+                            : 'border-line text-paper-dim hover:border-paper-dim'
+                        }`}
+          >
+            in the mass
+          </button>
+          <span>pack events count towards the density, and towards the views</span>
+        </div>
 
         <ul className="min-h-0 flex-1 divide-y divide-line/50 overflow-y-auto">
           {summaries.map(({ bundle, installed, upgradable, events, eras, connections }) => {
@@ -79,7 +101,8 @@ export function PackPanel({ onClose }: { onClose: () => void }) {
                 <div className="flex items-baseline justify-between gap-3">
                   <h3 className="text-sm text-paper">{bundle.name}</h3>
                   <span className="shrink-0 text-[11px] tabular-nums text-paper-dim">
-                    {events} events · {connections} connections · {eras} eras
+                    {plural(events, 'event')} · {plural(connections, 'connection')} ·{' '}
+                    {plural(eras, 'era')}
                   </span>
                 </div>
 
@@ -101,23 +124,22 @@ export function PackPanel({ onClose }: { onClose: () => void }) {
 
                 <div className="flex flex-wrap items-center gap-2">
                   {!installed && (
-                    <Action onClick={() => installPack(bundle)}>install</Action>
+                    <Button onClick={() => installPack(bundle)}>install</Button>
                   )}
 
                   {installed && upgradable && (
-                    <Action onClick={() => installPack(bundle)}>
+                    <Button onClick={() => installPack(bundle)}>
                       update to v{bundle.version}
-                    </Action>
+                    </Button>
                   )}
 
                   {installed && confirming !== bundle.id && (
-                    <button
+                    <Button
                       onClick={() => setConfirming(bundle.id)}
-                      className="rounded border border-line px-2 py-1 text-xs text-paper-dim
-                                 hover:border-[#e66767] hover:text-[#e66767]"
+                      className="enabled:hover:border-[#e66767] enabled:hover:text-[#e66767]"
                     >
                       uninstall
-                    </button>
+                    </Button>
                   )}
 
                   {installed && confirming === bundle.id && (
@@ -130,31 +152,28 @@ export function PackPanel({ onClose }: { onClose: () => void }) {
                         those are tombstoned rather than deleted.
                       */}
                       <span className="text-paper-soft">
-                        removes {impact?.events ?? 0} events
+                        removes {plural(impact?.events ?? 0, 'event')}
                         {(impact?.packConnections ?? 0) > 0 &&
                           ` and ${impact?.packConnections} of its connections`}
                         {adopted > 0 && `, keeps the ${adopted} you adopted`}
                         {(impact?.ownConnections ?? 0) > 0 &&
-                          `, and hides ${impact?.ownConnections} connection${
-                            impact?.ownConnections === 1 ? '' : 's'
-                          } of your own that led into it`}
+                          `, and hides ${plural(
+                            impact?.ownConnections ?? 0,
+                            'connection',
+                          )} of your own that led into it`}
                       </span>
-                      <button
+                      <Button
+                        variant="danger"
                         onClick={() => {
                           removePack(bundle.id);
                           setConfirming(null);
                         }}
-                        className="rounded border border-[#e66767] px-2 py-1 text-[#e66767]
-                                   hover:bg-[#e66767]/10"
                       >
                         remove
-                      </button>
-                      <button
-                        onClick={() => setConfirming(null)}
-                        className="px-1 text-paper-dim hover:text-paper"
-                      >
+                      </Button>
+                      <Button variant="quiet" onClick={() => setConfirming(null)}>
                         cancel
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -168,18 +187,6 @@ export function PackPanel({ onClose }: { onClose: () => void }) {
         </footer>
       </div>
     </div>
-  );
-}
-
-function Action({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className="rounded border border-line px-2 py-1 text-xs text-paper-soft
-                 hover:border-accent hover:text-paper"
-    >
-      {children}
-    </button>
   );
 }
 
