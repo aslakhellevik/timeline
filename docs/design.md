@@ -64,6 +64,10 @@ map are deferred — but the data model is shaped so that none of them require a
 | D50 | The flat view's semantic zoom is **per column**, not one number for the frame — D35 for the canvas |
 | D51 | The kernel bandwidth is **β = 3 px**: β and the height exponent `p` cannot be chosen independently |
 | D52 | The pannable frame is events **and** eras, and a stated default when there is neither |
+| D53 | The depth view's three label systems share **one occupancy**, and event titles are anchored outside the era lanes — fitted to the room there is, or not drawn |
+| D54 | A vagueness halo is a **ring at the true radius**, not a filled disc — revising how D43 is drawn |
+| D55 | Clustering is a grid **plus agglomerative passes**, merging against the radii the dots are actually **drawn** at |
+| D56 | Additive arc ink falls as `1/√n`, so a bundle brightens as `√n` instead of saturating to white |
 
 Conventions, settled and not worth further discussion:
 
@@ -662,6 +666,16 @@ Strokes composite with `lighter`. That is what makes a bundle read as structure 
 one thick line — where several arcs cross, the crossing brightens in proportion to how many.
 Normal alpha compositing saturates after three or four overlaps and the information is gone.
 
+**But `lighter` has no ceiling either, and that is its own failure (D56).** At the two-thousand-arc
+cap the modern peak pushes towards white, where two hundred crossings and two thousand look
+identical and the information is gone in the other direction. Ink per stroke now falls as `1/√n`
+in the number of arcs actually laid down, so the total ink over a busy region still grows — as
+`√n` — and a busier region still reads as busier, without any region saturating as fast. It is
+deliberately gentle and deliberately inert below a hundred and fifty arcs: a sparse timeline
+never saturates anything, and dimming it would only make the structure fainter than it needs to
+be. Emphasis is exempt — a selected arc, and the arcs leaving a selected event, keep their full
+alpha, because their job is to be found rather than to be counted.
+
 **Colour** falls back in the order the concept cares about: the connection's own tags, then a
 tag both endpoints share (two events tagged *philosophy* make a philosophy connection whether or
 not anyone said so), then either endpoint, then a neutral default.
@@ -768,6 +782,15 @@ twenty-second century otherwise looks like the data has gone.
 **Interaction.** Wheel = zoom at cursor, drag = pan, pinch on touch, double-click = zoom in,
 arrow keys pan / `+`/`-` zoom. Zoom is continuous in log-scale space, animated with a short
 ease so the density transition reads as dissolution rather than a jump.
+
+Lifting one finger of a pinch turns the gesture into a drag, in both canvases. Dragging was
+cleared when the second finger arrived and nothing turned it back on, so the canvas simply
+stopped following the finger still on the glass until it was lifted and put down again — and the
+survivor's position has to seed the drag, or the first move after the lift is read as a jump from
+wherever the *other* finger last was. `zoomAt` gives its anchor up at the span limits, where
+`clamp` cannot honour the window it is handed and re-derives it around the centre instead: a
+wheel at the edge of a fully zoomed-out canvas therefore slides rather than holding still, which
+is the better of the two invariants to keep at a hard stop.
 
 **Performance budget.** 50k events, 10k connections, 60 fps on a laptop. Build a seeded
 synthetic-data generator on day one — the density view cannot be developed against an empty
@@ -933,7 +956,58 @@ endpoint turns its arc into a straight line across the sky.
 **Eras use both sides** — personal to the left, canonical to the right. The corridor has two
 flanks where the flat view has one stack of rows, so this is the one place the depth view can
 show something the flat view cannot: your own frame of reference and the canonical one sit
-opposite each other instead of competing for space.
+opposite each other instead of competing for space. They take the personal hue §6.1 settled on,
+not the selection yellow: the argument against a third meaning for yellow is the same one, and on
+this flank it was worse, since the personal lane is the one nearest the eye.
+
+Bars too short along the corridor to hold a name — which, with a window usually spanning
+millennia, is nearly every personal era — are named on **hover** instead, exactly as the flat
+view's slivers are. And the era hit target is the bar: a bar fills four fifths of its lane's step
+and the test used to *round* to the nearest lane boundary, so it sat a third of a bar off the bar
+and the deliberate gap between two lanes was claimed by whichever was nearer.
+
+**Marks carry their span too (D49).** The axis has turned through ninety degrees, so an event's
+stem runs *across* the corridor and its span runs *along* it, as a ribbon down each bank of the
+river. `spanBar` needed no changes for that — it works in whatever pixel coordinate it is handed,
+and the corridor's is the same one the era lanes are already laid out in. So both layers agree
+about when an interval is an interval in this view as in the other.
+
+**One occupancy for three label systems (D53).** Year labels, era names and event titles all
+write into the same two strips of canvas beside the corridor, and none of them knew the others
+were there: `1000` was set inside an event title, and *Elsa Hovden resigns* was laid across *the
+long nineteenth century*. Every candidate now tests against one list of claimed rectangles per
+side, filled in priority order — the year rail first, because it is the frame of reference the
+whole projection is read against, then era names, then event titles, which are the most numerous
+and the only ones a hover can recover.
+
+Two changes come with it. Titles are anchored **outside** the era lanes rather than just outside
+the river: the river reaches 0.5 of the corridor's half-width and the lanes start at 0.6, so near
+the ground a title was drawn through the era band *by construction*. The price is real — the
+margin outside the lanes is narrowest exactly where the corridor is widest — so a title there is
+fitted to the room that exists and, below about eight glyphs, is not drawn at all. And the years
+are set on **one rail**. The ring already crosses the whole corridor, so the year at each end of
+it was the same fact written twice, into the two strips the other two systems have to share.
+
+**The sky ends at the horizon.** Its gradient used to run forty pixels past it, which put the
+brightest stop *below* the horizon and then stopped dead — a hard-edged rectangle across the full
+width of the canvas, sitting in the ground plane and describing nothing. The wash now ends at the
+horizon and a separate band carries it down into the ground, fading to fully transparent, which
+is the glow the original was reaching for.
+
+**Arcs go over the mass and under the marks**, as §6.1 says and as the flat view does. Drawn last
+with `lighter`, they were adding their brightness to the label chips and the era names rather
+than to each other.
+
+**The connection being drawn is drawn.** `Selection` has carried `connectFrom` from the start and
+this view ignored it, so arming a connection and switching here showed nothing at all — while the
+next click completed it regardless. A gesture with no feedback and a real effect is the worst of
+both, and the same dashed vault the flat view draws now says what is about to happen.
+
+**Nothing to draw is still something to say, here too.** The corridor took its pan bounds from
+the events alone and fell back to a one-day window at the epoch, which `clamp` then read as a
+three-day zoom limit: on a first-run timeline the view ran from 1 January to 2 January of year
+one, and the "my life" era D26 had just created could not be reached at any zoom. It frames
+events **and** eras now, with the same stated default as the flat view (D52).
 
 **Dragging grabs the ground.** The time under the cursor when the drag began stays under the
 cursor. A constant pixels-to-time factor is meaningless when a pixel near the horizon is worth
@@ -1374,16 +1448,44 @@ by its **most specific region tag**, read straight off the radius so adding a re
 ordering table.
 
 Those are representative points *with a radius*, not centroids, and each dot carries a halo at
-its true size. An event tagged only *Asia* is a soft disc two thousand kilometres across, because
-that is genuinely all that is known about where it happened. Drawing it as a neat dot would be
-the same lie the time model refuses to tell about dates. A centroid would be worse than useless
-here: the centroid of Europe's landmass is in Belarus.
+its true size. An event tagged only *Asia* is vague to two thousand kilometres, because that is
+genuinely all that is known about where it happened. Drawing it as a neat dot would be the same
+lie the time model refuses to tell about dates. A centroid would be worse than useless here: the
+centroid of Europe's landmass is in Belarus.
+
+**The halo is a ring, not a disc (D54).** The claim it makes is "known to within about here",
+which is a statement about an edge — and at world zoom the filled version was a hundred and
+twenty-five pixels of flat translucency saying nothing the outline does not, over the part of the
+map the eye was meant to land on. Worse, the halos were drawn inside the per-cluster loop, so
+every small cluster's wash went over the large dots already painted. All of them are drawn in one
+pass before any dot now, as a hairline at the true radius with a very soft gradient inside it so
+it does not read as a drawn boundary.
 
 Clustering happens in **screen space**, on the same reasoning as the density's screen-space
 bandwidth (§3.1) — what matters is whether two dots would overlap where they are drawn. Zooming
 in therefore separates a cluster into its parts, exactly as zooming the timeline resolves mass
 into events. Dot area is proportional to count, and a cluster is anchored by its *best*-placed
 member, so one precise event among fifty vague ones is not drawn as continent-sized.
+
+**A grid does not deliver that, and the grid was all there was (D55).** Bucketing by
+`round(x / cell)` puts two points a fifth of a pixel apart into different buckets whenever the
+cell boundary falls between them, and the promise in `clusterEvents`' own first line — no two
+clusters closer than `radius` — was simply false. Against a real corpus it showed: at world zoom
+the European region anchors sit nine to twenty-nine pixels apart and are drawn as fifty-pixel
+discs, so the map opened on a stack of five overlapping counts over France with nothing legible
+in it. The grid is now the cheap first cut, and two or three agglomerative passes finish the job:
+any two clusters whose **drawn** discs would overlap become one. Drawn, not stated — whether two
+dots overlap depends on how the renderer sizes them, so the radius function is passed in rather
+than assumed, and the clustering and the drawing can no longer disagree. A sweep ordered in `x`
+keeps it near-linear, and the ordering is a deterministic function of position, so the grouping
+does not flicker between frames.
+
+The size cap moved with it. Area proportional to count is right, and `min(26, 3.4·√n)` saturated
+at fifty-nine events — so on this corpus a Europe of four hundred and ninety-seven was drawn
+exactly as large as a Britain of sixty-one, and the encoding was gone across most of the range
+that matters. Forty saturates at a hundred and thirty-eight, which is a disc a map can hold;
+above it the count label carries what the area no longer can, which is why the label is drawn on
+every dot big enough to hold one.
 
 Coordinates can be typed as `59.91, 10.75` — the same choice as the era span field, since a
 map-picker for a field almost nobody fills in is a lot of interface for very little. Impossible

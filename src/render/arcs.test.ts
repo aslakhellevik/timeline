@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { Connection, Id, TimelineEvent } from '../core/model/types';
 import { interval } from '../core/time';
-import { arcApex, arcPointAt, buildArcIndex, connectionColour, hitTestArc, layoutArcs } from './arcs';
+import {
+  arcApex,
+  arcInkScale,
+  arcPointAt,
+  buildArcIndex,
+  connectionColour,
+  hitTestArc,
+  layoutArcs,
+} from './arcs';
 import type { ArcOptions } from './arcs';
 
 const BASELINE = 400;
@@ -233,5 +241,48 @@ describe('hitTestArc', () => {
 
   it('rejects everything cheaply when the cursor is below the baseline', () => {
     expect(hitTestArc(arcs, 500, BASELINE + 50, BASELINE)).toBeNull();
+  });
+});
+
+describe('hitTestArc ties', () => {
+  it('gives a tie to the shorter arc, which the float equality never did', () => {
+    // Two arcs whose endpoints coincide, so the sampled distances at the cursor
+    // are the same to within the pointer's own noise but never bit-identical.
+    const events = [event('a', 400), event('b', 600), event('c', 600.0001)];
+    const arcs = layout([connection('a', 'b'), connection('a', 'c')], events);
+    const shorter = arcs.reduce((best, arc) => (arc.apex < best.apex ? arc : best), arcs[0] as never);
+    const point = arcPointAt(shorter, 0.5, BASELINE);
+    expect(hitTestArc(arcs, point.x, point.y, BASELINE)).toBe(shorter);
+  });
+});
+
+describe('arcInkScale', () => {
+  it('leaves a sparse timeline alone', () => {
+    expect(arcInkScale(0)).toBe(1);
+    expect(arcInkScale(1)).toBe(1);
+    expect(arcInkScale(150)).toBe(1);
+  });
+
+  it('dims each stroke as the count grows', () => {
+    expect(arcInkScale(600)).toBeLessThan(arcInkScale(300));
+    expect(arcInkScale(300)).toBeLessThan(1);
+  });
+
+  it('still lays down more total ink for more arcs, which is the point', () => {
+    // `lighter` has no ceiling; the fix has to bound the pile-up without making
+    // a busier region read as a quieter one.
+    let previous = 0;
+    for (const count of [150, 300, 600, 1200, 2000]) {
+      const total = count * arcInkScale(count);
+      expect(total).toBeGreaterThan(previous);
+      previous = total;
+    }
+  });
+
+  it('never brightens anything', () => {
+    for (const count of [0, 10, 150, 151, 1000, 100_000]) {
+      expect(arcInkScale(count)).toBeGreaterThan(0);
+      expect(arcInkScale(count)).toBeLessThanOrEqual(1);
+    }
   });
 });

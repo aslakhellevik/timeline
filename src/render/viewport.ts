@@ -71,6 +71,14 @@ export function clamp(vp: Viewport, bounds: TimeBounds, limits = DEFAULT_ZOOM_LI
  * Zooms by `factor` (>1 zooms out) keeping the time under `anchorPx` pinned to
  * that pixel. This is what makes wheel-zoom feel attached to the cursor rather
  * than to the centre of the screen.
+ *
+ * **The anchor is the first thing `clamp` gives up.** At the span limits, and
+ * against the pan bounds, the window it is handed cannot be honoured, and
+ * `clamp` re-derives the result around its *centre* — so a wheel at the far
+ * right of a fully zoomed-out canvas slides the content sideways rather than
+ * holding still. Deliberate: the alternative is to preserve the anchor and let
+ * the window drift outside the corpus, and a window that stays where it was
+ * asked to be is the more useful of the two invariants at a hard stop.
  */
 export function zoomAt(
   vp: Viewport,

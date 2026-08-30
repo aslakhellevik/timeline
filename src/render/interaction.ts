@@ -42,7 +42,28 @@ export function attachInteraction(el: HTMLElement, h: InteractionHandlers): () =
   let dragging = false;
   let lastX = 0;
 
-  const localX = (clientX: number) => clientX - el.getBoundingClientRect().left;
+  /*
+   * The element's left edge, cached.
+   *
+   * `getBoundingClientRect` forces a layout flush, and this used to run inside
+   * the wheel handler — which fires as a continuous stream from a trackpad, so
+   * every notch of a zoom paid for a full style recalculation. The edge only
+   * moves when the page does, so it is recomputed lazily after the three things
+   * that can move it: the window resizing, an ancestor scrolling, and the
+   * pointer arriving over the canvas after any layout change in between.
+   */
+  let rectLeft = 0;
+  let stale = true;
+  const invalidate = () => {
+    stale = true;
+  };
+  const localX = (clientX: number) => {
+    if (stale) {
+      rectLeft = el.getBoundingClientRect().left;
+      stale = false;
+    }
+    return clientX - rectLeft;
+  };
 
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();
@@ -62,6 +83,7 @@ export function attachInteraction(el: HTMLElement, h: InteractionHandlers): () =
   const onPointerDown = (e: PointerEvent) => {
     el.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    invalidate();
 
     if (pointers.size === 1) {
       dragging = true;
@@ -100,7 +122,27 @@ export function attachInteraction(el: HTMLElement, h: InteractionHandlers): () =
   const onPointerUp = (e: PointerEvent) => {
     pointers.delete(e.pointerId);
     if (pointers.size < 2) pinchDistance = 0;
-    if (pointers.size === 0) dragging = false;
+
+    if (pointers.size === 0) {
+      dragging = false;
+    } else if (pointers.size === 1) {
+      /*
+       * One finger of a pinch lifted, and the other is still down.
+       *
+       * That is a pan, not the end of the gesture — but `dragging` was cleared
+       * when the second finger arrived and nothing turned it back on, so the
+       * canvas simply stopped following the remaining finger until it was
+       * lifted and put down again. The survivor's position seeds `lastX`, or
+       * the first move after the lift is read as a jump from wherever the
+       * *other* finger last was.
+       */
+      const [survivor] = pointers.values();
+      if (survivor) {
+        dragging = true;
+        lastX = survivor.x;
+      }
+    }
+
     if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
   };
 
@@ -138,8 +180,13 @@ export function attachInteraction(el: HTMLElement, h: InteractionHandlers): () =
   el.addEventListener('pointermove', onPointerMove);
   el.addEventListener('pointerup', onPointerUp);
   el.addEventListener('pointercancel', onPointerUp);
+  el.addEventListener('pointerenter', invalidate);
   el.addEventListener('keydown', onKeyDown);
   el.addEventListener('dblclick', onDoubleClick);
+  window.addEventListener('resize', invalidate);
+  // Capture, because a scroll on any ancestor moves the canvas and scroll events
+  // from an element do not bubble.
+  window.addEventListener('scroll', invalidate, true);
 
   return () => {
     el.removeEventListener('wheel', onWheel);
@@ -147,8 +194,11 @@ export function attachInteraction(el: HTMLElement, h: InteractionHandlers): () =
     el.removeEventListener('pointermove', onPointerMove);
     el.removeEventListener('pointerup', onPointerUp);
     el.removeEventListener('pointercancel', onPointerUp);
+    el.removeEventListener('pointerenter', invalidate);
     el.removeEventListener('keydown', onKeyDown);
     el.removeEventListener('dblclick', onDoubleClick);
+    window.removeEventListener('resize', invalidate);
+    window.removeEventListener('scroll', invalidate, true);
   };
 }
 

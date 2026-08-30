@@ -358,6 +358,7 @@ export function App() {
                 tags={visible.tags}
                 allEvents={timeline.events}
                 selectedId={selectedId}
+                connectFrom={connectFrom}
                 onSelectEvent={select}
                 {...(startViewport ? { initialViewport: startViewport } : {})}
                 onViewportChange={onViewportChange}

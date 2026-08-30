@@ -213,6 +213,39 @@ describe('clusterEvents', () => {
     expect(clusters[0]?.events).toHaveLength(2);
   });
 
+  it('merges across a cell boundary, which the grid alone never did', () => {
+    // A fifth of a pixel apart, either side of the boundary at x = 20. The grid
+    // puts them in different buckets and the stated contract says they are one
+    // dot; before the merge passes existed, they were drawn on top of each other.
+    const events = [
+      event('a', [], { name: 'a', lat: 0, lon: 19.9 }),
+      event('b', [], { name: 'b', lat: 0, lon: 20.1 }),
+    ];
+    const toScreenAtOne = (lon: number, lat: number) => ({ x: lon, y: -lat });
+    expect(clusterEvents(events, toScreenAtOne, 20)).toHaveLength(1);
+  });
+
+  it('merges dots whose drawn discs would overlap, even beyond the radius', () => {
+    // Thirty pixels apart, so the grid keeps them and `radius` alone would too —
+    // but drawn at twenty-five pixels each they are one blob on screen.
+    const events = [
+      ...Array.from({ length: 8 }, (_, i) => event(`a${i}`, [], { name: 'a', lat: 0, lon: 0 })),
+      ...Array.from({ length: 8 }, (_, i) => event(`b${i}`, [], { name: 'b', lat: 0, lon: 30 })),
+    ];
+    const flat = (lon: number, lat: number) => ({ x: lon, y: -lat });
+    expect(clusterEvents(events, flat, 20)).toHaveLength(2);
+    expect(clusterEvents(events, flat, 20, () => 25)).toHaveLength(1);
+  });
+
+  it('leaves dots alone when their discs clear each other', () => {
+    const events = [
+      event('a', [], { name: 'a', lat: 0, lon: 0 }),
+      event('b', [], { name: 'b', lat: 0, lon: 60 }),
+    ];
+    const flat = (lon: number, lat: number) => ({ x: lon, y: -lat });
+    expect(clusterEvents(events, flat, 20, () => 25)).toHaveLength(2);
+  });
+
   it('is stable — the same input gives the same buckets', () => {
     const events = Array.from({ length: 40 }, (_, i) =>
       event(`e${i}`, i % 2 === 0 ? [R_EUROPE] : [R_JAPAN]),

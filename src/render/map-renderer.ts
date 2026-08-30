@@ -47,7 +47,17 @@ const SCRUB_HEIGHT = 54;
 const PADDING = 16;
 /** Radius of a one-event dot; a cluster grows as the square root of its count. */
 const DOT_BASE = 3.4;
-const MAX_DOT = 26;
+/**
+ * Widest a dot gets, whatever it holds.
+ *
+ * Area proportional to count is the right encoding and the cap is where it stops
+ * being drawable: a Europe of 497 events wants a radius of 76 px, which is a
+ * 150 px disc over a continent 300 px wide. But the old cap of 26 saturated at
+ * 59 events, so 497 and 61 were the same dot — the encoding was gone across most
+ * of the range that matters. Forty saturates at 138, and above that the count
+ * label carries what the area no longer can.
+ */
+const MAX_DOT = 40;
 /** How close two dots may be before they merge, in pixels. */
 const CLUSTER_RADIUS = 22;
 /** Kilometres per degree of latitude, for turning a vagueness radius into pixels. */
@@ -87,11 +97,22 @@ export class MapRenderer {
   private cameraSet = false;
   private hover: { x: number; y: number } | null = null;
   private selectedId: Id | null = null;
+  private connectFrom: Id | null = null;
 
   /** The last frame's clusters, so hit-testing runs against what is on screen. */
   private clusters: Cluster[] = [];
   private mapHeight = 0;
   private size: CanvasSize = { width: 0, height: 0, dpr: 1 };
+  /**
+   * The scrubber's density strip, kept between frames.
+   *
+   * It is computed over the **whole corpus** at the **whole extent**, neither of
+   * which changes when the window moves — but it was being recomputed inside the
+   * draw, and `MapView` asks for a draw on every `pointermove`. At fifty
+   * thousand events that is a nineteen-millisecond kernel evaluation per mouse
+   * move, for a shape that is pixel-for-pixel identical to the last one.
+   */
+  private stripCache: { key: string; lambda: Float64Array; lambdaMax: number } | null = null;
 
   constructor(theme: TimelineTheme = DARK_THEME) {
     this.theme = theme;
@@ -104,6 +125,7 @@ export class MapRenderer {
       (data.tags ?? []).flatMap((tag) => (tag.color ? [[tag.id, tag.color] as const] : [])),
     );
     this.extent = this.computeExtent();
+    this.stripCache = null;
   }
 
   setViewport(viewport: Viewport): void {
@@ -120,6 +142,11 @@ export class MapRenderer {
 
   setSelection(id: Id | null): void {
     this.selectedId = id;
+  }
+
+  /** The first endpoint of a connection being made, or `null` when none is armed. */
+  setConnectFrom(id: Id | null): void {
+    this.connectFrom = id;
   }
 
   getCamera(): MapCamera {
@@ -202,8 +229,10 @@ export class MapRenderer {
     this.drawGraticule(ctx);
     this.drawLand(ctx);
 
-    this.clusters = clusterEvents(this.inWindow(), this.toScreen, CLUSTER_RADIUS);
+    this.clusters = clusterEvents(this.inWindow(), this.toScreen, CLUSTER_RADIUS, dotRadius);
+    this.drawHalos(ctx);
     this.drawClusters(ctx);
+    this.drawPending(ctx);
 
     ctx.restore();
 
@@ -298,7 +327,51 @@ export class MapRenderer {
   }
 
   /**
-   * Dots, sized by how many events they hold and haloed by how vague they are.
+   * The vagueness halos, all of them, before any dot (D43).
+   *
+   * One pass rather than one per cluster, because interleaving them meant every
+   * small cluster's halo was painted over the large dots already drawn — a wash
+   * of translucent grey over precisely the dots the eye was meant to land on.
+   *
+   * And a **ring** rather than a filled disc. The claim a halo makes is "this is
+   * known to within about here", which is a statement about an edge; a
+   * continent-scale disc at world zoom is 125 px of flat translucency that
+   * swamps the map without saying anything the outline does not. A hairline at
+   * the true radius, with a very soft gradient inside it to keep it from reading
+   * as a drawn boundary, states the size and leaves the map underneath legible.
+   */
+  private drawHalos(ctx: CanvasRenderingContext2D): void {
+    if (this.clusters.length === 0) return;
+    ctx.save();
+
+    for (const cluster of this.clusters) {
+      const radius = dotRadius(cluster.events.length);
+      const halo = this.haloRadius(cluster);
+      // Nothing to say when the halo is barely wider than the dot: the dot is
+      // already the claim, and a ring hugging it reads as a rendering artefact.
+      if (halo <= radius * 1.6) continue;
+
+      const colour = this.colourOf(cluster);
+      const glow = ctx.createRadialGradient(cluster.x, cluster.y, radius, cluster.x, cluster.y, halo);
+      glow.addColorStop(0, withAlpha(colour, 0.05));
+      glow.addColorStop(1, withAlpha(colour, 0));
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(cluster.x, cluster.y, halo, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = withAlpha(colour, 0.3);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cluster.x, cluster.y, halo, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Dots, sized by how many events they hold.
    *
    * Area proportional to count, so the radius grows as the square root — the
    * standard encoding, and the one that stops a cluster of four hundred from
@@ -310,20 +383,8 @@ export class MapRenderer {
 
     for (const cluster of this.clusters) {
       const colour = this.colourOf(cluster);
-      const radius = Math.min(MAX_DOT, DOT_BASE * Math.sqrt(cluster.events.length));
+      const radius = dotRadius(cluster.events.length);
       const selected = cluster.events.some((event) => event.id === this.selectedId);
-
-      // The vagueness halo, in real kilometres projected to pixels.
-      const halo = this.haloRadius(cluster);
-      if (halo > radius * 1.6) {
-        // Faint: a continent-sized halo at any real opacity swamps the map it is
-        // drawn on, and the point is to qualify the dot, not to replace it.
-        ctx.globalAlpha = 0.055;
-        ctx.fillStyle = colour;
-        ctx.beginPath();
-        ctx.arc(cluster.x, cluster.y, halo, 0, Math.PI * 2);
-        ctx.fill();
-      }
 
       ctx.globalAlpha = 0.85;
       ctx.fillStyle = colour;
@@ -336,7 +397,8 @@ export class MapRenderer {
       ctx.lineWidth = selected ? 2 : 1;
       ctx.stroke();
 
-      // A count, once the dot is big enough to hold one.
+      // A count, once the dot is big enough to hold one. Above the size cap it
+      // is the only thing still saying how many, so it earns its place.
       if (cluster.events.length > 1 && radius >= 9) {
         ctx.font = LABEL_FONT;
         ctx.fillStyle = this.theme.ink;
@@ -347,6 +409,41 @@ export class MapRenderer {
       }
     }
 
+    ctx.restore();
+  }
+
+  /**
+   * The connection being drawn, from its first endpoint to the cursor (§6.4).
+   *
+   * The other two views draw it and this one did not, which made the map the one
+   * place where arming a connection and then clicking looked like nothing was
+   * happening — even though the click completes it. An event with no place at
+   * all cannot be drawn from, and the armed banner above the canvas is then the
+   * only statement there is.
+   */
+  private drawPending(ctx: CanvasRenderingContext2D): void {
+    const from = this.connectFrom;
+    if (!from || !this.hover || this.hover.y > this.mapHeight) return;
+
+    const source = this.clusters.find((cluster) =>
+      cluster.events.some((event) => event.id === from),
+    );
+    if (!source) return;
+
+    ctx.save();
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = this.theme.selection;
+    ctx.globalAlpha = 0.85;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(source.x, source.y);
+    ctx.lineTo(this.hover.x, this.hover.y);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(source.x, source.y, dotRadius(source.events.length) + 4, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -365,6 +462,24 @@ export class MapRenderer {
       }
     }
     return this.theme.massEdge;
+  }
+
+  /** The whole-corpus density behind the scrubber, computed at most once per shape. */
+  private strip(extent: { start: number; end: number; width: number }): {
+    lambda: Float64Array;
+    lambdaMax: number;
+  } {
+    const key = `${extent.start}:${extent.end}:${extent.width}`;
+    if (this.stripCache && this.stripCache.key === key) return this.stripCache;
+
+    const { lambda, lambdaMax } = computeDensity(
+      (this.calibrationEvents.length > 0 ? this.calibrationEvents : this.events).map(
+        (event) => event.when,
+      ),
+      extent,
+    );
+    this.stripCache = { key, lambda, lambdaMax };
+    return this.stripCache;
   }
 
   /**
@@ -388,12 +503,7 @@ export class MapRenderer {
     ctx.stroke();
 
     const strip = { start: this.extent.start, end: this.extent.end, width };
-    const { lambda, lambdaMax } = computeDensity(
-      (this.calibrationEvents.length > 0 ? this.calibrationEvents : this.events).map(
-        (event) => event.when,
-      ),
-      strip,
-    );
+    const { lambda, lambdaMax } = this.strip(strip);
 
     // The strip is a shape, not a measurement — normalised to its own peak so it
     // is legible whatever the corpus size.
@@ -485,8 +595,7 @@ export class MapRenderer {
     let best: Cluster | null = null;
     let bestSize = Infinity;
     for (const cluster of this.clusters) {
-      const radius = Math.min(MAX_DOT, DOT_BASE * Math.sqrt(cluster.events.length));
-      const reach = Math.max(radius, 7);
+      const reach = Math.max(dotRadius(cluster.events.length), 7);
       if ((cluster.x - x) ** 2 + (cluster.y - y) ** 2 > reach * reach) continue;
       if (cluster.events.length < bestSize) {
         bestSize = cluster.events.length;
@@ -505,6 +614,18 @@ export class MapRenderer {
   getExtent(): { start: number; end: number } {
     return this.extent;
   }
+}
+
+/**
+ * Drawn radius of a dot holding `count` events.
+ *
+ * A free function rather than a method because `clusterEvents` needs it too —
+ * whether two dots overlap is a question about how they are drawn, and the
+ * clustering and the drawing disagreeing about that is what produced a stack of
+ * five discs over France.
+ */
+function dotRadius(count: number): number {
+  return Math.min(MAX_DOT, DOT_BASE * Math.sqrt(count));
 }
 
 function yearOf(days: number): string {

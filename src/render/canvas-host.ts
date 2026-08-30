@@ -29,6 +29,8 @@ export class CanvasHost {
   private frame: number | null = null;
   private size: CanvasSize = { width: 0, height: 0, dpr: 1 };
   private destroyed = false;
+  /** The query that fires when the device pixel ratio leaves its current value. */
+  private dprQuery: MediaQueryList | null = null;
 
   constructor(canvas: HTMLCanvasElement, draw: DrawFn) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -41,6 +43,7 @@ export class CanvasHost {
     this.observer = new ResizeObserver(() => this.measure());
     this.observer.observe(canvas);
     this.measure();
+    this.watchDpr();
   }
 
   /** Current size in CSS pixels. The renderer works in these, never in device pixels. */
@@ -60,9 +63,39 @@ export class CanvasHost {
   destroy(): void {
     this.destroyed = true;
     this.observer.disconnect();
+    this.dprQuery?.removeEventListener('change', this.onDprChange);
+    this.dprQuery = null;
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     this.frame = null;
   }
+
+  /**
+   * Watches for the device pixel ratio changing under the canvas.
+   *
+   * `ResizeObserver` never fires for it: dragging a window to a monitor of a
+   * different density, or changing the browser's zoom, leaves the element
+   * exactly the same size in CSS pixels while the backing store it needs halves
+   * or doubles. Until this existed the canvas kept the ratio it was born with,
+   * so the drawing stayed soft for the rest of the session — or, going the other
+   * way, cost four times the fill rate it needed.
+   *
+   * There is no `dprchange` event, so the idiom is a media query on the *current*
+   * ratio, which by construction stops matching the moment the ratio moves. That
+   * makes it one-shot, which is why every change re-arms it.
+   */
+  private watchDpr(): void {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    this.dprQuery?.removeEventListener('change', this.onDprChange);
+    this.dprQuery = null;
+    if (this.destroyed) return;
+    this.dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+    this.dprQuery.addEventListener('change', this.onDprChange);
+  }
+
+  private readonly onDprChange = (): void => {
+    this.measure();
+    this.watchDpr();
+  };
 
   private measure(): void {
     const rect = this.canvas.getBoundingClientRect();
@@ -82,9 +115,11 @@ export class CanvasHost {
 
   private paint(): void {
     if (this.destroyed) return;
-    const { width, height, dpr } = this.size;
+    const { dpr } = this.size;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.ctx.clearRect(0, 0, width, height);
+    // No `clearRect` first: the context is opaque (`alpha: false`) and every
+    // renderer opens its frame by filling the whole canvas with the surface
+    // colour, so clearing would only paint the same pixels twice.
     if (this.draw(this.ctx, this.size) === true) this.requestDraw();
   }
 }

@@ -19,6 +19,8 @@ export interface MapViewProps {
   tags: readonly Tag[];
   allEvents: readonly TimelineEvent[];
   selectedId: Id | null;
+  /** The first endpoint of a connection being made, so the map can draw it too. */
+  connectFrom: Id | null;
   onSelectEvent: (id: Id) => void;
   initialViewport?: { centre: number; span: number };
   onViewportChange?: (viewport: { centre: number; span: number }) => void;
@@ -29,6 +31,7 @@ export function MapView({
   tags,
   allEvents,
   selectedId,
+  connectFrom,
   onSelectEvent,
   initialViewport,
   onViewportChange,
@@ -238,16 +241,19 @@ export function MapView({
       host.requestDraw();
     };
 
+    /** Double-click reframes the whole world — the way back from any zoom. */
+    const onDoubleClick = () => {
+      renderer.fitWorld();
+      host.requestDraw();
+    };
+
     frame.addEventListener('pointerdown', onDown);
     frame.addEventListener('pointermove', onMove);
     frame.addEventListener('pointerup', onUp);
     frame.addEventListener('pointercancel', onUp);
     frame.addEventListener('pointerleave', onLeave);
     frame.addEventListener('wheel', onWheel, { passive: false });
-    frame.addEventListener('dblclick', () => {
-      renderer.fitWorld();
-      host.requestDraw();
-    });
+    frame.addEventListener('dblclick', onDoubleClick);
 
     return () => {
       frame.removeEventListener('pointerdown', onDown);
@@ -256,6 +262,7 @@ export function MapView({
       frame.removeEventListener('pointercancel', onUp);
       frame.removeEventListener('pointerleave', onLeave);
       frame.removeEventListener('wheel', onWheel);
+      frame.removeEventListener('dblclick', onDoubleClick);
       host.destroy();
       rendererRef.current = null;
       hostRef.current = null;
@@ -270,8 +277,9 @@ export function MapView({
 
   useEffect(() => {
     rendererRef.current?.setSelection(selectedId);
+    rendererRef.current?.setConnectFrom(connectFrom);
     hostRef.current?.requestDraw();
-  }, [selectedId]);
+  }, [selectedId, connectFrom]);
 
   return (
     <div

@@ -110,8 +110,8 @@ the dots fill in and drain away as you sweep through the centuries.
 
 Two things it is careful about. It draws **coastlines, not borders**, because a timeline running
 from the Bronze Age to last week cannot honestly lay the frontiers of 2026 across itself. And
-most events are placed by their region tag rather than by coordinates, so each dot carries a halo
-at its true radius — an event tagged only *Asia* is a soft disc two thousand kilometres across,
+most events are placed by their region tag rather than by coordinates, so each dot is ringed at
+its true radius — an event tagged only *Asia* is a soft circle two thousand kilometres across,
 because that is all that is really known about where it happened.
 
 The projection is equal-area (Equal Earth), since the question the map answers is *how much*.

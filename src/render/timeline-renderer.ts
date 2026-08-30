@@ -35,7 +35,7 @@ import {
 } from '../core/density';
 import type { DensityResult } from '../core/density';
 import { compareTime, fromGregorian, midpoint, toGregorian } from '../core/time';
-import { arcPointAt, buildArcIndex, hitTestArc, layoutArcs } from './arcs';
+import { arcInkScale, arcPointAt, buildArcIndex, hitTestArc, layoutArcs } from './arcs';
 import type { ArcLayout, ArcSource } from './arcs';
 import { LABEL_INSET, LABEL_LEAD, hitTestLanes, layoutLanes } from './lanes';
 import type { EraBar, LaneLayout } from './lanes';
@@ -167,8 +167,12 @@ const MIN_LABEL_ROOM = 26;
  * day wide at the epoch, and `clamp` then caps the widest zoom at three days,
  * so a first-run timeline could not be zoomed out far enough to find the "my
  * life" era sitting nineteen thousand days away.
+ *
+ * Exported because the depth view frames the same corpus and had the same hole
+ * in it — two views disagreeing about what "nothing to show" looks like would be
+ * a difference with no meaning behind it.
  */
-function DEFAULT_FRAME(now: Date = new Date()): { start: Days; end: Days } {
+export function DEFAULT_FRAME(now: Date = new Date()): { start: Days; end: Days } {
   const year = now.getFullYear();
   return { start: fromGregorian(year - 100, 1, 1), end: fromGregorian(year + 2, 1, 1) };
 }
@@ -838,6 +842,15 @@ export class TimelineRenderer {
         ? candidate
         : null;
 
+    /*
+     * Additive compositing has no ceiling — which is the property that makes a
+     * bundle read as structure, and also what turns two thousand arcs over the
+     * modern peak into a flat white slab where two hundred crossings and two
+     * thousand look identical. Ink per stroke falls as the count grows, so the
+     * total still rises and a busier region still reads as busier.
+     */
+    const ink = arcInkScale(this.arcs.length);
+
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.lineCap = 'round';
@@ -851,11 +864,7 @@ export class TimelineRenderer {
       // canvas into an answer to "what does this connect to" without a mode.
       ctx.globalAlpha = emphasised || touchesFocus
         ? 0.95
-        : focus !== null
-          ? 0.12
-          : arc.whole
-            ? 0.5
-            : 0.28;
+        : (focus !== null ? 0.12 : arc.whole ? 0.5 : 0.28) * ink;
       ctx.lineWidth = emphasised ? 2.4 : touchesFocus ? 1.8 : 1.1;
       ctx.strokeStyle = arc.connection.id === selected ? this.theme.selection : arc.colour;
 

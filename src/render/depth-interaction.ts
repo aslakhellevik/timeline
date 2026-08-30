@@ -116,7 +116,21 @@ export function attachDepthInteraction(el: HTMLElement, h: DepthHandlers): () =>
   const onPointerUp = (e: PointerEvent) => {
     pointers.delete(e.pointerId);
     if (pointers.size < 2) pinchDistance = 0;
-    if (pointers.size === 0) dragging = false;
+
+    if (pointers.size === 0) {
+      dragging = false;
+    } else if (pointers.size === 1) {
+      // One finger of a pinch lifted: the gesture becomes a drag rather than
+      // ending. Without this the corridor stopped following the finger still on
+      // the glass, and `lastY` has to come from the survivor or the next move
+      // reads as a jump from where the lifted finger was.
+      const [survivor] = pointers.values();
+      if (survivor) {
+        dragging = true;
+        lastY = localY(survivor.y);
+      }
+    }
+
     if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
   };
 

@@ -275,15 +275,45 @@ export function hitTestArc(
     const right = Math.max(arc.x1, arc.x2) + tolerance;
     if (x < left || x > right) continue;
 
+    let closest = Infinity;
     for (let i = 0; i <= samples; i++) {
       const point = arcPointAt(arc, i / samples, baselineY);
       const distance = (point.x - x) ** 2 + (point.y - y) ** 2;
-      if (distance < bestDistance || (distance === bestDistance && best && arc.apex < best.apex)) {
-        bestDistance = distance;
-        best = arc;
-      }
+      if (distance < closest) closest = distance;
     }
+
+    if (closest > bestDistance) continue;
+    // The tie-break, which used to be written as an exact float equality between
+    // two independently computed squared distances and therefore never fired.
+    // "Tied" has to mean *within the pointer's own noise*, and the arcs are
+    // sampled rather than solved anyway, so a pixel is the natural width.
+    if (best !== null && closest > bestDistance - TIE_EPSILON && best.apex <= arc.apex) continue;
+    bestDistance = closest;
+    best = arc;
   }
 
   return best;
+}
+
+/** Squared pixels within which two sampled distances count as the same. */
+const TIE_EPSILON = 1;
+
+/**
+ * How much to dim each stroke once a great many arcs are laid down at once.
+ *
+ * `lighter` compositing has no ceiling — that is the property that makes a
+ * bundle read as structure (§6.1), and it is also what drives the modern peak of
+ * a large corpus towards white, where two hundred crossings and two thousand are
+ * the same flat slab and the structure is gone again. Ink per stroke falls as
+ * `1/√n`, so the *total* ink laid down still grows — as `√n` — and a busier
+ * region stays visibly busier, without any single region saturating.
+ *
+ * Nothing happens below `FULL_INK_ARCS`: a few dozen arcs never saturate
+ * anything, and dimming them would only make a sparse timeline fainter than it
+ * needs to be.
+ */
+const FULL_INK_ARCS = 150;
+
+export function arcInkScale(count: number): number {
+  return count <= FULL_INK_ARCS ? 1 : Math.sqrt(FULL_INK_ARCS / count);
 }
