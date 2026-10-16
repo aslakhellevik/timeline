@@ -9,6 +9,7 @@ import { useTimeline } from '../state/timeline-store';
 import { ConnectPicker } from './ConnectPicker';
 import { ConnectionDetail } from './ConnectionDetail';
 import { DataPanel } from './DataPanel';
+import { isDemo, openDemoStore } from './demo';
 import { DepthView } from './DepthView';
 import { EraDetail } from './EraDetail';
 import { EventDetail } from './EventDetail';
@@ -69,6 +70,9 @@ export function App() {
   const error = useTimeline((state) => state.error);
 
   const initial = useMemo(() => decodeUrlState(window.location.hash), []);
+  // Fixed for the life of the page: switching databases under a running app is
+  // what a reload is for.
+  const demo = useMemo(() => isDemo(window.location.search), []);
   const [view, setView] = useState<View>(initial.view ?? 'timeline');
   /*
    * Seeded from the URL, not left null.
@@ -106,7 +110,8 @@ export function App() {
   // waits on the open *and* on this effect's own attach: closing a database
   // half-way through `load` fails the transaction already in flight.
   useEffect(() => {
-    const attached = createIndexedDbStore().then((store) => attach(store).then(() => store));
+    const opened = demo ? openDemoStore() : createIndexedDbStore();
+    const attached = opened.then((store) => attach(store).then(() => store));
     attached.catch((error: unknown) => {
       useTimeline.setState({
         status: 'error',
@@ -320,8 +325,9 @@ export function App() {
 
   // The "last backed up N days ago" indicator (§8.3, layer 3). Re-checked when
   // the panel closes, since that is when it is most likely to have changed.
+  // Not in the demo: the figure is about the real timeline, not this one.
   useEffect(() => {
-    if (status !== 'ready') return;
+    if (status !== 'ready' || demo) return;
     void backupStatus().then(setBackup);
   }, [status, dataOpen]);
 
@@ -333,9 +339,13 @@ export function App() {
    * `getState()`, so the schedule does not re-mount when the timeline changes —
    * which it would do on every keystroke, and each remount would take another
    * snapshot on 'open'.
+   *
+   * Never in the demo (D68). The folder is the real timeline's, so a demo
+   * snapshot would land among its copies — and stamp "backed up today" on a
+   * timeline nobody had backed up.
    */
   useEffect(() => {
-    if (status !== 'ready') return;
+    if (status !== 'ready' || demo) return;
     const backups = startAutoBackup({
       timeline: () => useTimeline.getState().timeline,
       dirtyAt: () => useTimeline.getState().lastMutationAt,
@@ -363,7 +373,7 @@ export function App() {
   const startViewport = viewportRef.current;
 
   if (status === 'loading') {
-    return <Centred>opening your timeline…</Centred>;
+    return <Centred>{demo ? 'opening the demo timeline…' : 'opening your timeline…'}</Centred>;
   }
   if (status === 'error') {
     return <Centred>could not open the database{error ? ` — ${error}` : ''}</Centred>;
@@ -426,6 +436,24 @@ export function App() {
       </header>
 
       <FilterBar onAddLife={() => setOnboarding('life')} />
+
+      {/*
+        Always on, and not dismissible: the one thing the demo must never be is
+        mistaken for someone's own timeline — by them, or by whoever they show.
+      */}
+      {demo && (
+        <div className="flex items-center gap-3 border-b border-accent/40 bg-accent/10 px-4 py-1.5 text-xs text-paper">
+          <span>
+            demo — a synthetic timeline, invented events and all, kept apart from yours
+          </span>
+          <a
+            href={window.location.pathname}
+            className="shrink-0 text-paper-dim underline underline-offset-2 hover:text-paper"
+          >
+            open my timeline
+          </a>
+        </div>
+      )}
 
       {/*
         The pick stays armed while the picker is dismissed, so the app needs to
@@ -595,7 +623,7 @@ export function App() {
         </div>
       </footer>
 
-      {dataOpen && <DataPanel onClose={() => setDataOpen(false)} />}
+      {dataOpen && <DataPanel demo={demo} onClose={() => setDataOpen(false)} />}
       {packsOpen && <PackPanel onClose={() => setPacksOpen(false)} />}
       {pickerOpen && <ConnectPicker />}
       {helpOpen && <HelpOverlay onClose={() => setHelpOpen(false)} />}

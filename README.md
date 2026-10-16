@@ -235,10 +235,29 @@ That boundary is the one architectural rule worth enforcing — see
 [D11](docs/design.md#1-decision-log).
 
 Build order: [docs/design.md §9](docs/design.md#9-build-order). **M0–M5 complete** — that is all
-of v1. What comes next is deliberately deferred: the map, AI, and the social layer.
+of v1 — and the map was built after it. What comes next is deliberately deferred: AI and the
+social layer.
 
 ```
 npm run dev        # your timeline; starts empty
-npm test           # 943 tests
+npm run demo       # a synthetic one, in its own database — opens /?demo
+npm test           # 957 tests
 npm run typecheck
 ```
+
+## Looking at it
+
+An empty timeline is the hardest possible thing to judge the app by, so there is a demo:
+`npm run demo`, or `/?demo` on any running build. It opens a **separate database** filled with
+the synthetic corpus the renderer was tuned against — 2,000 events, 400 connections and 20 eras,
+every name invented — so nothing done in it can reach your real timeline, and backups are off
+while it runs. A banner says so on every screen; "open my timeline" leaves it.
+
+Things worth trying in it:
+
+- **timeline** — scroll to zoom from five thousand years to a week; the mass dissolves into marks
+  and then labels, column by column. Click a tag chip and watch the weight move.
+- **depth** — the same corpus as a corridor, newest in front.
+- **map** — drag the band along the bottom and the dots fill in and drain away.
+- **list** — everything, searchable; `?` shows the keyboard shortcuts.
+- Type `battle of lepanto 1571 #europe #war` into the box at the top and press enter.

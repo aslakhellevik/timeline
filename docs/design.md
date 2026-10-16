@@ -79,6 +79,7 @@ map are deferred — but the data model is shaped so that none of them require a
 | D65 | A date is edited in **one text field with no mode selector**: `formatTime` round-trips through `parseTime`, so the text carries the mode — revising §2.2's "the selector exists for editing" |
 | D66 | An event can be **placed by clicking the map**, and the precision is read off the zoom — D43 applied to input rather than to drawing |
 | D67 | A place may be **a name with no coordinates**, and a bundled gazetteer (Natural Earth plus hand-written historical places) turns the names history uses into points, offline |
+| D68 | `?demo` opens **a separate database seeded from the synthetic generator**, with backups off and a banner that cannot be dismissed — the app can be shown, and judged, without anyone's real timeline |
 | D69 | A map dot is coloured by **the coloured tag most of its events carry**, an uncoloured sub-region taking its parent's colour — not by the first tag of whichever event sorted first |
 
 Conventions, settled and not worth further discussion:
@@ -1624,6 +1625,30 @@ stayed live behind the one question the app asks: you could add an event, switch
 the packs panel while being asked your birth year, and "never backed up" glowed amber before
 there was anything to back up. It returns before the shell now, as the loading and error states
 already did.
+
+### The demo timeline (D68)
+
+The empty start is right for the person whose timeline it is and wrong for everyone else: a
+friend shown the app sees one question and a blank axis, and nothing in it — the mass, the arcs,
+the corridor, the map — can be judged against a corpus without shape. Packs do not fix that; two
+wars are a narrow slice, and installing them into a real timeline to make a point is exactly the
+contamination §5 warns about.
+
+So `/?demo` opens a **second database**, `arlinje-demo`, and fills it from the synthetic
+generator the renderer was tuned against (2,000 events, 400 connections, 20 eras, every name
+invented) whenever it is empty. A separate database rather than a flag on the real one, because
+the one property that matters — the demo cannot touch the real timeline — then needs no care
+anywhere else; the cross-tab channel is named after the database, so the two do not hear each
+other either. The generator is a lazy import, its own 21 kB chunk, so the real app never loads it.
+
+What the two *do* share is the origin, and with it the durability layers. The backup folder and
+its timestamps are the real timeline's, so in the demo the automatic snapshot does not run, the
+footer does not report a backup age, the panel's folder and persistence sections are replaced by
+a sentence saying why, and an export does not stamp the real "last exported". A banner says what
+this is on every screen, and cannot be dismissed — the one thing the demo must never be is
+mistaken for someone's own timeline. Whatever is added in the demo survives a reload, since only
+an empty store is seeded; "start over" in it behaves as it does anywhere, and the next load fills
+it again.
 
 ### Capture friction is the top product risk
 

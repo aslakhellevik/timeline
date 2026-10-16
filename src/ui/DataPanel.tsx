@@ -31,7 +31,7 @@ import { useFocusTrap } from './use-focus-trap';
  * browsing data, years of work gone", and the mitigations are worthless if the
  * user never finds them. Each section is one layer, in the order that matters.
  */
-export function DataPanel({ onClose }: { onClose: () => void }) {
+export function DataPanel({ demo = false, onClose }: { demo?: boolean; onClose: () => void }) {
   const timeline = useTimeline((state) => state.timeline);
   const replaceTimeline = useTimeline((state) => state.replaceTimeline);
   const flush = useTimeline((state) => state.flush);
@@ -127,80 +127,96 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <Section title="keep it from being evicted">
-          <p className="text-xs text-paper-dim">{persistence?.message ?? 'checking…'}</p>
-          {persistence &&
-            !persistence.persisted &&
-            persistence.supported &&
-            /*
-              The app already asked, on the first thing you saved (§8.3, layer
-              1). Offering a button that repeats a refused request is worse than
-              saying what happened: the browser decides this on how much the app
-              is used, so the honest advice is the one that changes its mind.
-            */
-            (claimed?.requested && !claimed.persisted ? (
-              <p className="text-xs text-paper-dim">
-                It was asked when you saved your first event, and would not commit. Using the app
-                more, or installing it, usually changes that.
-              </p>
-            ) : (
-              <Button
-                onClick={async () => {
-                  setPersistence(await requestPersistence());
-                }}
-              >
-                ask the browser to keep it
-              </Button>
-            ))}
-        </Section>
-
-        <Section title="back up to a folder">
-          <p className="text-xs text-paper-dim">{backup?.message ?? 'checking…'}</p>
-          {backup?.supported && backup.folder && (
+        {/*
+          The folder, its timestamps and the persistence grant belong to the
+          origin, so to the real timeline: a demo snapshot would sit among its
+          copies and mark it backed up (D68).
+        */}
+        {demo ? (
+          <Section title="this is the demo">
             <p className="text-xs text-paper-dim">
-              A copy is written when you open the app and every ten minutes after a change. The
-              last {SNAPSHOT_RETENTION} are kept — {SNAPSHOT_RETENTION} days, rather than{' '}
-              {SNAPSHOT_RETENTION} files: a second copy on the same day replaces the first.
+              A synthetic timeline in its own database, so nothing here can reach yours. Backups are
+              off; export, import and start over work as usual, on this timeline only.
             </p>
-          )}
-          {backup?.supported && (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                onClick={async () => {
-                  const chosen = await chooseBackupFolder();
-                  setNote(chosen.ok ? `backing up to ${chosen.name}` : chosen.message);
-                  await refresh();
-                }}
-              >
-                {backup.folder ? 'change folder' : 'choose a folder'}
-              </Button>
-              {backup.folder && (
-                <>
-                  {backup.permission !== 'granted' && (
-                    <Button
-                      onClick={async () => {
-                        await requestBackupPermission();
-                        await refresh();
-                      }}
-                    >
-                      allow access
-                    </Button>
-                  )}
+          </Section>
+        ) : (
+          <>
+            <Section title="keep it from being evicted">
+              <p className="text-xs text-paper-dim">{persistence?.message ?? 'checking…'}</p>
+              {persistence &&
+                !persistence.persisted &&
+                persistence.supported &&
+                /*
+                  The app already asked, on the first thing you saved (§8.3, layer
+                  1). Offering a button that repeats a refused request is worse than
+                  saying what happened: the browser decides this on how much the app
+                  is used, so the honest advice is the one that changes its mind.
+                */
+                (claimed?.requested && !claimed.persisted ? (
+                  <p className="text-xs text-paper-dim">
+                    It was asked when you saved your first event, and would not commit. Using the app
+                    more, or installing it, usually changes that.
+                  </p>
+                ) : (
                   <Button
                     onClick={async () => {
-                      await flush();
-                      const result = await writeSnapshot(timeline);
-                      setNote(result.ok ? `saved ${result.filename}` : result.message);
+                      setPersistence(await requestPersistence());
+                    }}
+                  >
+                    ask the browser to keep it
+                  </Button>
+                ))}
+            </Section>
+
+            <Section title="back up to a folder">
+              <p className="text-xs text-paper-dim">{backup?.message ?? 'checking…'}</p>
+              {backup?.supported && backup.folder && (
+                <p className="text-xs text-paper-dim">
+                  A copy is written when you open the app and every ten minutes after a change. The
+                  last {SNAPSHOT_RETENTION} are kept — {SNAPSHOT_RETENTION} days, rather than{' '}
+                  {SNAPSHOT_RETENTION} files: a second copy on the same day replaces the first.
+                </p>
+              )}
+              {backup?.supported && (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={async () => {
+                      const chosen = await chooseBackupFolder();
+                      setNote(chosen.ok ? `backing up to ${chosen.name}` : chosen.message);
                       await refresh();
                     }}
                   >
-                    back up now
+                    {backup.folder ? 'change folder' : 'choose a folder'}
                   </Button>
-                </>
+                  {backup.folder && (
+                    <>
+                      {backup.permission !== 'granted' && (
+                        <Button
+                          onClick={async () => {
+                            await requestBackupPermission();
+                            await refresh();
+                          }}
+                        >
+                          allow access
+                        </Button>
+                      )}
+                      <Button
+                        onClick={async () => {
+                          await flush();
+                          const result = await writeSnapshot(timeline);
+                          setNote(result.ok ? `saved ${result.filename}` : result.message);
+                          await refresh();
+                        }}
+                      >
+                        back up now
+                      </Button>
+                    </>
+                  )}
+                </div>
               )}
-            </div>
-          )}
-        </Section>
+            </Section>
+          </>
+        )}
 
         <Section title="export and import">
           <p className="text-xs text-paper-dim">
@@ -213,7 +229,7 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
             <Button
               onClick={async () => {
                 await flush();
-                const result = await downloadExport(timeline);
+                const result = await downloadExport(timeline, { record: !demo });
                 setNote(result.ok ? `exported ${result.filename}` : result.message);
                 await refresh();
               }}
@@ -255,7 +271,7 @@ export function DataPanel({ onClose }: { onClose: () => void }) {
                 <Button
                   onClick={async () => {
                     await flush();
-                    const result = await downloadExport(timeline);
+                    const result = await downloadExport(timeline, { record: !demo });
                     setNote(result.ok ? `exported ${result.filename}` : result.message);
                   }}
                 >
