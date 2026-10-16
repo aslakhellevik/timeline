@@ -79,6 +79,7 @@ map are deferred — but the data model is shaped so that none of them require a
 | D65 | A date is edited in **one text field with no mode selector**: `formatTime` round-trips through `parseTime`, so the text carries the mode — revising §2.2's "the selector exists for editing" |
 | D66 | An event can be **placed by clicking the map**, and the precision is read off the zoom — D43 applied to input rather than to drawing |
 | D67 | A place may be **a name with no coordinates**, and a bundled gazetteer (Natural Earth plus hand-written historical places) turns the names history uses into points, offline |
+| D69 | A map dot is coloured by **the coloured tag most of its events carry**, an uncoloured sub-region taking its parent's colour — not by the first tag of whichever event sorted first |
 
 Conventions, settled and not worth further discussion:
 
@@ -1770,6 +1771,18 @@ exactly as large as a Britain of sixty-one, and the encoding was gone across mos
 that matters. Forty saturates at a hundred and thirty-eight, which is a disc a map can hold;
 above it the count label carries what the area no longer can, which is why the label is drawn on
 every dot big enough to hold one.
+
+**A dot's colour is a plurality, not an accident (D69).** It was the first coloured tag of the
+cluster's first event — so against the demo corpus Europe's dot of eleven hundred was drawn
+orange, a colour that belongs to Africa and to art, on the strength of whichever tag the event
+that happened to sort first carried, and a single new event could repaint a continent. It is now the coloured tag the most members carry, ties broken by
+tag order so the answer does not depend on event order either: the arcs' own rule (a tag both
+endpoints share wins, §6.1) extended from two events to many. Nearly every event has a region, so
+in practice a dot is its region's colour, which is the colour of the chip that filters to it.
+Sub-regions — Japan, France, the German lands — have no colour of their own and now take their
+parent's, so an event typed `#japan` alone counts as Asian. A cluster with no region at all, such
+as events placed by coordinates and tagged only by theme, is coloured by its commonest theme,
+which is the most informative thing left to say about it.
 
 Coordinates can be typed as `59.91, 10.75` — the same choice as the era span field, since a
 map-picker for a field almost nobody fills in is a lot of interface for very little. Impossible

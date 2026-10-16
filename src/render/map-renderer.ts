@@ -125,9 +125,7 @@ export class MapRenderer {
   setData(data: MapData): void {
     this.events = data.events;
     this.calibrationEvents = data.calibration ?? data.events;
-    this.tagColours = new Map(
-      (data.tags ?? []).flatMap((tag) => (tag.color ? [[tag.id, tag.color] as const] : [])),
-    );
+    this.tagColours = inheritedTagColours(data.tags ?? []);
     this.extent = this.computeExtent();
     this.stripCache = null;
   }
@@ -473,13 +471,7 @@ export class MapRenderer {
   }
 
   private colourOf(cluster: Cluster): string {
-    for (const event of cluster.events) {
-      for (const tag of event.tags) {
-        const colour = this.tagColours.get(tag);
-        if (colour) return colour;
-      }
-    }
-    return this.theme.massEdge;
+    return clusterColour(cluster.events, this.tagColours, this.theme.massEdge);
   }
 
   /** The whole-corpus density behind the scrubber, computed at most once per shape. */
@@ -689,6 +681,67 @@ export class MapRenderer {
  * clustering and the drawing disagreeing about that is what produced a stack of
  * five discs over France.
  */
+/**
+ * Each tag's colour, or failing that its nearest coloured ancestor's (D69).
+ *
+ * The sub-regions — Japan, France, the German lands — carry no colour of their
+ * own, and an event typed `#japan` is tagged Japan alone. Without inheritance
+ * its dot was coloured by whatever theme it happened to have, so the same
+ * archipelago was purple one week and technology-blue the next. In tag order,
+ * which is what `clusterColour` breaks ties by.
+ */
+export function inheritedTagColours(tags: readonly Tag[]): Map<Id, string> {
+  const byId = new Map(tags.map((tag) => [tag.id, tag] as const));
+  const colours = new Map<Id, string>();
+  for (const tag of tags) {
+    let current: Tag | undefined = tag;
+    // Bounded, so a parent cycle in imported data cannot hang a frame.
+    for (let depth = 0; current && depth < 8; depth++) {
+      if (current.color) {
+        colours.set(tag.id, current.color);
+        break;
+      }
+      current = current.parent !== undefined ? byId.get(current.parent) : undefined;
+    }
+  }
+  return colours;
+}
+
+/**
+ * A cluster's colour: the coloured tag the most of its events carry (D69).
+ *
+ * It used to be the first coloured tag of the first event, which made the
+ * colour of a dot of a thousand an accident of which one sorted first — Europe
+ * was drawn orange, Africa's colour, and one new event could repaint it. A plurality is the same evidence the arcs use
+ * when an endpoint pair shares a tag (`connectionColour`), extended to many.
+ *
+ * Almost every event has a region, so in practice a dot is its region's colour,
+ * the colour of the chip that filters to it. Ties go to the tag listed first in
+ * `tagColours`, so the answer does not depend on the order of `events` either.
+ */
+export function clusterColour(
+  events: readonly TimelineEvent[],
+  tagColours: ReadonlyMap<Id, string>,
+  fallback: string,
+): string {
+  const counts = new Map<Id, number>();
+  for (const event of events) {
+    for (const tag of event.tags) {
+      if (tagColours.has(tag)) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+  }
+  let best: Id | null = null;
+  let most = 0;
+  for (const tag of tagColours.keys()) {
+    const count = counts.get(tag) ?? 0;
+    if (count > most) {
+      best = tag;
+      most = count;
+    }
+  }
+  return best === null ? fallback : (tagColours.get(best) ?? fallback);
+}
+
 function dotRadius(count: number): number {
   return Math.min(MAX_DOT, DOT_BASE * Math.sqrt(count));
 }

@@ -718,11 +718,19 @@ export class TimelineRenderer {
 
     // Dropped eras are counted and never drawn, so the count is the only thing
     // that can say the band is incomplete. Nonzero means the view is lying.
+    //
+    // On a backing of its own: the note sits in the first lane, at the right
+    // edge, which is exactly where a name set beside the newest bar ends — and
+    // the two used to print over each other as `fourteenth ce.+3 eras`.
     if (this.lanes.dropped > 0) {
       const note = `+${this.lanes.dropped} era${this.lanes.dropped === 1 ? '' : 's'}`;
+      const noteWidth = ctx.measureText(note).width;
+      const right = this.viewport.width - 4;
+      ctx.fillStyle = this.theme.surface;
+      ctx.fillRect(right - noteWidth - 6, top + 1, noteWidth + 10, LANE_HEIGHT - 3);
       ctx.fillStyle = this.theme.muted;
       ctx.textAlign = 'right';
-      ctx.fillText(note, this.viewport.width - 4, top + 2 + (LANE_HEIGHT - 5) / 2);
+      ctx.fillText(note, right, top + 2 + (LANE_HEIGHT - 5) / 2);
       ctx.textAlign = 'left';
     }
 
