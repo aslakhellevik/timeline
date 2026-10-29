@@ -7,60 +7,45 @@ news, lectures — placed on a shared axis of time, and connected to each other.
 
 Most timelines are canonical and impersonal: someone else decided what belongs on them. This
 one is a record of an individual's accumulated historical knowledge. It grows as you read and
-talk to people, and its shape says something about what you know and how you connect it.
+talk to people, and its shape says something about what you know and how you connect it. The
+interesting content is not the events but the reasoning between them.
 
-## Status
-
-**v1 is built.** The pure core, the canvas timeline and the list, local-first storage with
-capture, connections and their notes, tag filtering that redistributes the mass, eras in lanes,
-and an offline-capable PWA that works on a phone.
-The concept below is settled; the technical decisions that follow from it live in
-[docs/design.md](docs/design.md).
-
-**v1 scope:** single user, local-first, no accounts, no server. Events, connections, tags, eras,
-the density timeline. Everything else is deliberately deferred — see [Deferred](#deferred).
+v1 is done: single user, local-first, no accounts, no server, an installable PWA that works
+offline and on a phone. The technical decisions live in [docs/design.md](docs/design.md).
 
 ## Core concepts
 
 ### Events
 
-The atomic unit. An event has a position in time (a date, a year, a range, or something
-fuzzier like "mid-3rd century BC"), a title, and optionally notes, sources, a location, and
-tags.
-
-Events are entered by the user as they encounter them. The act of adding an event is the act
+The atomic unit: a title, a position in time (a date, a year, a range, or something fuzzier like
+"mid-3rd century BC"), and optionally notes, tags, a place and sources. Adding an event is the act
 of saying "I now know this happened."
 
-Which means an event carries two times: **when it happened**, and **when you learned it** — the
-latter alongside *where you learned it from*. Both are free to record now and impossible to
-reconstruct later, and they make the timeline replayable against your own life: not just what
-you know, but when each piece of it arrived and what brought it.
+So an event carries two times: **when it happened**, and **when you learned it** — alongside
+*where you learned it from*. Both are free to record now and impossible to reconstruct later, and
+they make the timeline replayable against your own life: not just what you know, but when each
+piece of it arrived and what brought it.
 
 ### Connections
 
 Two events can be connected. A connection is **an object in its own right**, not just an edge:
-it has its own document — notes, an explanation, an argument for why these two things belong
-together. Some connections are causal, some thematic, some ironic, some purely personal.
+it has its own document — an argument for why these two things belong together. Some are causal,
+some thematic, some ironic, some purely personal.
 
-This is the part we think is actually novel. The interesting content of a personal timeline is
-not the events but the reasoning between them.
-
-Connections are free-form in v1 — no taxonomy, just a note. They are stored as an ordered pair
-so a later `caused` / `influenced` vocabulary can be directional without a migration.
+This is the part we think is actually novel. Connections are free-form — no taxonomy, just a
+note — and stored as an ordered pair, so a later `caused` / `influenced` vocabulary can be
+directional without a migration.
 
 ### Tags
 
-Arbitrary user-defined tags, plus a set of premade ones:
+Your own tags, plus a premade set: regions (Europe, the Near East, China…) and themes (war,
+science, philosophy…). Type `#war` in the capture box and the event gets the built-in tag. Tags
+drive filtering: view the timeline as art history only, or as Asia only.
 
-- **Continents / regions** — used for geographic display
-- **History of ideas** — philosophy, art, science
+### Eras
 
-Tags drive filtering and display: view the timeline as art history only, or as Asia only.
-
-### Eras / blocks
-
-Named spans of time drawn on the timeline. Either predefined (the Victorian era, the Warring
-States period, the Cold War) or user-defined. User-defined eras are where this gets personal:
+Named spans of time, drawn in lanes under the axis — canonical ones (the Cold War, the Warring
+States period) or your own:
 
 - your own life
 - other people's lives
@@ -68,96 +53,79 @@ States period, the Cold War) or user-defined. User-defined eras are where this g
 - a family's history
 
 Eras give the timeline a personal frame of reference — an event is not just in 1847, it is
-*during your great-grandmother's childhood*.
+*during your great-grandmother's childhood*. `+ era` in the header makes one over the middle of
+whatever is on screen: zoom to the period you mean and press it.
 
 ## The graphical view
 
-The default view is a zoomed-out graphical timeline, not a list.
+**Mass.** Zoomed out, events are not drawn individually. Periods dense with events show up as
+*mass* — a visual weight proportional to how much you know about them. The timeline becomes a
+density plot of your own historical knowledge, and its gaps are visible at a glance.
 
-**Mass.** Zoomed out, events are not drawn individually. Regions dense with events show up as
-*mass* — a visual weight proportional to how much you know about that period. The timeline
-becomes a density plot of your own historical knowledge, and its gaps are visible at a glance.
+**Zooming in dissolves the mass** — first into tick marks, then into labels. It is one
+continuous crossfade, and it runs **per column** rather than per frame: a single event alone in
+400 BC resolves into a mark and a name while the twentieth century beside it is still a solid
+hill. An event that lasted — `1914–1918` — draws its span as a bar over its tick.
 
-**Zoom levels.** Zooming in dissolves the mass:
-
-1. **Far** — mass only, plus era blocks and connection arcs
-2. **Mid** — individual events resolve as tick marks
-3. **Near** — labels and text appear
-
-They are not three modes but one continuous crossfade, and it runs **per column** rather than
-per frame: a single event alone in 400 BC resolves into a mark and a name while the twentieth
-century beside it is still a solid hill. An event that lasted — `1914–1918`, or the years you
-were reading Russian novels — draws its span as a bar over its tick, so the marks say the same
-thing about duration that the mass underneath them does.
-
-**Connections** are drawn as colourful lines/arcs across the timeline, colour-coded (by tag,
-by type of connection — to be decided). Zoomed out, the connection structure should be the
-most visually striking thing on screen.
-
-**Tag-based display.** Filtering by tag changes what contributes mass, so switching from "all"
-to "history of ideas" visibly redistributes the weight of the timeline.
-
-Mass is a kernel density estimate whose bandwidth is measured in *pixels*, not years — so
+Mass is a kernel density estimate whose bandwidth is measured in *pixels*, not years, so
 zooming in genuinely resolves clumps into structure instead of stretching the same curve, and
 uncertain events stay smeared while precise ones sharpen. The maths is in
-[docs/design.md](docs/design.md#3-mass-d3).
+[docs/design.md §3](docs/design.md#3-mass-d3).
+
+**Connections** are drawn as arcs over the mass, coloured by tag, blending
+additively so a bundle of them brightens where it crosses. Zoomed out, the connection structure
+is the most striking thing on screen. Selecting an event dims every arc it does not touch.
+
+**Tag filtering** changes what contributes mass, so switching from everything to *philosophy*
+visibly redistributes the weight of the timeline — and removes weight rather than rescaling it,
+so a thin subject stays thin.
+
+Beside the timeline there is a **list**: everything, searchable and keyboard-navigable, over the
+same filter. It is how you find things, and the accessible equivalent of the canvas.
 
 ## Starting from empty
 
 A new timeline is empty, and that is the point: its shape is only a picture of what you know if
-you put everything on it. The demo ([Looking at it](#looking-at-it)) exists for seeing a full one.
+you put everything on it. First run asks one question — the year you were born — so the axis
+has a "my life" era from the start; it can be skipped. Then the box at the top takes
+`battle of lepanto 1571 #europe #war` and Enter.
+
+For seeing a full one first, there is the demo ([Looking at it](#looking-at-it)), linked from
+the first-run screen and from the empty timeline.
 
 ## Deferred
 
 Not in v1. The data model is built so that none of these need a migration.
 
-### Social layer
-
-A **social network of timelines**. Timelines are personal, but they are interesting to compare:
-see a friend's timeline; see the union or intersection of yours and theirs; see which events
-they have that you don't; inherit or fork someone's connection with its explanation.
-
-Forking a connection is the most interesting of these, and it is cheap: copy with attribution.
-The design keeps records merge-ready (stable IDs, timestamps, soft deletes) without building any
-sync now. Open: public/followable or invite-only, and whether the unit of sharing is the whole
-timeline or a subset by tag.
-
-**Event identity** is settled for now by avoidance: all events are personal, there is no
-canonical registry. If two people both add "the fall of Constantinople", those are two events.
-Deduplication, if it ever matters, is a matching problem on top — not a schema problem.
-
-### AI
-
-- **AI-suggested tags** — proposed on event creation, accepted or rejected by the user. *(TODO)*
-- **Automatic generation** — consume content (book, PDF, Word doc), produce timeline points from
-  it. *(TODO)*
-
-Both are why every record carries provenance from day one: manual or import.
-
-They also both break the privacy baseline — they mean sending your notes and reading history to
-someone else's API. That may be worth doing, but it is a decision to make deliberately against a
-stated default, not one to arrive at by accident inside a feature. See
-[docs/design.md §7.9](docs/design.md#88-privacy-d25).
+- **A social layer.** See a friend's timeline, the union or intersection with yours, and fork a
+  connection with its explanation — copy with attribution. Records are already merge-ready
+  (stable ids, timestamps, soft deletes). All events stay personal: two people adding "the fall
+  of Constantinople" have two events.
+- **AI.** Suggested tags on capture, and generating events from a book or a document. Every record
+  carries provenance (`manual` or `import`) so that machine-made content can say so. Both mean
+  sending your notes to someone else's API, which is a decision to make deliberately against the
+  privacy default ([docs/design.md §7.9](docs/design.md#79-privacy-d25)), not inside a feature.
 
 ## Decisions
 
-Answered, with rationale in [docs/design.md](docs/design.md):
+The summary; the rationale and the full log (D1–D71) are in [docs/design.md](docs/design.md#1-decision-log).
 
 | Question | Decision |
 |---|---|
-| Time representation | One shape — a four-number fuzzy interval — with three input modes: instant (default), interval, fuzzy. Numeric axis is fractional days, proleptic Gregorian, float64 |
-| Mass rendering | Kernel density estimate, screen-space bandwidth, closed-form per event |
+| Time representation | One shape — a four-number fuzzy interval — edited as one text field. Numeric axis is fractional days, proleptic Gregorian, float64 |
+| Mass rendering | Kernel density estimate, screen-space bandwidth, closed-form per event, semantic zoom per column |
 | Event identity | All events personal; no canonical registry |
 | Connection types | Free-form only, stored as an ordered pair |
+| Views | One canvas — the timeline — plus a searchable, keyboard-navigable list, over one shared filter |
 | Platform | Web app: Vite + TypeScript + React + Tailwind, PWA, installable, desktop and mobile |
 | Local-first vs. server | Local-first; in-memory state, IndexedDB, versioned JSON export |
-| Data durability | Three layers: persisted storage, automatic file backup, manual export — all in v1 |
-| Views | One canvas — the flat timeline — plus a searchable, keyboard-navigable list, over one shared filter |
+| Data durability | Three layers: persisted storage, automatic file backup, manual export |
+| URL | Viewport, selection, tags and view live in the hash, so a period is a link |
+| First run | One optional question, a birth year; a demo timeline in a database of its own |
 | Privacy | No telemetry, no analytics, no network traffic beyond loading the app |
 | Licence / language | MIT; UK English |
 
-Nothing blocks implementation. What is deliberately left until there is something on screen:
-[docs/design.md §9](docs/design.md#10-deliberately-left-open).
+What is deliberately left open: [docs/design.md §9](docs/design.md#9-deliberately-left-open).
 
 ## Repo layout
 
@@ -167,34 +135,33 @@ src/core/           pure, framework-free, fully tested
   model/            entities, ids, the built-in tag set
   time/             calendar, fuzzy intervals, parsing, formatting
   density/          the kernel density estimator
-  testing/          seeded synthetic timeline generator
+  testing/          seeded synthetic timeline generator (also the demo)
   filter.ts         the one filter predicate every view consumes
   search.ts         search, and the capture-time duplicate guard
   quick-add.ts      the capture grammar
   markdown.ts       a small Markdown subset, escape-first (D27)
 src/render/         the canvas renderer — no framework imports (D11)
+  timeline-renderer.ts  mass, marks, labels, axis, eras
   arcs.ts           connection arc geometry, colour and hit-testing
   lanes.ts          era lane allocation and bar geometry
 src/state/          in-memory timeline, mutations, undo, persist queue
-src/store/          IndexedDB, merge, backup, durability
+src/store/          IndexedDB, import/export and merge, backup, durability
 src/ui/             React
 scripts/pwa-plugin.ts  emits the manifest and service worker at build time
 scripts/shot.mjs    screenshot the running app over CDP, for verification
+wrangler.jsonc      the Cloudflare Worker that serves the build
 ```
 
 `src/core` never imports from `src/ui` or `src/render`, and `src/render` never imports React.
 That boundary is the one architectural rule worth enforcing — see
 [D11](docs/design.md#1-decision-log).
 
-Build order: [docs/design.md §8](docs/design.md#9-build-order). **M0–M5 complete** — that is all
-of v1. What comes next is deliberately deferred: AI and the
-social layer.
-
 ```
 npm run dev        # your timeline; starts empty
 npm run demo       # a synthetic one, in its own database — opens /?demo
 npm test           # 838 tests
 npm run typecheck
+npm run build      # dist/, with the service worker and manifest
 ```
 
 ## Looking at it
@@ -209,5 +176,21 @@ Things worth trying in it:
 
 - **timeline** — scroll to zoom from five thousand years to a week; the mass dissolves into marks
   and then labels, column by column. Click a tag chip and watch the weight move.
+- **an event** — click a mark, then `connect…` and pick a second event: the connection opens on
+  its note, *why do these belong together*.
 - **list** — everything, searchable; `?` shows the keyboard shortcuts.
 - Type `battle of lepanto 1571 #europe #war` into the box at the top and press enter.
+
+## Running it / deploying it
+
+It is a static build served from a Cloudflare Worker with static assets, at
+`timeline.aslakhellevik.no` (`wrangler.jsonc`). All paths in the build are relative, so `dist/`
+also works from any other host or subdirectory.
+
+```
+npx wrangler login   # once per machine
+npm run deploy       # build, then wrangler deploy
+```
+
+The service worker serves the HTML network-first, so a deploy reaches open tabs on their next
+load, and a tab that is already open says `a new version is ready · reload`.

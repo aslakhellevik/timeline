@@ -1,7 +1,7 @@
 # Design
 
-Technical design for the concept in [../README.md](../README.md). Written before implementation;
-every decision here should be revisited once there is something on screen.
+Technical design for the concept in [../README.md](../README.md). Written before implementation
+and kept as the record of what was built and why; the decision log is the summary.
 
 **v1 is single-user, local-first, no accounts, no server.** The social layer and AI features are
 deferred — but the data model is shaped so that neither requires a migration.
@@ -68,7 +68,7 @@ deferred — but the data model is shaped so that neither requires a migration.
 | D54 | ~~A vagueness halo is a **ring at the true radius**, not a filled disc — revising how D43 is drawn~~ — removed, see D70 |
 | D55 | ~~Clustering is a grid **plus agglomerative passes**, merging against the radii the dots are actually **drawn** at~~ — removed, see D70 |
 | D56 | Additive arc ink falls as `1/√n`, so a bundle brightens as `√n` instead of saturating to white |
-| D57 | Selecting an event **reveals** it: every view moves to show it, and a window more than four times the event's own period counts as not showing it |
+| D57 | Selecting an event **reveals** it: the timeline and the list both move to show it, and a window more than four times the event's own period counts as not showing it |
 | D58 | The footer is **status**; everything that creates something is header chrome — and first run is a takeover, not a layer over live chrome |
 | D59 | First run **offers** the "my life" era rather than always creating one: skipping creates no era, only the premade tags — revising D26 |
 | D60 | One Escape stack, **topmost wins**; a modal traps focus and silences the window-level shortcuts while it is up |
@@ -82,6 +82,7 @@ deferred — but the data model is shaped so that neither requires a migration.
 | D68 | `?demo` opens **a separate database seeded from the synthetic generator**, with backups off and a banner that cannot be dismissed — the app can be shown, and judged, without anyone's real timeline |
 | D69 | ~~A map dot is coloured by **the coloured tag most of its events carry**, an uncoloured sub-region taking its parent's colour — not by the first tag of whichever event sorted first~~ — removed, see D70 |
 | D70 | The depth view, the map and the packs are removed (Oct 2026): one canvas, the flat timeline, plus the list. The product is the mass, the connections and the eras; everything else was weight. Schema 3 drops packs: a schema-2 export or database opens with every pack record kept as the user's own (`pack` stripped, provenance `import`) |
+| D71 | An empty timeline **says what to do** — type an event, or look at the demo — in DOM over the canvas, since half of it is a link; chrome with nothing to act on yet (an unused-tag filter row, a backup warning over no events) stays out of sight until there is |
 
 Conventions, settled and not worth further discussion:
 
@@ -727,10 +728,13 @@ so on a first-run timeline it was empty, the viewport fell back to a one-day win
 epoch, and `clamp` then capped the widest zoom at three days: the "my life" era D26 had just
 created sat nineteen thousand days away and could not be reached. The frame is now the union of
 events **and** eras (D52), with a stated `now − 100 y … now + 2 y` when there is neither, so the
-axis, the ticks and the era band always have something to describe. Over that, one muted line:
-how to add an event when the store is empty, or — when the window holds no events and no mass
-and lies entirely outside the corpus — where the corpus actually is, since panning into the
-twenty-second century otherwise looks like the data has gone.
+axis, the ticks and the era band always have something to describe. When the window holds no events
+and no mass and lies entirely outside the corpus, one muted line says where the corpus actually
+is, since panning into the twenty-second century otherwise looks like the data has gone. When
+the store has no events at all, what to do is said over the canvas rather than on it (D71):
+type an event in the box above and press enter, *or look at a demo timeline* — and that second
+half is a link to `?demo`, which canvas text cannot be. First run offers the same link beside
+`skip`.
 
 **Interaction.** Wheel = zoom at cursor, drag = pan, pinch on touch, double-click = zoom in,
 arrow keys pan / `+`/`-` zoom. Zoom is continuous in log-scale space, animated with a short
@@ -756,8 +760,8 @@ finger would be the canvas arguing with the hand.
 **Selecting an event reveals it (D57).** Until this existed, selection changed what the panel
 said and nothing else, which made the first thing anyone does with a link look broken: opening
 `#e=…` described an event in July 1990 beside a canvas showing five thousand years, with the
-event a hairline at the right-hand edge and the list still at the top of the corpus. Every view
-now moves to the selection — the timeline in time, and the list by scrolling.
+event a hairline at the right-hand edge and the list still at the top of the corpus. Both views
+now move to the selection — the timeline in time, and the list by scrolling.
 
 The rule has two halves, and the second is the one worth arguing. *Where*: keep the span the
 user chose wherever it already shows the event, because a reveal is a pan whenever a pan is
@@ -801,7 +805,7 @@ selection goes to the top of the window instead, because on a phone the detail s
 bottom two thirds of the scroller and "just inside the window" is behind the sheet describing
 the very row it is hiding.
 
-`Enter` on a row is the way back to the picture: it switches to the canvas last used and reveals
+`Enter` on a row is the way back to the picture: it switches to the timeline and reveals
 the row there (§5.1). The same link sits under the date in the event panel, which is where
 someone reading about an event is when they wonder where it sits.
 
@@ -866,7 +870,7 @@ palette later.
 interval. Adding the Battle of Lepanto twice six months apart is the obvious failure mode of a
 capture-optimised tool, and it corrupts the density quietly.
 
-### 5.4 Making a connection (M3)
+### 5.4 Making a connection
 
 Two routes, one state. `connectFrom` holds the first endpoint, and while it is set, *every* path
 that would select an event completes the connection instead — a canvas click, a list row, the
@@ -1007,7 +1011,14 @@ to the header beside the view nav, because an era is derived from the viewport �
 the period you mean and press the button — which makes it the same kind of act as choosing a
 view. `?` sits at the far right of the header. Undo names
 what it will undo — `undo add event` — which the store has always known and the button never
-said.
+said. So the whole of it is: wordmark, capture, `+ era`, `timeline | list`, `?` above; counts,
+`your data` and undo below.
+
+**Nothing to act on, nothing shown (D71).** A fresh timeline has thirty-odd premade tags and no
+events, so the filter row was a lone `+33 unused` — a catalogue of zeroes as the first control a
+newcomer met — and the footer said `never backed up` in amber about a timeline with nothing in
+it. The filter row now waits until a tag is in use (holding only `add my life` while that offer
+is open), and the footer says `your data` until there is an event to lose.
 
 **One faint ink, at full opacity (D62).** Secondary text was written as a fade of the muted
 token: `text-paper-dim/70` on the tag-group labels, `/60` on placeholders. Measured against the
@@ -1023,7 +1034,10 @@ either way, because a colour you cannot name is a colour nobody measures.
 ## 6. Platform (D7)
 
 **Web app, TypeScript, PWA (installable, offline), one codebase for desktop and mobile,
-deployed static to Cloudflare Pages.**
+served as static assets from a Cloudflare Worker** at `timeline.aslakhellevik.no`, the way the
+other side projects are hosted (`wrangler.jsonc`, `npm run deploy`). Every path in the build is
+relative — `base`, the manifest's `start_url` and `scope`, the worker's registration — so the
+same `dist/` works from a domain root, a subdirectory or a file path.
 
 - Canvas zoom is excellent on the web; no app stores; the deferred social layer is a natural fit;
   it matches the Cloudflare setup already in use for `aslakhellevik.no`.
@@ -1039,7 +1053,7 @@ the same canvas, simplified chrome. The honest risk: the far-zoom density view o
 screen may simply not be legible — test this early, and be willing to give mobile a different
 default view.
 
-### 6.1 As built (M5)
+### 6.1 The mobile layout
 
 **Two changes carry the mobile layout**, both below Tailwind's `sm`. The detail pane becomes a
 bottom sheet rather than a column, because a fixed 320 px sidebar leaves a 390 px screen with
@@ -1060,10 +1074,8 @@ targets are D58's other half).
   the top of the footer and the wordmark goes; capture keeps the width, which is the priority
   §8 sets. `+ era` and `?` stay in the header, at 44 px.
 - **Nothing was tappable.** The nav buttons were 24 px tall, `filters` — the only route to
-  filtering on a phone — was 27×17, a checkbox was 13×13 and the footer's buttons were
-  16 px. Every single-row control is now at least 44 px tall below `sm`, with the visual size
-  unchanged; the checkboxes became labelled toggle buttons, which say their own state and
-  match the tag chips they sit beside. The chips themselves stop at 32 px on purpose: they wrap
+  filtering on a phone — was 27×17 and the footer's buttons were 16 px. Every single-row
+  control is now at least 44 px tall below `sm`, with the visual size unchanged. The chips themselves stop at 32 px on purpose: they wrap
   into a grid four pixels apart, and a 44 px target there would overlap the row above it and
   swallow the tap meant for another tag.
 - **The sheet is capped at 50vh** and padded for the home indicator with
@@ -1358,20 +1370,16 @@ retroactive over the existing corpus, and recorded in `provenance` on anything i
 
 ## 8. Build order
 
-Ordered to put the risky, distinctive work first and the CRUD last.
-
-| Milestone | Content |
-|---|---|
-| ~~**M0**~~ | ✅ Repo skeleton, TS + Vite. Time library: parser, fuzzy interval, formatting, calendar conversion. Density estimator. Synthetic data generator. Viewport and interaction maths. 314 tests. |
-| ~~**M1**~~ | ✅ Canvas renderer against synthetic data: linear axis, pan/zoom, density field, semantic zoom crossfade, calendar-correct ticks at every scale, selective labels, hover crosshair. The far view works — it reads as a picture of what someone knows, with the gaps legible at a glance. |
-| ~~**M2**~~ | ✅ IndexedDB store with cross-tab sync, quick-add capture with a duplicate guard, event detail, the searchable list view, export/import/merge, the three durability layers, URL state, first run. |
-| ~~**M3**~~ | ✅ Connections: the creation flow from both the picker and the canvas, arcs with tag colour and additive blending, hit-testing and selection on the canvas, the Markdown subset and the note editor, connections in the event pane. 598 tests. |
-| ~~**M4**~~ | ✅ Tag filtering with rolled-up counts, animated mass redistribution, era lanes below the axis, era creation and editing. 635 tests. |
-| ~~**M5**~~ | ✅ The premade tags as records; a hand-rolled service worker with verified offline loading; the mobile layout. (Bundled packs also shipped here, and were removed in D70.) 687 tests. |
-| **Later** | AI-suggested tags · document ingestion · social layer and sync. |
-
-**M1 is the decision point.** Everything before it is cheap; everything after it assumes the
-core view works.
+The order put the risky, distinctive work first and the CRUD last, and it held. M0 built the
+pure core — the time library, the density estimator, the synthetic generator and the viewport
+maths. M1 put the canvas on screen against synthetic data, and was the decision point: the far
+view read as a picture of what someone knows, with the gaps legible at a glance, so everything
+after it could assume the core view worked. M2 added the IndexedDB store, quick-add capture, the
+event pane, the list, export and import, the durability layers, URL state and first run; M3 the
+connections, their arcs and the Markdown note editor; M4 tag filtering, era lanes and era
+editing; M5 the premade tags as records, the service worker and the mobile layout. That was v1.
+Two further views and bundled content packs were built on top of it and later removed again
+(D70). AI-suggested tags, document ingestion and the social layer remain deferred.
 
 ### First run (D26)
 
@@ -1453,17 +1461,17 @@ the whole point of showing them and was not previously reachable.
 
 ## 9. Deliberately left open
 
-Nothing blocks implementation. These are decisions that want evidence rather than argument, and
-the right time to make them is after M1 is on screen:
+Decisions that want evidence rather than argument — most of them a real corpus rather than the
+synthetic one:
 
 1. **Connection colour encoding.** By dominant tag, by era, or a per-connection colour. Depends
    entirely on what the far view actually looks like with real arc density.
-2. ~~**Kernel constants.**~~ Settled in M1: `β = 5 px`, crossfade over λ 1 → 0.25, and the two
+2. ~~**Kernel constants.**~~ Settled in M1: `β = 5 px` (since 3 px, D51), crossfade over λ 1 → 0.25, and the two
    changes recorded in §3.4 — a cube-root height and a per-corpus `λ_ref`. Worth revisiting once
    there is a real corpus rather than a synthetic one, since both were tuned against the
    generator's distribution.
-3. **Mobile default view.** Whether the density view is legible at 390 px or mobile needs a
-   different default. Test on a real phone in M5 before deciding.
+3. ~~**Mobile default view.**~~ Settled in M5: the density view is legible at 390 px, with less
+   to say (§6.1).
 4. **Density-equalised axis** (§2.4) — a good idea that may or may not be a good view. It is a
    swappable scale function, so it costs nothing to try later.
 5. **Connection taxonomy.** Free-form in v1 by decision; whether a light vocabulary emerges is
@@ -1471,5 +1479,4 @@ the right time to make them is after M1 is on screen:
 
 Outside the design: the app is called **Årlinje**, provisionally — the name may change, so keep
 it out of module names and types. `arlinje` is the ASCII form, used for the package and anywhere
-a diacritic would be hostile. It still needs somewhere to live (`arlinje.aslakhellevik.no`, or
-its own domain); neither blocks anything.
+a diacritic would be hostile. It lives at `timeline.aslakhellevik.no` (§6).
