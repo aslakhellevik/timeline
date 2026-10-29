@@ -311,6 +311,12 @@ export function App() {
   }, [status, isFirstRun]);
 
   const visible = useMemo(() => applyFilter(timeline, filter), [timeline, filter]);
+  /*
+   * "never backed up", in amber, over a timeline with nothing in it was the
+   * loudest thing on a newcomer's first screen, about nothing. Until there is an
+   * event to lose, the footer just offers the panel.
+   */
+  const shownBackup = timeline.events.length > 0 ? backup : null;
 
   /*
    * Where a freshly mounted view starts.
@@ -478,18 +484,18 @@ export function App() {
           <button
             onClick={() => setDataOpen(true)}
             className={`inline-flex min-h-11 items-center sm:min-h-0 ${
-              backup?.stale ? 'text-[#c98500] hover:underline' : 'hover:text-paper'
+              shownBackup?.stale ? 'text-[#c98500] hover:underline' : 'hover:text-paper'
             }`}
           >
             {/*
               "exported" and "backed up" are not the same claim: the first is a
               file the browser was asked to save, the second one this app wrote.
             */}
-            {backup
-              ? backup.daysSinceCopy === null
+            {shownBackup
+              ? shownBackup.daysSinceCopy === null
                 ? 'never backed up'
-                : `${backup.lastCopyKind === 'export' ? 'exported' : 'backed up'} ${
-                    backup.daysSinceCopy === 0 ? 'today' : `${backup.daysSinceCopy}d ago`
+                : `${shownBackup.lastCopyKind === 'export' ? 'exported' : 'backed up'} ${
+                    shownBackup.daysSinceCopy === 0 ? 'today' : `${shownBackup.daysSinceCopy}d ago`
                   }`
               : 'your data'}
           </button>

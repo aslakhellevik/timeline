@@ -136,12 +136,24 @@ export function FirstRun({ mode = 'first-run', onDone }: FirstRunProps) {
           </button>
         </form>
 
-        <button
-          onClick={returning ? onDone : skip}
-          className="mt-3 text-xs text-paper-dim underline-offset-2 hover:underline"
-        >
-          {returning ? 'not now' : 'skip'}
-        </button>
+        <div className="mt-3 flex gap-4 text-xs text-paper-dim">
+          <button
+            onClick={returning ? onDone : skip}
+            className="underline-offset-2 hover:underline"
+          >
+            {returning ? 'not now' : 'skip'}
+          </button>
+          {/*
+            For whoever wants to see a filled timeline before starting their own.
+            The demo is a database of its own (D68), so this answers nothing and
+            the question is still here when they come back.
+          */}
+          {!returning && (
+            <a href="?demo" className="underline-offset-2 hover:underline">
+              see a demo first
+            </a>
+          )}
+        </div>
       </div>
     </div>
   );

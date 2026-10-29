@@ -49,6 +49,14 @@ export function FilterBar({ onAddLife }: { onAddLife?: () => void }) {
   const hasLife = timeline.eras.some((era) => era.kind === 'personal' && !era.deleted_at);
 
   if (usage.length === 0) return null;
+  /*
+   * Nothing to filter yet. A fresh timeline has thirty-odd premade tags and
+   * none of them in use, which made this row a lone "+33 unused" — a catalogue
+   * of zeroes offered as the first control a newcomer sees. Until a tag is used
+   * the row is only the offer of a frame of reference, if that is still open.
+   */
+  const nothingToFilter = visible.length === 0;
+  if (nothingToFilter && (hasLife || !onAddLife)) return null;
 
   const shown = showUnused ? usage : visible;
 
@@ -61,14 +69,16 @@ export function FilterBar({ onAddLife }: { onAddLife?: () => void }) {
         The only route to filtering on a phone, and it measured 27×17 — so the
         hit area is a real one even though the word stays small (§7.1).
       */}
-      <button
-        onClick={() => setExpanded((current) => !current)}
-        aria-expanded={expanded}
-        className="inline-flex min-h-11 shrink-0 items-center pr-1 text-[11px] text-paper-dim
-                   hover:text-paper sm:hidden"
-      >
-        {filter.tags.length > 0 ? `filters · ${filter.tags.length}` : 'filters'}
-      </button>
+      {!nothingToFilter && (
+        <button
+          onClick={() => setExpanded((current) => !current)}
+          aria-expanded={expanded}
+          className="inline-flex min-h-11 shrink-0 items-center pr-1 text-[11px] text-paper-dim
+                     hover:text-paper sm:hidden"
+        >
+          {filter.tags.length > 0 ? `filters · ${filter.tags.length}` : 'filters'}
+        </button>
+      )}
 
       <div
         className={`min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 sm:flex ${
@@ -121,7 +131,7 @@ export function FilterBar({ onAddLife }: { onAddLife?: () => void }) {
           );
         })}
 
-        {hidden > 0 && (
+        {hidden > 0 && !nothingToFilter && (
           <button
             onClick={() => setShowUnused((current) => !current)}
             className="inline-flex min-h-8 items-center text-[11px] text-paper-dim

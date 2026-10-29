@@ -1380,12 +1380,11 @@ export class TimelineRenderer {
   /**
    * A line of prose when the canvas would otherwise be blank.
    *
-   * Two cases, and they are different statements. With nothing in the store at
-   * all, an empty canvas is indistinguishable from a broken one, and the thing
-   * to say is how to put something in it. With a corpus but a window outside
-   * it, the canvas is honestly empty and the useful thing to say is *where the
-   * corpus is* — otherwise panning into the far future looks like the data has
-   * gone.
+   * With a corpus but a window outside it, the canvas is honestly empty and the
+   * useful thing to say is *where the corpus is* — otherwise panning into the
+   * far future looks like the data has gone. With nothing in the store at all
+   * the canvas says nothing: `TimelineView` puts what to do over it in the DOM,
+   * because one of the things to do is a link.
    */
   private drawEmptyNote(
     ctx: CanvasRenderingContext2D,
@@ -1407,9 +1406,7 @@ export class TimelineRenderer {
   }
 
   private emptyMessage(vp: Viewport, density: DensityResult): string | null {
-    if (this.calibrationEvents.length === 0 && this.events.length === 0) {
-      return 'nothing yet — type an event above, like “battle of lepanto 1571 #europe #war”';
-    }
+    if (this.calibrationEvents.length === 0 && this.events.length === 0) return null;
     if (this.markLayout.length > 0 || density.total > 0.01) return null;
 
     const extent = this.getExtent();
