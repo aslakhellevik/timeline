@@ -107,8 +107,6 @@ export function computeDensity(
     return { lambda, lambdaMax: 0, total: 0 };
   }
 
-  const project = options?.toPixel;
-
   // Pad by the kernel's reach so nothing just outside the window is lost, and so
   // the zero boundary in the blur never bites inside the visible span.
   const padPx = Math.ceil(4 * beta) + 1;
@@ -118,11 +116,8 @@ export function computeDensity(
   const slopeChanges = new Float64Array(cells);
   const points = new Float64Array(cells);
 
-  // The one place time meets pixels. A nonlinear axis composes here and nowhere
-  // else — see `DensityOptions.toPixel` for why that is enough.
-  const toCell = project
-    ? (t: Days) => (project(t) + padPx) * supersample
-    : (t: Days) => ((t - viewport.start) / dt + padPx) * supersample;
+  // The one place time meets pixels.
+  const toCell = (t: Days) => ((t - viewport.start) / dt + padPx) * supersample;
 
   for (const spec of specs) {
     // A single non-finite bound would prefix-sum into NaN across the whole grid
@@ -286,8 +281,7 @@ export function lambdaRefFor(
  * fades out: above one event per pixel there is nothing to draw individually,
  * below a quarter there is no mass worth drawing.
  *
- * Both canvas renderers feed it a **local** λ — per row in the depth view, per
- * column in the flat one (D35, D50). One number for the whole frame is a
+ * The renderer feeds it a **local** λ — per column (D50). One number for the whole frame is a
  * different claim, and a false one: it says the frame is dense because its
  * busiest column is, so a lone event in 400 BC stays dissolved for as long as
  * the twentieth century is on screen with it.

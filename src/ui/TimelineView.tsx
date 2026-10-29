@@ -8,9 +8,8 @@ import { useCanvasRenderer } from './use-canvas-renderer';
  *
  * Everything about mounting a canvas — the renderer's lifecycle, the pan
  * bounds, the click/drag discriminator, the reveal — lives in
- * `useCanvasRenderer`, which the depth view shares. What is left here is what
- * actually differs: which renderer, which gesture layer, and what a screen
- * reader is told the picture shows.
+ * `useCanvasRenderer`. What is left here is which renderer, which gesture
+ * layer, and what a screen reader is told the picture shows.
  */
 export interface TimelineViewProps {
   events: readonly TimelineEvent[];

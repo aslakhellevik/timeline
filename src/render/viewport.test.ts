@@ -210,23 +210,4 @@ describe('revealWindow', () => {
     expect(window!.end).toBeLessThanOrEqual(wide.max + 1e-6);
     expect(window!.start).toBeGreaterThanOrEqual(wide.min - 1e-6);
   });
-
-  /**
-   * The corridor spends half its height on the newest tenth of the window, so
-   * an event centred in time is drawn at the horizon (D33, §6.7).
-   */
-  it('places the target where asked, for a view whose axis is not linear', () => {
-    const window = revealWindow(vp(-3000 * YEAR, 50 * YEAR), t, t, wide, 0.85);
-    expect(window).not.toBeNull();
-    const fraction = (t - window!.start) / span(window!);
-    expect(fraction).toBeCloseTo(0.85, 3);
-  });
-
-  it('holds a target near the far edge to be revealed, under that placement', () => {
-    // 0.2 along the window is comfortable when centred and not when the view
-    // wants its target at 0.85 — the same rule, moved with the anchor.
-    const window = vp(-10 * YEAR, 10 * YEAR);
-    expect(revealWindow(window, -6 * YEAR, -6 * YEAR, wide)).toBeNull();
-    expect(revealWindow(window, -6 * YEAR, -6 * YEAR, wide, 0.85)).not.toBeNull();
-  });
 });

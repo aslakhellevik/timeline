@@ -4,9 +4,6 @@
  * Interpolating the two density grids is what makes a tag filter read as weight
  * moving rather than as one picture being swapped for another. It is `W` floats
  * and costs nothing.
- *
- * Shared by both renderers, because the flat view and the depth view differ in
- * where mass is drawn and not at all in how it settles.
  */
 
 import type { DensityResult } from '../core/density';

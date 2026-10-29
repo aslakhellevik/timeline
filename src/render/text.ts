@@ -1,10 +1,9 @@
 /**
- * Canvas text shared by the three renderers: the label font, how much room a
- * label may take, truncation, and the date under the cursor.
+ * Canvas text shared by the renderers: the label font, how much room a label
+ * may take, truncation, and the date under the cursor.
  *
- * All of it was duplicated verbatim in `timeline-renderer.ts`,
- * `depth-renderer.ts` and `map-renderer.ts`, which is three chances to fix a
- * bug in one place and leave it in the other two.
+ * All of it was once duplicated verbatim in each renderer, which is several
+ * chances to fix a bug in one place and leave it in the others.
  */
 
 import type { Days } from '../core/model/types';
@@ -28,8 +27,6 @@ export const LABEL_FONT = '11px ui-sans-serif, system-ui, -apple-system, "Segoe 
 export const LABEL_WIDTH = {
   /** An event title on the flat timeline. */
   mark: 240,
-  /** The same in the depth view, where the corridor leaves less room beside it. */
-  depthMark: 190,
   /** An era's name, beside or inside its bar. */
   era: 150,
   /** The note at an arc's apex: one line, alone, so it can afford more. */

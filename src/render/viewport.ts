@@ -188,33 +188,25 @@ const REVEAL_COMFORT = 0.44;
  * zooming to a day around an instant throws away the period they were reading.
  * Where it is not enough the window is re-derived around the target: never
  * narrower than `1.8 ×` its length, which is `fitTo(from, to, …, 0.4)`, and
- * never wider than `REVEAL_MAX_CONTEXTS` of it.
- *
- * `place` is where in the window the target should land, as a fraction from the
- * start, and it moves the comfortable band with it. Half for an axis that is
- * linear on screen. The corridor's is not: it allocates space as `1/z`, so the
- * older half of a window occupies the top tenth of the picture, and an event
- * centred in *time* there is a smudge at the horizon rather than something to
- * look at (D33 keeps the viewport one-dimensional, which is what lets one
- * function serve both).
+ * never wider than `REVEAL_MAX_CONTEXTS` of it. A re-derived window is centred
+ * on the target.
  */
 export function revealWindow(
   vp: Viewport,
   from: Days,
   to: Days,
   bounds: TimeBounds,
-  place = 0.5,
 ): Viewport | null {
   const target = Math.max(to - from, 0);
   const widest = Math.max(target, REVEAL_MIN_CONTEXT) * REVEAL_MAX_CONTEXTS;
   const current = span(vp);
 
-  const near = vp.start + current * Math.max(0, place - REVEAL_COMFORT);
-  const far = vp.start + current * Math.min(1, place + REVEAL_COMFORT);
+  const near = vp.start + current * (0.5 - REVEAL_COMFORT);
+  const far = vp.start + current * (0.5 + REVEAL_COMFORT);
   if (from >= near && to <= far && current <= widest) return null;
 
   const wanted = Math.min(Math.max(current, target * 1.8), widest);
   const middle = (from + to) / 2;
-  const start = middle - wanted * place;
+  const start = middle - wanted / 2;
   return clamp({ start, end: start + wanted, width: vp.width }, bounds);
 }

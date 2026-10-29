@@ -124,18 +124,6 @@ anything else you can simply **click the map**: how far you are zoomed in is how
 result claims to be, so a click at world zoom records a two-hundred-kilometre halo rather than a
 false pinpoint.
 
-### The depth view
-
-A second view of the same timeline, in which time runs *into* the screen: you stand at the newest
-moment and look back down a corridor to a horizon. Knowledge is a river flowing towards you —
-wide where you know a lot — with connections vaulting over it and eras running along both banks.
-
-It is not decoration. A perspective axis gives screen space as `1/z`, which is roughly how a
-personal corpus thins out with age: most of what anyone knows is recent, and near means large
-means room for it. Individual events resolve as they come towards you and dissolve back into mass
-as they recede, so the semantic zoom becomes a matter of distance rather than a setting. The flat
-view is better for reading; this one is better for seeing the shape of what you know.
-
 ## Starting from empty
 
 A new timeline is empty — that is the point. Canonical content is available as opt-in **packs**;
@@ -193,7 +181,7 @@ Answered, with rationale in [docs/design.md](docs/design.md):
 | Platform | Web app: Vite + TypeScript + React + Tailwind, PWA, installable, desktop and mobile |
 | Local-first vs. server | Local-first; in-memory state, IndexedDB, versioned JSON export |
 | Data durability | Three layers: persisted storage, automatic file backup, manual export — all in v1 |
-| Views | Two canvases — flat and a perspective corridor — plus a searchable, keyboard-navigable list, over one shared filter |
+| Views | One canvas — the flat timeline — plus a searchable, keyboard-navigable list, over one shared filter |
 | Privacy | No telemetry, no analytics, no network traffic beyond loading the app |
 | Spatial view | Built: Equal Earth, coastlines rather than borders, coupled to the time window |
 | Licence / language | MIT; UK English |
@@ -220,8 +208,6 @@ src/packs/          the bundled packs — WWII, the Cold War
 src/render/         canvas renderers — no framework imports (D11)
   arcs.ts           connection arc geometry, colour and hit-testing
   lanes.ts          era lane allocation and bar geometry
-  projection.ts     the perspective axis behind the depth view
-  depth-renderer.ts the corridor: time running into the screen
   map-renderer.ts   the world map and its time scrubber
 src/state/          in-memory timeline, mutations, undo, persist queue
 src/store/          IndexedDB, merge, backup, durability
@@ -241,7 +227,7 @@ social layer.
 ```
 npm run dev        # your timeline; starts empty
 npm run demo       # a synthetic one, in its own database — opens /?demo
-npm test           # 957 tests
+npm test           # 935 tests
 npm run typecheck
 ```
 
@@ -257,7 +243,6 @@ Things worth trying in it:
 
 - **timeline** — scroll to zoom from five thousand years to a week; the mass dissolves into marks
   and then labels, column by column. Click a tag chip and watch the weight move.
-- **depth** — the same corpus as a corridor, newest in front.
 - **map** — drag the band along the bottom and the dots fill in and drain away.
 - **list** — everything, searchable; `?` shows the keyboard shortcuts.
 - Type `battle of lepanto 1571 #europe #war` into the box at the top and press enter.

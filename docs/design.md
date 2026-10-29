@@ -44,9 +44,9 @@ map are deferred — but the data model is shaped so that none of them require a
 | D30 | Selected tags compose as a **union**, not an intersection |
 | D31 | The mass scale is calibrated on the **unfiltered** corpus, so filtering removes weight rather than renormalising it |
 | D32 | Personal eras take priority in lane allocation, but do not reserve lanes along the whole axis |
-| D33 | The depth view is a **projection, not a camera** — the viewport stays one-dimensional |
-| D34 | In the depth view mass is **width**, measured as a rate, not the density grid's per-row count |
-| D35 | The depth view's semantic zoom is **per row**, not one number for the frame |
+| D33 | ~~The depth view is a **projection, not a camera** — the viewport stays one-dimensional~~ — removed, see D70 |
+| D34 | ~~In the depth view mass is **width**, measured as a rate, not the density grid's per-row count~~ — removed, see D70 |
+| D35 | ~~The depth view's semantic zoom is **per row**, not one number for the frame~~ — removed, see D70 |
 | D36 | Pack record ids are derived from the pack id and the author's key, which is what makes an upgrade an upgrade |
 | D37 | Uninstalling a pack **hard-removes** its content — the one exception to D9's tombstones |
 | D38 | With a pack installed the mass is drawn in **two layers**: the total desaturated, your own share solid inside it |
@@ -61,10 +61,10 @@ map are deferred — but the data model is shaped so that none of them require a
 | D47 | An export is recorded as an **export**, never as a backup: the app hands the browser a file and never learns whether it was saved |
 | D48 | The mass scale is calibrated as a **rate**, and turned into a λ for whatever width the frame is drawn at |
 | D49 | Event marks are drawn as their **trapezoid**, like eras; an instant stays a hairline whatever its granularity |
-| D50 | The flat view's semantic zoom is **per column**, not one number for the frame — D35 for the canvas |
+| D50 | The canvas's semantic zoom is **per column**, not one number for the frame |
 | D51 | The kernel bandwidth is **β = 3 px**: β and the height exponent `p` cannot be chosen independently |
 | D52 | The pannable frame is events **and** eras, and a stated default when there is neither |
-| D53 | The depth view's three label systems share **one occupancy**, and event titles are anchored outside the era lanes — fitted to the room there is, or not drawn |
+| D53 | ~~The depth view's three label systems share **one occupancy**, and event titles are anchored outside the era lanes — fitted to the room there is, or not drawn~~ — removed, see D70 |
 | D54 | A vagueness halo is a **ring at the true radius**, not a filled disc — revising how D43 is drawn |
 | D55 | Clustering is a grid **plus agglomerative passes**, merging against the radii the dots are actually **drawn** at |
 | D56 | Additive arc ink falls as `1/√n`, so a bundle brightens as `√n` instead of saturating to white |
@@ -72,7 +72,7 @@ map are deferred — but the data model is shaped so that none of them require a
 | D58 | The footer is **status**; everything that creates something is header chrome — and first run is a takeover, not a layer over live chrome |
 | D59 | First run **offers** the "my life" era rather than always creating one: skipping creates no era, only the premade tags — revising D26 |
 | D60 | One Escape stack, **topmost wins**; a modal traps focus and silences the window-level shortcuts while it is up |
-| D61 | The list is a `listbox` and the three canvases are `application` — revising the `grid`-of-`span`s and `img`-with-`tabIndex` roles, which announced the opposite of what they are |
+| D61 | The list is a `listbox` and the canvases are `application` — revising the `grid`-of-`span`s and `img`-with-`tabIndex` roles, which announced the opposite of what they are |
 | D62 | Faint ink is **one token at full opacity**, and only on the page plane: on the chart surface `paper-dim` is the contrast floor |
 | D63 | Below `sm` the wordmark and the view switcher leave the header — capture keeps the width (§9) |
 | D64 | The app checks for a newer build hourly and **says when one has installed itself**, because the worker evicts the assets the running tab is using |
@@ -81,6 +81,7 @@ map are deferred — but the data model is shaped so that none of them require a
 | D67 | A place may be **a name with no coordinates**, and a bundled gazetteer (Natural Earth plus hand-written historical places) turns the names history uses into points, offline |
 | D68 | `?demo` opens **a separate database seeded from the synthetic generator**, with backups off and a banner that cannot be dismissed — the app can be shown, and judged, without anyone's real timeline |
 | D69 | A map dot is coloured by **the coloured tag most of its events carry**, an uncoloured sub-region taking its parent's colour — not by the first tag of whichever event sorted first |
+| D70 | The depth view, the map and the packs are removed (Oct 2026): one canvas, the flat timeline, plus the list. The product is the mass, the connections and the eras; everything else was weight |
 
 Conventions, settled and not worth further discussion:
 
@@ -386,8 +387,7 @@ the twentieth century on screen, a single event alone in 400 BC never resolved i
 any zoom short of panning the modern peak off the edge, which is precisely the reading the far
 view is supposed to make possible. Each column now crossfades on its own λ: the mass fill and
 its edge are drawn through a horizontal gradient sampling `farViewOpacity(λ)` every 16 px, and a
-mark's opacity is `1 − farViewOpacity(λ at its column)`. This is D35 arriving in the flat view,
-two milestones after the depth view had it.
+mark's opacity is `1 − farViewOpacity(λ at its column)`.
 
 That costs the mass fill its vertical ramp — a canvas gradient runs in one direction only — so
 the height of the curve stands in for it, with tall columns taking the bright end. It also
@@ -604,8 +604,7 @@ go, which is the count that matters least, since pack events come back with one 
 **The mass is drawn in two layers (D38).** The `mine / mine + packs` toggle turned out not to be
 enough on its own: with a pack installed and the toggle on, a wall of canonical events simply
 reads as knowledge. So the total is drawn desaturated and the user's own share solid inside it,
-in both views — the flat one as two filled curves, the depth one as a blue river inside a grey
-one. That says what the toggle only implies. Marks and labels are dimmed and shortened for pack
+as two filled curves. That says what the toggle only implies. Marks and labels are dimmed and shortened for pack
 records on the same reasoning, and shorter as well as dimmer because colour alone is not a
 distinction everyone can see.
 
@@ -815,7 +814,7 @@ twenty-second century otherwise looks like the data has gone.
 arrow keys pan / `+`/`-` zoom. Zoom is continuous in log-scale space, animated with a short
 ease so the density transition reads as dissolution rather than a jump.
 
-Lifting one finger of a pinch turns the gesture into a drag, in both canvases. Dragging was
+Lifting one finger of a pinch turns the gesture into a drag. Dragging was
 cleared when the second finger arrived and nothing turned it back on, so the canvas simply
 stopped following the finger still on the glass until it was lifted and put down again — and the
 survivor's position has to seed the drag, or the first move after the lift is read as a jump from
@@ -836,7 +835,7 @@ finger would be the canvas arguing with the hand.
 said and nothing else, which made the first thing anyone does with a link look broken: opening
 `#e=…` described an event in July 1990 beside a canvas showing five thousand years, with the
 event a hairline at the right-hand edge and the list still at the top of the corpus. Every view
-now moves to the selection — the two timelines and the map's window in time, the map's camera in
+now moves to the selection — the timeline and the map's window in time, the map's camera in
 space, and the list by scrolling.
 
 The rule has two halves, and the second is the one worth arguing. *Where*: keep the span the
@@ -855,13 +854,6 @@ Two exceptions, both of them cases where moving would be wrong. A selection made
 this canvas* never moves it — the mark was already under the pointer, and pulling the picture
 out from under it is the view arguing with itself. And an event filtered out of the view is not
 there to be revealed.
-
-The depth view places the revealed event at 0.85 of the window rather than in the middle of it.
-The corridor allocates screen space as `1/z` (§6.7), which puts the vertical middle of the
-picture a tenth of the window from its newest edge — so an event centred in *time* is drawn at
-the horizon, two pixels tall. Placed this way it arrives at eye level with its past receding
-behind it. It is the same function with one argument different, which is all D33 lets the
-projection change.
 
 **Performance budget.** 50k events, 10k connections, 60 fps on a laptop. Build a seeded
 synthetic-data generator on day one — the density view cannot be developed against an empty
@@ -1088,123 +1080,7 @@ Restoring runs in the opposite direction and exactly once, on mount. It has to s
 completes it (§6.4) — a bookmark is not a click, and routing it through the connect rule let a
 re-render write a connection nobody asked for.
 
-### 6.7 The depth view (D33–D35)
-
-A second view of the same data, in which time runs *into* the screen: you stand at the newest
-moment in the window and look back down a corridor to a horizon. Not a replacement for the flat
-view — that one is better for reading — but it says something the flat view cannot.
-
-**It is a legibility argument, not an atmospheric one.** A perspective projection allocates
-screen space as `1/z`, which is roughly how a personal corpus thins out with age: most of what
-anyone knows is recent, and near means large means room for it. That makes it a principled
-version of the density-equalised axis §2.4 leaves open.
-
-**A projection, not a camera (D33).** The viewport is still `(start, end)` — the window is mapped
-onto the corridor, with the newest edge at `z = 1` and the oldest at `zFar = 9`, linearly in
-time. Pan, zoom, the pan bounds and the URL round-trip therefore work unchanged, and switching
-views keeps the period you were looking at. This is the single largest cost the design avoids,
-and it is why the view took hours rather than the week a real 3-D camera would have.
-
-D12 made this cheap by anticipating it: the scale function was pluggable from the start.
-`arcs.ts` and `lanes.ts` already took a `toPx` callback and needed no changes at all.
-
-**The density needed one line.** `computeDensity` has exactly one place where time meets pixels,
-and everything after it — deposit, the double prefix sum, the blur, the column sums — already
-worked in screen space. `DensityOptions.toPixel` composes there. Two properties survive any
-monotone mapping and both are load-bearing: each event still carries exactly unit mass, because
-the trapezoid's height is derived from its width *in cells*; and the kernel bandwidth stays β
-**pixels**, which is the property §3.1 rests on. The approximation introduced is that a
-trapezoid's ramps are straight in cell space and a warp curves them — corners and mass stay
-exact, so only the interior of a very wide fuzzy event is affected.
-
-**Mass is width, and width is a rate (D34).** The corridor holds a river whose half-width is the
-density. A river's width is a property of the river and not of where you stand, so it is measured
-in events per unit *time* and then shrunk by the projection like everything else. That conversion
-is the one piece of arithmetic this view cannot skip: the grid counts events per pixel *row*, and
-rows differ by a factor of `z²` in how much time they cover, so drawing the raw grid would render
-a compressed stretch of antiquity as wide as a genuinely dense century — the opposite of the
-truth. `DepthProjection.rowsPerTime` is the analytic derivative that undoes it, and it is tested
-against a numerical one.
-
-**The semantic zoom is spatial (D35).** The flat view crossfades on one λ for the whole frame,
-which is right when every column covers the same span. A corridor's rows do not, so a single
-number is always dominated by the far end and marks would never appear at any zoom — they did
-not, until each event was tested against the density at *its own* row. Now individual events
-resolve as they come towards you and dissolve back into mass as they recede, which is what the
-projection was for.
-
-**Arcs vault over the corridor and into the sky.** Their height comes from how much of the window
-a connection spans, not from how far apart its ends look — those are the same thing in the flat
-view and wildly different here, where a century is four hundred pixels at your feet and four at
-the horizon. Every arc is rooted on the same centre line, since the corridor has only one, so
-they are also swept sideways in proportion to reach: long connections swing wide and become the
-visible structure, local ones stay a thread down the middle. Endpoints are clamped into the
-window before projecting, because past the far plane the depth approaches zero and an unclamped
-endpoint turns its arc into a straight line across the sky.
-
-**Eras use both sides** — personal to the left, canonical to the right. The corridor has two
-flanks where the flat view has one stack of rows, so this is the one place the depth view can
-show something the flat view cannot: your own frame of reference and the canonical one sit
-opposite each other instead of competing for space. They take the personal hue §6.1 settled on,
-not the selection yellow: the argument against a third meaning for yellow is the same one, and on
-this flank it was worse, since the personal lane is the one nearest the eye.
-
-Bars too short along the corridor to hold a name — which, with a window usually spanning
-millennia, is nearly every personal era — are named on **hover** instead, exactly as the flat
-view's slivers are. And the era hit target is the bar: a bar fills four fifths of its lane's step
-and the test used to *round* to the nearest lane boundary, so it sat a third of a bar off the bar
-and the deliberate gap between two lanes was claimed by whichever was nearer.
-
-**Marks carry their span too (D49).** The axis has turned through ninety degrees, so an event's
-stem runs *across* the corridor and its span runs *along* it, as a ribbon down each bank of the
-river. `spanBar` needed no changes for that — it works in whatever pixel coordinate it is handed,
-and the corridor's is the same one the era lanes are already laid out in. So both layers agree
-about when an interval is an interval in this view as in the other.
-
-**One occupancy for three label systems (D53).** Year labels, era names and event titles all
-write into the same two strips of canvas beside the corridor, and none of them knew the others
-were there: `1000` was set inside an event title, and *Elsa Hovden resigns* was laid across *the
-long nineteenth century*. Every candidate now tests against one list of claimed rectangles per
-side, filled in priority order — the year rail first, because it is the frame of reference the
-whole projection is read against, then era names, then event titles, which are the most numerous
-and the only ones a hover can recover.
-
-Two changes come with it. Titles are anchored **outside** the era lanes rather than just outside
-the river: the river reaches 0.5 of the corridor's half-width and the lanes start at 0.6, so near
-the ground a title was drawn through the era band *by construction*. The price is real — the
-margin outside the lanes is narrowest exactly where the corridor is widest — so a title there is
-fitted to the room that exists and, below about eight glyphs, is not drawn at all. And the years
-are set on **one rail**. The ring already crosses the whole corridor, so the year at each end of
-it was the same fact written twice, into the two strips the other two systems have to share.
-
-**The sky ends at the horizon.** Its gradient used to run forty pixels past it, which put the
-brightest stop *below* the horizon and then stopped dead — a hard-edged rectangle across the full
-width of the canvas, sitting in the ground plane and describing nothing. The wash now ends at the
-horizon and a separate band carries it down into the ground, fading to fully transparent, which
-is the glow the original was reaching for.
-
-**Arcs go over the mass and under the marks**, as §6.1 says and as the flat view does. Drawn last
-with `lighter`, they were adding their brightness to the label chips and the era names rather
-than to each other.
-
-**The connection being drawn is drawn.** `Selection` has carried `connectFrom` from the start and
-this view ignored it, so arming a connection and switching here showed nothing at all — while the
-next click completed it regardless. A gesture with no feedback and a real effect is the worst of
-both, and the same dashed vault the flat view draws now says what is about to happen.
-
-**Nothing to draw is still something to say, here too.** The corridor took its pan bounds from
-the events alone and fell back to a one-day window at the epoch, which `clamp` then read as a
-three-day zoom limit: on a first-run timeline the view ran from 1 January to 2 January of year
-one, and the "my life" era D26 had just created could not be reached at any zoom. It frames
-events **and** eras now, with the same stated default as the flat view (D52).
-
-**Dragging grabs the ground.** The time under the cursor when the drag began stays under the
-cursor. A constant pixels-to-time factor is meaningless when a pixel near the horizon is worth
-eighty at your feet, which is why `depth-interaction.ts` exists rather than a flag on
-`interaction.ts`. Zoom still goes through `zoomAt` by converting the cursor's height to the
-equivalent position on a linear axis.
-
-### 6.8 The chrome around them (D58, D62)
+### 6.7 The chrome around them (D58, D62)
 
 The chrome is deliberately quiet, and quiet chrome degrades in a particular way: everything ends
 up the same size, in the same grey, in whichever row it was added to. The footer had become a
@@ -1630,7 +1506,7 @@ already did.
 
 The empty start is right for the person whose timeline it is and wrong for everyone else: a
 friend shown the app sees one question and a blank axis, and nothing in it — the mass, the arcs,
-the corridor, the map — can be judged against a corpus without shape. Packs do not fix that; two
+the map — can be judged against a corpus without shape. Packs do not fix that; two
 wars are a narrow slice, and installing them into a real timeline to make a point is exactly the
 contamination §5 warns about.
 

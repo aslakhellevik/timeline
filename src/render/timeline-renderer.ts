@@ -168,12 +168,8 @@ const MIN_LABEL_ROOM = 26;
  * day wide at the epoch, and `clamp` then caps the widest zoom at three days,
  * so a first-run timeline could not be zoomed out far enough to find the "my
  * life" era sitting nineteen thousand days away.
- *
- * Exported because the depth view frames the same corpus and had the same hole
- * in it — two views disagreeing about what "nothing to show" looks like would be
- * a difference with no meaning behind it.
  */
-export function DEFAULT_FRAME(now: Date = new Date()): { start: Days; end: Days } {
+function DEFAULT_FRAME(now: Date = new Date()): { start: Days; end: Days } {
   const year = now.getFullYear();
   return { start: fromGregorian(year - 100, 1, 1), end: fromGregorian(year + 2, 1, 1) };
 }
@@ -260,7 +256,7 @@ export class TimelineRenderer {
   /** The unfiltered corpus. Sets the mass scale and the extent — see `TimelineData`. */
   private calibrationEvents: readonly TimelineEvent[] = [];
 
-  /** The mass redistribution animation (§3.5), shared with the depth view. */
+  /** The mass redistribution animation (§3.5). */
   private readonly transition = new MassTransition();
   /**
    * The same animation for the user's own share of the mass.

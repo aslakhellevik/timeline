@@ -10,7 +10,6 @@ import { ConnectPicker } from './ConnectPicker';
 import { ConnectionDetail } from './ConnectionDetail';
 import { DataPanel } from './DataPanel';
 import { isDemo, openDemoStore } from './demo';
-import { DepthView } from './DepthView';
 import { EraDetail } from './EraDetail';
 import { EventDetail } from './EventDetail';
 import { EventList } from './EventList';
@@ -28,7 +27,7 @@ import { modalIsOpen } from './use-focus-trap';
 import { decodeUrlState, encodeUrlState } from './url-state';
 import type { UrlState } from './url-state';
 
-const VIEWS = ['timeline', 'depth', 'map', 'list'] as const;
+const VIEWS = ['timeline', 'map', 'list'] as const;
 type View = (typeof VIEWS)[number];
 
 /**
@@ -167,7 +166,7 @@ export function App() {
    * looks an event up in the list means "put it back on the map", and sending
    * them to a view they did not choose is a worse answer than any default.
    */
-  const lastCanvasView = useRef<'timeline' | 'depth' | 'map'>(
+  const lastCanvasView = useRef<'timeline' | 'map'>(
     initial.view && initial.view !== 'list' ? initial.view : 'timeline',
   );
 
@@ -367,7 +366,7 @@ export function App() {
    * Each view reads the prop once, at mount — which is exactly when a switch
    * between them happens — so it has to be where the user last was, not where
    * the URL said when the tab opened. Panning the timeline and then pressing
-   * "depth" used to land back at the load-time viewport. The ref is seeded from
+   * "map" used to land back at the load-time viewport. The ref is seeded from
    * the hash, so a fresh load still honours the bookmark.
    */
   const startViewport = viewportRef.current;
@@ -478,24 +477,6 @@ export function App() {
         <main className="min-w-0 flex-1">
           {view === 'timeline' ? (
             <TimelineView
-              events={visible.events}
-              connections={visible.connections}
-              tags={visible.tags}
-              eras={visible.eras}
-              allEvents={timeline.events}
-              selectedId={selectedId}
-              selectedConnectionId={selectedConnectionId}
-              selectedEraId={selectedEraId}
-              connectFrom={connectFrom}
-              onSelectEvent={select}
-              onSelectConnection={selectConnection}
-              onSelectEra={selectEra}
-              revealRequest={revealRequest}
-              {...(startViewport ? { initialViewport: startViewport } : {})}
-              onViewportChange={onViewportChange}
-            />
-          ) : view === 'depth' ? (
-            <DepthView
               events={visible.events}
               connections={visible.connections}
               tags={visible.tags}

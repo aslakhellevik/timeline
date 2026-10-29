@@ -23,19 +23,9 @@ import type { TimeBounds } from '../render/viewport';
  * animation frequency and routing them through component state would re-render
  * the tree sixty times a second for no benefit. The renderer owns the viewport;
  * this hook owns only its lifecycle.
- *
- * One hook rather than the same two hundred lines in `TimelineView` and
- * `DepthView`. The two views differ in exactly one thing — which gesture layer
- * they attach — and were otherwise identical down to the four-pixel click/drag
- * discriminator; keeping two copies meant every fix to the mount had to be made
- * twice, and the reveal below is precisely the sort of behaviour that must not
- * be allowed to drift between two views of the same data. `MapView` is not a
- * client: it pans and zooms in *space* as well as time, with two regions and
- * three drag modes, and forcing it through here would be a hook shaped like a
- * union of two interaction models.
  */
 
-/** What both timeline renderers can do. Structural, so neither has to know. */
+/** What the timeline renderer can do. Structural, so it does not have to know. */
 export interface TimeCanvas {
   setData(data: TimelineData): void;
   setViewport(viewport: Viewport): void;

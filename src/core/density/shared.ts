@@ -8,22 +8,6 @@ export interface DensityOptions {
    * faithful for events a few pixels wide; the cost is linear and tiny.
    */
   supersample?: number;
-  /**
-   * Time → pixel position, when the axis is not linear (§6.7).
-   *
-   * Everything downstream of this mapping — deposit, the double prefix sum, the
-   * blur, the column sums — already works in screen space, so a nonlinear axis
-   * needs nothing else. Two properties survive any monotone mapping: each event
-   * still carries exactly unit mass, because the trapezoid's height is derived
-   * from its width *in cells*; and the kernel bandwidth stays β **pixels**,
-   * which is the property the whole design rests on (§3.1).
-   *
-   * The approximation it introduces: a trapezoid's ramps are straight in cell
-   * space, and a warp curves them. Corner positions stay exact and mass stays
-   * exact, so only the interior shape of a very wide fuzzy event is affected,
-   * and then only slightly.
-   */
-  toPixel?: (t: number) => number;
 }
 
 export interface DensityResult {

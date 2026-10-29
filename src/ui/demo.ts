@@ -5,7 +5,7 @@ import type { Store } from '../store';
  * The demo timeline: `?demo` (docs/design.md §9, D68).
  *
  * The app starts empty on purpose, which makes it the hardest possible thing to
- * show anyone — and the renderer, the map and the depth view can only be judged
+ * show anyone — and the renderer and the map can only be judged
  * against a corpus with shape. So `?demo` opens a *second* database, filled once
  * from the synthetic generator the renderer was tuned against.
  *
