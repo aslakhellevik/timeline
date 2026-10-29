@@ -149,10 +149,9 @@ describe('event invariants', () => {
     expect(Math.max(...lengths)).toBeGreaterThan(60);
   });
 
-  it('fills provenance, and sets pack exactly when the record came from one', () => {
+  it('fills provenance', () => {
     for (const e of small.events) {
-      expect(['manual', 'pack', 'import', 'ai_extract']).toContain(e.provenance.kind);
-      expect(e.pack === undefined).toBe(e.provenance.kind !== 'pack');
+      expect(['manual', 'import']).toContain(e.provenance.kind);
     }
     expect(small.events.filter((e) => e.provenance.kind === 'manual').length / small.events.length).toBeGreaterThan(0.7);
   });

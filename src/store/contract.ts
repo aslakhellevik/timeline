@@ -3,23 +3,16 @@
  *
  * The in-memory `Timeline` is canonical; this layer only durably records it and
  * hands it back on the next load. Nothing here decides anything about the data —
- * merge policy lives in `serialise.ts` because import, restore and pack install
- * are the same operation and must not drift apart.
+ * merge policy lives in `serialise.ts` because import and restore are the same
+ * operation and must not drift apart.
  */
 
-import type {
-  Connection,
-  Era,
-  InstalledPack,
-  Tag,
-  Timeline,
-  TimelineEvent,
-} from '../core/model/types';
+import type { Connection, Era, Tag, Timeline, TimelineEvent } from '../core/model/types';
 
 /** Bump when a released schema changes, and add a migration for it. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
-export type RecordKind = 'events' | 'connections' | 'tags' | 'eras' | 'packs';
+export type RecordKind = 'events' | 'connections' | 'tags' | 'eras';
 
 export interface TimelineDocument {
   schema_version: number;
@@ -30,8 +23,6 @@ export interface TimelineDocument {
   connections: Connection[];
   tags: Tag[];
   eras: Era[];
-  /** Which packs are installed (§5). Travels with an export, like everything else. */
-  packs: InstalledPack[];
 }
 
 /** A change originating in another tab, delivered so this one can catch up. */
@@ -65,7 +56,7 @@ export interface Store {
 export interface MergeStats {
   added: number;
   updated: number;
-  /** Left alone: the local copy was the same age or newer, or had been adopted. */
+  /** Left alone: the local copy was the same age or newer. */
   skipped: number;
   /**
    * Thrown away as unreadable — a malformed record, or a connection to an event

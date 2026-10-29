@@ -84,7 +84,6 @@ export function timeline(partial: Partial<Timeline> = {}): Timeline {
     connections: partial.connections ?? [],
     tags: partial.tags ?? [],
     eras: partial.eras ?? [],
-    packs: partial.packs ?? [],
   };
 }
 

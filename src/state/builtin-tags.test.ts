@@ -28,7 +28,7 @@ describe('installBuiltinTags', () => {
   /**
    * The bug this exists to prevent. `ensureTags` matches by name, so on a
    * timeline where the premade set was never materialised, typing `#war` invents
-   * a private tag beside the one every pack event carries — and the vocabulary
+   * a private tag beside the built-in one an import carries — and the vocabulary
    * silently forks in two, which fixed namespaced ids were meant to stop.
    */
   it('makes a typed #war attach to the built-in tag rather than inventing one', () => {

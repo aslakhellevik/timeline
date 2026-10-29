@@ -13,7 +13,7 @@
  *
  * That matters more than it looks. Notes are the unit the social layer plans to
  * share — "inherit or fork someone's connection with its explanation" — so a
- * note becomes untrusted text the moment that ships, and pack content is
+ * note becomes untrusted text the moment that ships, and an imported file is
  * untrusted already. Escaping first makes that safe by construction rather than
  * by remembering to sanitise at each boundary.
  *

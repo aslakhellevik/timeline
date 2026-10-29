@@ -258,20 +258,6 @@ export class TimelineRenderer {
 
   /** The mass redistribution animation (§3.5). */
   private readonly transition = new MassTransition();
-  /**
-   * The same animation for the user's own share of the mass.
-   *
-   * Two curves rather than one, because `mine / mine + packs` as a toggle is not
-   * enough: with a pack installed and the toggle on, a wall of canonical events
-   * reads as knowledge. Drawing your own share solid *inside* the total, with the
-   * pack's contribution as a ghost behind it, says what the toggle only implies —
-   * that the density stops meaning "what I know" the moment content arrives
-   * pre-loaded (§5).
-   */
-  private readonly mineTransition = new MassTransition();
-  private mineSpecs: TimeSpec[] = [];
-  private hasPackEvents = false;
-  private mineCache: { key: string; density: DensityResult } | null = null;
 
   /**
    * The arcs of the last frame, kept so hit-testing runs against exactly what is
@@ -362,9 +348,6 @@ export class TimelineRenderer {
     }
     this.specs = events.map((event) => event.when);
     this.eventsById = new Map(events.map((event) => [event.id, event]));
-    // Split once, so the mass can be drawn in two layers (§5).
-    this.mineSpecs = events.filter((event) => event.pack === undefined).map((event) => event.when);
-    this.hasPackEvents = this.mineSpecs.length !== events.length;
     this.tagColours = new Map(
       tags.flatMap((tag) => (tag.color ? [[tag.id, tag.color] as const] : [])),
     );
@@ -381,9 +364,7 @@ export class TimelineRenderer {
     // The old grid is still in the cache; the next draw compares it with the new
     // one and animates between them if the viewport has not moved.
     this.transition.begin();
-    this.mineTransition.begin();
     this.cache = null;
-    this.mineCache = null;
     this.fitCache.clear();
     this.markLayout = [];
     this.dataVersion += 1;
@@ -541,15 +522,6 @@ export class TimelineRenderer {
     return density;
   }
 
-  /** The same grid over the user's own events only. */
-  private mineDensity(): DensityResult {
-    const key = `${this.viewportKey()}:${this.dataVersion}`;
-    if (this.mineCache && this.mineCache.key === key) return this.mineCache.density;
-    const density = computeDensity(this.mineSpecs, this.viewport);
-    this.mineCache = { key, density };
-    return density;
-  }
-
   private displayDensity(now: number): { density: DensityResult; animating: boolean } {
     return this.transition.resolve(this.density(), this.viewportKey(), now);
   }
@@ -615,17 +587,7 @@ export class TimelineRenderer {
     const lambdaRef = this.lambdaRef(width);
     const massAlpha = farViewOpacity(density.lambdaMax);
 
-    if (massAlpha > 0) {
-      if (this.hasPackEvents) {
-        // The total first, desaturated — the pack's contribution is whatever is
-        // visible outside the solid curve drawn over it.
-        this.drawMass(ctx, density, density, baselineY, massHeight, lambdaRef, 0.55, true);
-        const mine = this.mineTransition.resolve(this.mineDensity(), this.viewportKey(), now);
-        this.drawMass(ctx, mine.density, density, baselineY, massHeight, lambdaRef, 1, false);
-      } else {
-        this.drawMass(ctx, density, density, baselineY, massHeight, lambdaRef, 1, false);
-      }
-    }
+    if (massAlpha > 0) this.drawMass(ctx, density, baselineY, massHeight, lambdaRef);
 
     // Arcs over the mass and under the marks. The mass is the ground — what you
     // know — and the connections are the figure on it, which is the reading the
@@ -1007,10 +969,9 @@ export class TimelineRenderer {
   /**
    * The density field, faded **per column** (D50).
    *
-   * `crossfade` is the total density, which is what decides how resolved a
-   * column is; `density` is the layer being drawn, which may be only the user's
-   * own share of it (§5). One number for the whole frame — `farViewOpacity` of
-   * the busiest column — was the old rule, and it says the frame is dense
+   * Each column's own density decides how resolved it is. One number for the
+   * whole frame — `farViewOpacity` of the busiest column — was the old rule,
+   * and it says the frame is dense
    * because its busiest part is: with the twentieth century on screen, an
    * isolated event in 400 BC never resolved into anything, at any zoom short of
    * panning the modern peak off the edge.
@@ -1024,12 +985,9 @@ export class TimelineRenderer {
   private drawMass(
     ctx: CanvasRenderingContext2D,
     density: DensityResult,
-    crossfade: DensityResult,
     baselineY: number,
     massHeight: number,
     lambdaRef: number,
-    alpha: number,
-    muted: boolean,
   ): void {
     const { lambda } = density;
     const n = lambda.length;
@@ -1038,10 +996,10 @@ export class TimelineRenderer {
     const fractionAt = (i: number) => heightFraction(lambda[i] as number, lambdaRef);
     const yAt = (i: number) => baselineY - fractionAt(i) * massHeight;
 
-    const fill = muted ? this.theme.muted : this.theme.mass;
-    const edge = muted ? this.theme.muted : this.theme.massEdge;
-    const dim = muted ? 0.14 : 0.2;
-    const bright = muted ? 0.36 : 0.62;
+    const fill = this.theme.mass;
+    const edge = this.theme.massEdge;
+    const dim = 0.2;
+    const bright = 0.62;
 
     const fillGradient = ctx.createLinearGradient(0, 0, n, 0);
     const edgeGradient = ctx.createLinearGradient(0, 0, n, 0);
@@ -1049,14 +1007,14 @@ export class TimelineRenderer {
     // ladder, and coarse enough that a 2000 px canvas costs 125 stops.
     const step = Math.max(1, Math.round(n / Math.max(1, Math.ceil(n / 16))));
     for (let i = 0; i < n; i += step) {
-      const resolved = farViewOpacity(crossfade.lambda[i] as number);
+      const resolved = farViewOpacity(lambda[i] as number);
       const stop = clamp01(i / Math.max(1, n - 1));
       const ink = resolved * (dim + (bright - dim) * fractionAt(i));
       fillGradient.addColorStop(stop, withAlpha(fill, ink));
       edgeGradient.addColorStop(stop, withAlpha(edge, resolved));
     }
     const last = n - 1;
-    const lastResolved = farViewOpacity(crossfade.lambda[last] as number);
+    const lastResolved = farViewOpacity(lambda[last] as number);
     fillGradient.addColorStop(
       1,
       withAlpha(fill, lastResolved * (dim + (bright - dim) * fractionAt(last))),
@@ -1064,7 +1022,6 @@ export class TimelineRenderer {
     edgeGradient.addColorStop(1, withAlpha(edge, lastResolved));
 
     ctx.save();
-    ctx.globalAlpha = alpha;
 
     ctx.beginPath();
     ctx.moveTo(0, baselineY);
@@ -1082,7 +1039,7 @@ export class TimelineRenderer {
       else ctx.lineTo(i, yAt(i));
     }
     ctx.strokeStyle = edgeGradient;
-    ctx.lineWidth = muted ? 1 : 2;
+    ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
     ctx.stroke();
 
@@ -1139,28 +1096,16 @@ export class TimelineRenderer {
       visible += 1;
       if (!drawn) continue;
 
-      /*
-       * Pack events are drawn dimmer and shorter (§5). The distinction is not
-       * decoration: if installed content looks like your own, the density plot
-       * stops meaning "what I know", which is the semantic problem the whole
-       * pack design is arranged around. Shorter as well as dimmer, because
-       * colour alone is not a distinction everyone can see.
-       */
-      const fromPack = mark.event.pack !== undefined;
-      const alpha = resolved * (fromPack ? 0.4 : 1);
-      const height = fromPack ? MARK_HEIGHT * 0.6 : MARK_HEIGHT;
-      const hue = fromPack ? this.theme.muted : this.theme.mark;
-
       layout.push({ event: mark.event, x, left, right, alpha: resolved });
 
-      ctx.globalAlpha = alpha;
+      ctx.globalAlpha = resolved;
       // The stem: every event has one, at its likely middle, and it is what the
       // selection ring, the arcs and the label's leader all attach to.
-      ctx.strokeStyle = hue;
+      ctx.strokeStyle = this.theme.mark;
       ctx.beginPath();
       const stem = Math.round(x) + 0.5;
       ctx.moveTo(stem, baselineY);
-      ctx.lineTo(stem, baselineY - height);
+      ctx.lineTo(stem, baselineY - MARK_HEIGHT);
       ctx.stroke();
 
       if (bar) {
@@ -1175,16 +1120,16 @@ export class TimelineRenderer {
          * ribbon carry the same two facts — where it starts, where it stops —
          * and leave the stems underneath individually countable.
          */
-        ctx.fillStyle = this.spanGradient(ctx, bar, hue, 0.6);
-        ctx.fillRect(left, baselineY - height, right - left, MARK_BAR_THICKNESS);
+        ctx.fillStyle = this.spanGradient(ctx, bar, this.theme.mark, 0.6);
+        ctx.fillRect(left, baselineY - MARK_HEIGHT, right - left, MARK_BAR_THICKNESS);
         // Ticks down from the certain corners: `b`→`c` is where the event claims
         // to have definitely been happening, and the ramps are not.
         ctx.beginPath();
         for (const edge of [bar.x1, bar.x2]) {
           if (edge < -4 || edge > vp.width + 4) continue;
           const px = Math.round(edge) + 0.5;
-          ctx.moveTo(px, baselineY - height);
-          ctx.lineTo(px, baselineY - height + MARK_BAR_THICKNESS + 3);
+          ctx.moveTo(px, baselineY - MARK_HEIGHT);
+          ctx.lineTo(px, baselineY - MARK_HEIGHT + MARK_BAR_THICKNESS + 3);
         }
         ctx.stroke();
       }
@@ -1310,7 +1255,6 @@ export class TimelineRenderer {
       y: number;
       text: string;
       width: number;
-      pack: boolean;
       alpha: number;
     }[] = [];
 
@@ -1362,7 +1306,6 @@ export class TimelineRenderer {
         y: baselineY - MARK_HEIGHT - 8 - row * LABEL_ROW_HEIGHT,
         text,
         width,
-        pack: mark.event.pack !== undefined,
         alpha: Math.min(1, mark.alpha),
       });
     }
@@ -1387,7 +1330,7 @@ export class TimelineRenderer {
       // from somewhere else crosses behind it.
       ctx.fillStyle = this.theme.surface;
       ctx.fillRect(p.textX - 2, p.y - 9, p.width + 4, 12);
-      ctx.fillStyle = p.pack ? this.theme.muted : this.theme.inkSecondary;
+      ctx.fillStyle = this.theme.inkSecondary;
       ctx.fillText(p.text, p.textX, p.y);
     }
 

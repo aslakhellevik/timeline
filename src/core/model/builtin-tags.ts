@@ -1,8 +1,8 @@
 /**
  * The premade tag set (README "Tags", design.md D14/D20).
  *
- * These ship with the app and carry fixed namespaced ids, so that packs and
- * imports attach to the same Europe the user already has rather than silently
+ * These ship with the app and carry fixed namespaced ids, so that imports and
+ * the demo attach to the same Europe the user already has rather than silently
  * creating a second one. `parent` gives rollup: filtering by Europe includes
  * Norway.
  *

@@ -96,17 +96,6 @@ function EventPane({
     <DetailPane label="event" onClose={() => select(null)}>
       <div>
         {/*
-          Above the title, because it is a warning about the edit and not a fact
-          about the record (§5.1). Under it, it was read after the thing it is
-          about had already been done.
-        */}
-        {event.pack && (
-          <p className="mb-1 text-[11px] text-paper-dim">
-            from a pack — editing or connecting it makes it yours
-          </p>
-        )}
-
-        {/*
           Borderless until it is touched: the title is the pane's heading and
           should read as one, but a heading that cannot be clicked into is
           exactly the thing this pane was missing.
@@ -233,20 +222,12 @@ function EventPane({
         placeholder="Gombrich, ch. 4 · conversation with M"
       />
 
-      {(event.learned_at || event.pack) && (
+      {event.learned_at && (
         <dl className="space-y-1 text-xs text-paper-dim">
-          {event.learned_at && (
-            <div className="flex justify-between gap-2">
-              <dt>learned</dt>
-              <dd className="tabular-nums">{event.learned_at.slice(0, 10)}</dd>
-            </div>
-          )}
-          {event.pack && (
-            <div className="flex justify-between gap-2">
-              <dt>from pack</dt>
-              <dd>{event.pack}</dd>
-            </div>
-          )}
+          <div className="flex justify-between gap-2">
+            <dt>learned</dt>
+            <dd className="tabular-nums">{event.learned_at.slice(0, 10)}</dd>
+          </div>
         </dl>
       )}
 

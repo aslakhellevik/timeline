@@ -8,18 +8,14 @@
 
 import { create } from 'zustand';
 import type { Base, Era, Filter, Id, Timeline, TimelineEvent } from '../core/model/types';
-import { adoptRecord, expandPack, uninstallPack } from '../core/packs';
-import type { PackBundle } from '../core/packs';
 import { NO_FILTER } from '../core/filter';
-import { nowIso } from '../core/model/ids';
 import { parseQuickAdd } from '../core/quick-add';
 import { findPossibleDuplicates } from '../core/search';
 import { fromGregorian, interval } from '../core/time';
-import type { RecordKind, Store, StoreChange, TimelineDocument } from '../store/contract';
-import { SCHEMA_VERSION } from '../store/contract';
+import type { RecordKind, Store, StoreChange } from '../store/contract';
 import { requestPersistence } from '../store/durability';
 import type { PersistenceResult } from '../store/durability';
-import { compareTimestamps, mergeDocument } from '../store/serialise';
+import { compareTimestamps } from '../store/serialise';
 import { PersistQueue } from './persist-queue';
 import {
   EMPTY_TIMELINE,
@@ -150,9 +146,6 @@ interface TimelineStoreState {
   updateConnection(id: Id, patch: { note?: string; tags?: Id[] }): void;
   deleteConnection(id: Id): void;
 
-  installPack(bundle: PackBundle): Promise<void>;
-  removePack(packId: Id): Promise<void>;
-
   addEra(draft: EraDraft): Id | null;
   updateEra(id: Id, patch: Patch<Omit<Era, 'id' | 'created_at' | 'updated_at'>>): void;
   deleteEra(id: Id): void;
@@ -171,7 +164,6 @@ interface TimelineStoreState {
   /** Adds or removes one tag, leaving the rest of the filter alone. */
   toggleTag(id: Id): void;
   clearTags(): void;
-  setIncludePacks(includePacks: boolean): void;
   setQuery(query: string): void;
   select(id: Id | null): void;
   selectConnection(id: Id | null): void;
@@ -194,40 +186,6 @@ let attaching: Promise<unknown> = Promise.resolve();
  * tick from both asking before either has an answer to record.
  */
 let claimingPersistence = false;
-
-interface Adoption {
-  timeline: Timeline;
-  /** The adopted copy, or null when there was nothing to adopt. */
-  record: Base | null;
-}
-
-/**
- * Clears `pack` on one record, in place in a new timeline.
- *
- * Returns the timeline unchanged when the record is not a pack record, so
- * callers adopt unconditionally rather than testing first. The adopted copy is
- * handed back rather than queued here: a mutation that then refuses — a
- * connection to an endpoint deleted a moment ago — used to leave the adoption
- * written to disk while memory still said `pack`. The caller folds it into the
- * mutation's `touched`, so one thing lands or nothing does.
- */
-function adoptIn(
-  timeline: Timeline,
-  kind: 'events' | 'connections' | 'eras',
-  id: Id,
-  now: string,
-): Adoption {
-  const records = timeline[kind];
-  const index = records.findIndex((record) => record.id === id);
-  if (index === -1) return { timeline, record: null };
-
-  const adopted = adoptRecord(records[index] as never, now);
-  if (!adopted) return { timeline, record: null };
-
-  const next = records.slice();
-  next[index] = adopted;
-  return { timeline: { ...timeline, [kind]: next }, record: adopted };
-}
 
 /**
  * Merges one record kind after another tab's write (§8.7).
@@ -260,9 +218,7 @@ function spliceRemote<T extends Base>(
       continue;
     }
     fresh.delete(record.id);
-    // Last writer wins by instant, as everywhere else (§8.7). The pack clause
-    // `mergeDocument.accepts` carries does not belong here: both sides are the
-    // same store, so a cleared `pack` is already the newer write.
+    // Last writer wins by instant, as everywhere else (§8.7).
     if (compareTimestamps(theirs.updated_at, record.updated_at) > 0) {
       next.push(theirs);
       changed = true;
@@ -288,21 +244,6 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
     undoStack,
     undoLabel: undoStack[undoStack.length - 1]?.label ?? null,
   });
-
-  const adopt = (timeline: Timeline, kind: 'events' | 'connections' | 'eras', id: Id): Adoption =>
-    adoptIn(timeline, kind, id, nowIso());
-
-  /** Folds adopted endpoint events into the mutation that adopted them (§5). */
-  const withAdoptedEvents = (
-    mutation: Mutation | null,
-    ...adopted: (Base | null)[]
-  ): Mutation | null => {
-    if (!mutation) return null;
-    const records = adopted.filter((record): record is Base => record !== null);
-    return records.length === 0
-      ? mutation
-      : { ...mutation, touched: [...mutation.touched, { kind: 'events', records }] };
-  };
 
   /**
    * Claims persistent storage, once, on the first real write (§8.3, layer 1).
@@ -401,7 +342,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
     // the store is no longer bound to.
     if (backing !== store) return;
 
-    let { events, connections, tags, eras, packs } = get().timeline;
+    let { events, connections, tags, eras } = get().timeline;
     let changed = false;
 
     for (const [kind, ids] of batch) {
@@ -439,14 +380,6 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
           }
           break;
         }
-        case 'packs': {
-          const next = spliceRemote(packs, remote.packs, ids);
-          if (next) {
-            packs = next;
-            changed = true;
-          }
-          break;
-        }
       }
     }
 
@@ -461,7 +394,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
       // per machine rather than per tab: whichever tab holds the folder
       // permission has to notice, or an edit made in the other one is never
       // backed up at all.
-      ...(changed ? { timeline: { events, connections, tags, eras, packs }, ...markDirty() } : {}),
+      ...(changed ? { timeline: { events, connections, tags, eras }, ...markDirty() } : {}),
       ...(clearing ? undoState([]) : {}),
     });
   };
@@ -597,19 +530,8 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
       return mutation.timeline.events.find((e) => e.id === mutation.undo[0]?.id) as TimelineEvent;
     },
 
-    /**
-     * Editing a pack event adopts it (§5): `pack` cleared, provenance manual.
-     *
-     * Doing it here rather than offering an "adopt" button is what makes the
-     * upgrade rule safe without storing install timestamps — a pack upgrade
-     * skips any record whose `pack` has been cleared, and every edit clears it.
-     */
     updateEvent(id, patch) {
-      // The adoption needs no folding here: the patched record *is* the adopted
-      // one, so the edit's own `touched` already carries the cleared `pack` —
-      // and a patch that finds no record persists nothing at all.
-      const { timeline } = adopt(get().timeline, 'events', id);
-      commit(editEvent(timeline, id, patch));
+      commit(editEvent(get().timeline, id, patch));
     },
 
     /**
@@ -628,8 +550,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
      * outlive the undo that was meant to take it back.
      */
     setEventTags(id, names) {
-      const { timeline } = adopt(get().timeline, 'events', id);
-      const resolved = ensureTags(timeline, names);
+      const resolved = ensureTags(get().timeline, names);
       const mutation = editEvent(resolved.timeline, id, { tags: resolved.ids });
       if (!mutation) return;
 
@@ -719,93 +640,19 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
       const existing = findConnectionBetween(get().timeline, draft.from, draft.to);
       if (existing) return existing.id;
 
-      // Connecting a pack event adopts it too (§5) — a connection is a claim
-      // you have made about it, which makes the event yours. Both adoptions
-      // ride on the connection's own write, so a refused pair leaves neither
-      // the adoption nor the connection behind.
-      const from = adopt(get().timeline, 'events', draft.from);
-      const to = adopt(from.timeline, 'events', draft.to);
-
-      const mutation = createConnection(to.timeline, draft);
+      const mutation = createConnection(get().timeline, draft);
       if (!mutation) return null;
-      commit(withAdoptedEvents(mutation, from.record, to.record));
+      commit(mutation);
       return mutation.undo[0]?.id ?? null;
     },
 
     updateConnection(id, patch) {
-      const { timeline } = adopt(get().timeline, 'connections', id);
-      commit(editConnection(timeline, id, patch));
+      commit(editConnection(get().timeline, id, patch));
     },
 
     deleteConnection(id) {
       commit(removeConnection(get().timeline, id));
       if (get().selectedConnectionId === id) set({ selectedConnectionId: null });
-    },
-
-    /**
-     * Installs a pack through the merge rule (§5) — the same one import and
-     * backup restore use, so there is exactly one place that can lose data.
-     *
-     * Reinstalling or upgrading is the same call: record ids are derived from
-     * the pack id and the author's key, so version two lands on version one's
-     * records and `mergeDocument` skips anything the user has adopted.
-     */
-    async installPack(bundle) {
-      const expanded = expandPack(bundle, { source: bundle.id });
-      const document: TimelineDocument = {
-        schema_version: SCHEMA_VERSION,
-        exported_at: expanded.pack.installed_at,
-        generator: `pack:${bundle.id}@${bundle.version}`,
-        events: expanded.events,
-        connections: expanded.connections,
-        tags: expanded.tags,
-        eras: expanded.eras,
-        packs: [expanded.pack],
-      };
-
-      const merged = mergeDocument(get().timeline, document);
-      const sorted = { ...merged.timeline, events: sortEvents(merged.timeline.events) };
-      // Undo is not offered for an install: it is a bulk operation with an
-      // explicit inverse of its own, and pushing several hundred records onto
-      // the undo stack would evict everything the user actually did.
-      set({ timeline: sorted, ...markDirty(), ...undoState([]), isFirstRun: false });
-      // Anything still queued would otherwise land *after* the wholesale write
-      // and reinstate the record it replaced.
-      await queue?.flush();
-      await writeAll(sorted);
-    },
-
-    /**
-     * Uninstalls a pack and everything it still owns.
-     *
-     * `replaceAll` rather than tombstones, because pack content is not the
-     * user's data and a tombstone would carry a newer timestamp than the bundle
-     * — reinstalling later would merge into it and restore nothing.
-     */
-    async removePack(packId) {
-      const next = uninstallPack(get().timeline, packId);
-      const state = get();
-      const gone = (id: Id | null) =>
-        id !== null && !next.events.some((event) => event.id === id);
-
-      set({
-        timeline: next,
-        ...markDirty(),
-        ...undoState([]),
-        ...(gone(state.selectedId) ? { selectedId: null } : {}),
-        // A tombstoned connection counts as gone: the user's own connections
-        // into a departing event are kept as tombstones, and the detail pane
-        // must not go on showing one.
-        ...(state.selectedConnectionId &&
-        !next.connections.some((c) => c.id === state.selectedConnectionId && !c.deleted_at)
-          ? { selectedConnectionId: null }
-          : {}),
-        ...(state.selectedEraId && !next.eras.some((e) => e.id === state.selectedEraId)
-          ? { selectedEraId: null }
-          : {}),
-      });
-      await queue?.flush();
-      await writeAll(next);
     },
 
     addEra(draft) {
@@ -828,8 +675,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
     },
 
     updateEra(id, patch) {
-      const { timeline } = adopt(get().timeline, 'eras', id);
-      commit(editEra(timeline, id, patch));
+      commit(editEra(get().timeline, id, patch));
     },
 
     deleteEra(id) {
@@ -978,10 +824,6 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
 
     clearTags() {
       set({ filter: { ...get().filter, tags: [] } });
-    },
-
-    setIncludePacks(includePacks) {
-      set({ filter: { ...get().filter, includePacks } });
     },
 
     setQuery(query) {

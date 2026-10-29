@@ -12,7 +12,7 @@
  */
 
 import { deleteDB, openDB } from 'idb';
-import type { Connection, Era, InstalledPack, Tag, Timeline, TimelineEvent } from '../core/model/types';
+import type { Connection, Era, Tag, Timeline, TimelineEvent } from '../core/model/types';
 import type { RecordKind, Store, StoreChange } from './contract';
 import { SCHEMA_VERSION } from './contract';
 import { RECORD_KINDS, SchemaVersionError, migrate } from './serialise';
@@ -21,11 +21,14 @@ export const DEFAULT_DB_NAME = 'arlinje';
 
 /**
  * Bumped when the object stores themselves change, not when the data schema
- * does. It has nevertheless tracked `SCHEMA_VERSION` so far, which is what lets
+ * does. Up to 3 it tracked `SCHEMA_VERSION`, which is what lets
  * `startingSchemaVersion` below infer the schema of a database that predates
- * the meta store.
+ * the meta store. Version 4 drops the `packs` store (D70).
  */
-const DB_VERSION = 3;
+const DB_VERSION = 4;
+
+/** Object stores earlier versions created and this one deletes on upgrade. */
+const RETIRED_STORES = ['packs'];
 
 /** Where the schema version of the records on disk is kept (§8.1). */
 const META_STORE = 'meta';
@@ -36,8 +39,8 @@ const SCHEMA_KEY = 'schema_version';
  *
  * Only reachable for a database created before the meta store existed, so the
  * answer has to be inferred, and `DB_VERSION` is the only evidence there is:
- * version 1 predates packs (schema 1), version 2 is the schema-2 build, and a
- * database being created now is written at the current version by definition.
+ * version 1 is the schema-1 build, version 2 the schema-2 build, and a database
+ * being created now is written at the current version by definition.
  */
 function startingSchemaVersion(oldVersion: number): number {
   if (oldVersion === 0) return SCHEMA_VERSION;
@@ -55,6 +58,13 @@ export async function createIndexedDbStore(name: string = DEFAULT_DB_NAME): Prom
         if (!database.objectStoreNames.contains(kind)) {
           database.createObjectStore(kind, { keyPath: 'id' });
         }
+      }
+      // What an older build kept there is not carried over: installed-pack
+      // records mean nothing now, and the records a pack brought live in the
+      // ordinary stores, where the schema 2 → 3 migration on load makes them
+      // the user's own.
+      for (const retired of RETIRED_STORES) {
+        if (database.objectStoreNames.contains(retired)) database.deleteObjectStore(retired);
       }
       // Written only when the store is created, never on a later upgrade: after
       // that the stored version is the record of what is actually on disk and
@@ -113,12 +123,11 @@ export async function createIndexedDbStore(name: string = DEFAULT_DB_NAME): Prom
       if (version > SCHEMA_VERSION) throw new SchemaVersionError(version, SCHEMA_VERSION);
 
       const tx = db.transaction(RECORD_KINDS, 'readonly');
-      const [events, connections, tags, eras, packs] = await Promise.all([
+      const [events, connections, tags, eras] = await Promise.all([
         tx.objectStore('events').getAll(),
         tx.objectStore('connections').getAll(),
         tx.objectStore('tags').getAll(),
         tx.objectStore('eras').getAll(),
-        tx.objectStore('packs').getAll(),
       ]);
       await tx.done;
 
@@ -129,7 +138,6 @@ export async function createIndexedDbStore(name: string = DEFAULT_DB_NAME): Prom
         connections: connections as Connection[],
         tags: tags as Tag[],
         eras: eras as Era[],
-        packs: packs as InstalledPack[],
       };
 
       if (version === SCHEMA_VERSION) return loaded;
@@ -154,7 +162,6 @@ export async function createIndexedDbStore(name: string = DEFAULT_DB_NAME): Prom
         connections: migrated.connections,
         tags: migrated.tags,
         eras: migrated.eras,
-        packs: migrated.packs,
       };
       await store.replaceAll(next);
       await db.put(META_STORE, SCHEMA_VERSION, SCHEMA_KEY);

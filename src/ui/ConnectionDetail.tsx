@@ -99,12 +99,6 @@ function ConnectionPane({ connection }: { connection: Connection }) {
           <dt>made</dt>
           <dd className="tabular-nums">{connection.created_at.slice(0, 10)}</dd>
         </div>
-        {connection.pack && (
-          <div className="flex justify-between gap-2">
-            <dt>from pack</dt>
-            <dd>{connection.pack}</dd>
-          </div>
-        )}
       </dl>
 
       <Button

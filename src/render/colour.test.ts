@@ -17,7 +17,7 @@ describe('parseColour', () => {
 
 describe('withAlpha', () => {
   it('expands three-digit hex rather than producing NaN', () => {
-    // `#f00` reaches the renderers through `Tag.color`, from packs and imports.
+    // `#f00` reaches the renderers through `Tag.color`, from imported files.
     // The old two-character slice made `rgba(NaN, NaN, NaN, …)`, which canvas
     // ignores in silence: the tag simply stopped drawing, with nothing to say why.
     expect(withAlpha('#f00', 0.5)).toBe('rgba(255, 0, 0, 0.5)');

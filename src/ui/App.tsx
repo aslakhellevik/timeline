@@ -16,7 +16,6 @@ import { EventList } from './EventList';
 import { FilterBar } from './FilterBar';
 import { FirstRun } from './FirstRun';
 import { HelpOverlay } from './HelpOverlay';
-import { PackPanel } from './PackPanel';
 import { QuickAdd } from './QuickAdd';
 import { TimelineView } from './TimelineView';
 import { plural } from './controls';
@@ -83,14 +82,11 @@ export function App() {
       : null,
   );
   const [dataOpen, setDataOpen] = useState(false);
-  const [packsOpen, setPacksOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
   /*
-   * Held separately from `isFirstRun`, which flips as soon as the birth year is
-   * answered — the pack offer that follows it has to survive that.
-   *
-   * And it carries *why* the screen is up: the same question is asked again by
+   * Held separately from `isFirstRun`, because it carries *why* the screen is
+   * up: the same question is asked again by
    * "add my life", months later, of someone who skipped it and has since filled
    * the timeline. "It starts empty" is the wrong sentence to say to them.
    */
@@ -120,10 +116,9 @@ export function App() {
 
   // Restore the bookmarked filter and selection, once, on mount.
   //
-  // The dependency list is empty on purpose. It used to include
-  // `filter.includePacks`, so ticking the packs checkbox re-ran the whole
-  // restore — re-applying the bookmarked tags, and re-selecting the bookmarked
-  // event, which while a pick was armed silently wrote a connection.
+  // The dependency list is empty on purpose: re-running the restore re-applies
+  // the bookmarked tags and re-selects the bookmarked event, which while a pick
+  // was armed silently wrote a connection.
   useEffect(() => {
     restoreBookmark({
       ...(initial.tags ? { tags: initial.tags } : {}),
@@ -338,8 +333,8 @@ export function App() {
    * Onboarding is a takeover, like the loading state above it.
    *
    * It used to render inside the shell, so the header and the footer stayed live
-   * behind the one question the app asks: you could add an event, switch views
-   * or open the packs panel while being asked your birth year, and "never backed
+   * behind the one question the app asks: you could add an event or switch
+   * views while being asked your birth year, and "never backed
    * up" glowed amber before there was anything to back up. None of that chrome
    * has anything to act on yet.
    */
@@ -458,8 +453,8 @@ export function App() {
       {/*
         Status, and one undo (§7.1).
 
-        Everything that *did* something has left: the footer had `+ era`, `undo`,
-        `packs` and `your data` set in the same eleven-pixel word as the event
+        Everything that *did* something has left: the footer had `+ era`, `undo`
+        and `your data` set in the same eleven-pixel word as the event
         count, so a reading and four actions of three different kinds were one
         undifferentiated row. What is left says what the timeline is — how much
         of it is on screen, how long since a copy of it was written, what went
@@ -523,24 +518,10 @@ export function App() {
               undo {undoLabel}
             </button>
           )}
-          {/*
-            Kept here rather than moved behind `?`: what is installed changes
-            what the picture means (D38), which is the same kind of claim as the
-            counts beside it. Underlined so it reads as a way in rather than as
-            another reading.
-          */}
-          <button
-            onClick={() => setPacksOpen(true)}
-            className="inline-flex min-h-11 items-center text-paper-dim underline
-                       decoration-line underline-offset-2 hover:text-paper sm:min-h-0"
-          >
-            {timeline.packs.length > 0 ? plural(timeline.packs.length, 'pack') : 'packs'}
-          </button>
         </div>
       </footer>
 
       {dataOpen && <DataPanel demo={demo} onClose={() => setDataOpen(false)} />}
-      {packsOpen && <PackPanel onClose={() => setPacksOpen(false)} />}
       {pickerOpen && <ConnectPicker />}
       {helpOpen && <HelpOverlay onClose={() => setHelpOpen(false)} />}
     </div>

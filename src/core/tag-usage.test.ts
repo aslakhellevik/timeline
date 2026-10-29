@@ -37,11 +37,11 @@ const TAGS = [
   tag('asia', 'Asia'),
 ];
 
-const usageOf = (timeline: Timeline, includePacks = true) =>
-  new Map(tagUsage(timeline, includePacks).map((entry) => [entry.tag.id, entry]));
+const usageOf = (timeline: Timeline) =>
+  new Map(tagUsage(timeline).map((entry) => [entry.tag.id, entry]));
 
 function build(events: TimelineEvent[], tags: Tag[] = TAGS): Timeline {
-  return { events, connections: [], tags, eras: [], packs: [] };
+  return { events, connections: [], tags, eras: [] };
 }
 
 describe('tagUsage', () => {
@@ -94,12 +94,6 @@ describe('tagUsage', () => {
       TAGS[1] as Tag,
     ]);
     expect(usageOf(withDeadTag).has('europe')).toBe(false);
-  });
-
-  it('honours the packs toggle, so the counts match what is on screen', () => {
-    const timeline = build([event('a', ['europe']), event('b', ['europe'], { pack: 'wwii' })]);
-    expect(usageOf(timeline, true).get('europe')?.total).toBe(2);
-    expect(usageOf(timeline, false).get('europe')?.total).toBe(1);
   });
 
   it('reports unused tags with a zero rather than dropping them', () => {

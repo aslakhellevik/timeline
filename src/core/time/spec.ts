@@ -153,7 +153,7 @@ const GRANULARITIES: readonly Granularity[] = ['day', 'month', 'year', 'decade',
  *
  * Every constructor above guarantees this, so nothing built in the app needs
  * checking. What needs checking is what arrives from outside — an imported file,
- * a pack bundle, a hand-edited export. One `-Infinity` there is enough to turn
+ * a hand-edited export. One `-Infinity` there is enough to turn
  * the whole density grid into NaN and blank the view, with nothing on screen to
  * say which record did it, so the boundary rejects rather than the estimator
  * defending itself.

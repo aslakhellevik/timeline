@@ -2,8 +2,8 @@
  * The store's wiring, against a fake `Store`.
  *
  * The rules themselves are tested in `timeline-model.test.ts`; what is tested
- * here is everything the model cannot see — adoption riding on the mutation
- * that caused it, what reaches the database and when, the connect flow's one
+ * here is everything the model cannot see — what reaches the database and
+ * when, the connect flow's one
  * rule seen from all three of its entrances, and the cross-tab receiver, which
  * is the only code in the app that can lose an edit nobody made a mistake with.
  */
@@ -11,8 +11,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Base, Timeline } from '../core/model/types';
 import { NO_FILTER } from '../core/filter';
-import { instant, interval } from '../core/time';
-import type { PackBundle } from '../core/packs';
+import { interval } from '../core/time';
 import type { RecordKind, Store, StoreChange } from '../store/contract';
 import { connection, event, tag, timeline as makeTimeline } from '../store/fixtures';
 import { EMPTY_TIMELINE } from './timeline-model';
@@ -42,7 +41,6 @@ function fakeStore(initial: Timeline = EMPTY_TIMELINE, failWrites = false): Fake
       connections: [...store.data.connections],
       tags: [...store.data.tags],
       eras: [...store.data.eras],
-      packs: [...store.data.packs],
     }),
 
     put: async (kind, records) => {
@@ -66,7 +64,6 @@ function fakeStore(initial: Timeline = EMPTY_TIMELINE, failWrites = false): Fake
         connections: [...next.connections],
         tags: [...next.tags],
         eras: [...next.eras],
-        packs: [...next.packs],
       };
     },
 
@@ -92,21 +89,6 @@ async function attach(store: Store): Promise<void> {
 }
 
 const state = () => useTimeline.getState();
-
-/** A pack event, as `expandPack` would have produced it. */
-function packEvent(id: string, pack: string, overrides = {}) {
-  return event(id, { pack, provenance: { kind: 'pack', ref: pack }, ...overrides });
-}
-
-const BUNDLE: PackBundle = {
-  id: 'pack.test',
-  name: 'Test pack',
-  version: '1',
-  license: 'CC BY-SA 4.0',
-  events: [
-    { key: 'fall', title: 'Fall of Constantinople', when: instant(1453), tags: ['tag.theme.war'] },
-  ],
-};
 
 beforeEach(() => {
   useTimeline.setState({
@@ -207,11 +189,9 @@ describe('undo through the store', () => {
   });
 
   it('keeps a tag another record still carries when a quick-add is undone', async () => {
-    // A pack event tagged war, on a timeline where the tag record itself has
-    // never been materialised — so typing `#war` creates it (D39/D44).
-    await attach(
-      fakeStore(makeTimeline({ events: [packEvent('pack.x/a', 'pack.x', { tags: ['tag.theme.war'] })] })),
-    );
+    // An event tagged war, on a timeline where the tag record itself has never
+    // been materialised — so typing `#war` creates it (D39/D44).
+    await attach(fakeStore(makeTimeline({ events: [event('e1', { tags: ['tag.theme.war'] })] })));
 
     expect(state().quickAdd('Armistice 1918 #war').ok).toBe(true);
     expect(state().timeline.tags.find((t) => t.id === 'tag.theme.war')).toBeTruthy();
@@ -244,56 +224,21 @@ describe('undo through the store', () => {
   });
 });
 
-describe('adoption (§5)', () => {
-  it('clears `pack` on edit, and the cleared record is what reaches the database', async () => {
-    const store = fakeStore(makeTimeline({ events: [packEvent('pack.x/a', 'pack.x')] }));
-    await attach(store);
-
-    state().updateEvent('pack.x/a', { title: 'Mine now' });
-    await state().flush();
-
-    expect(state().timeline.events[0]?.pack).toBeUndefined();
-    expect(store.data.events[0]?.pack).toBeUndefined();
-    expect(store.data.events[0]?.title).toBe('Mine now');
-  });
-
-  it('clears `pack` on both endpoints when they are connected', async () => {
-    const store = fakeStore(
-      makeTimeline({ events: [packEvent('pack.x/a', 'pack.x'), packEvent('pack.x/b', 'pack.x')] }),
-    );
-    await attach(store);
-
-    expect(state().addConnection({ from: 'pack.x/a', to: 'pack.x/b' })).toBeTruthy();
-    await state().flush();
-
-    expect(state().timeline.events.every((e) => e.pack === undefined)).toBe(true);
-    expect(store.data.events.every((e) => e.pack === undefined)).toBe(true);
-  });
+describe('making a connection (§6.4)', () => {
+  const twoEvents = () => makeTimeline({ events: [event('e1'), event('e2')] });
 
   it('persists nothing when the connection is refused', async () => {
     const store = fakeStore(
-      makeTimeline({
-        events: [
-          packEvent('pack.x/a', 'pack.x'),
-          packEvent('pack.x/b', 'pack.x', { deleted_at: OLD }),
-        ],
-      }),
+      makeTimeline({ events: [event('e1'), event('e2', { deleted_at: OLD })] }),
     );
     await attach(store);
 
-    expect(state().addConnection({ from: 'pack.x/a', to: 'pack.x/b' })).toBeNull();
+    expect(state().addConnection({ from: 'e1', to: 'e2' })).toBeNull();
     await state().flush();
 
-    // Memory and disk must agree: an adoption written for a connection that
-    // was never made left `pack` cleared on disk and set in memory.
-    expect(state().timeline.events.find((e) => e.id === 'pack.x/a')?.pack).toBe('pack.x');
-    expect(store.data.events.find((e) => e.id === 'pack.x/a')?.pack).toBe('pack.x');
+    expect(state().timeline.connections).toHaveLength(0);
     expect(store.puts).toHaveLength(0);
   });
-});
-
-describe('making a connection (§6.4)', () => {
-  const twoEvents = () => makeTimeline({ events: [event('e1'), event('e2')] });
 
   it('completes through the picker', async () => {
     await attach(fakeStore(twoEvents()));
@@ -345,13 +290,12 @@ describe('making a connection (§6.4)', () => {
     expect(state().selectedId).toBe('e2');
   });
 
-  it('applies bookmarked tags without disturbing the packs toggle', async () => {
+  it('applies bookmarked tags', async () => {
     await attach(fakeStore(twoEvents()));
 
-    state().setIncludePacks(false);
     state().restoreBookmark({ tags: ['tag.theme.war'] });
 
-    expect(state().filter).toEqual({ tags: ['tag.theme.war'], includePacks: false });
+    expect(state().filter).toEqual({ tags: ['tag.theme.war'] });
   });
 
   it('disarms a pending pick when an era is added', async () => {
@@ -393,32 +337,6 @@ describe('starting over (§8.7a)', () => {
     expect(state().timeline.events).toHaveLength(1);
     expect(state().isFirstRun).toBe(false);
     expect(state().error).toBeTruthy();
-  });
-});
-
-describe('packs', () => {
-  it('does not overwrite a built-in tag the user has renamed', async () => {
-    const store = fakeStore(
-      makeTimeline({
-        tags: [tag('tag.theme.war', { name: 'conflict', kind: 'theme', color: '#abcdef' })],
-      }),
-    );
-    await attach(store);
-
-    await state().installPack(BUNDLE);
-
-    const war = state().timeline.tags.find((candidate) => candidate.id === 'tag.theme.war');
-    // The pack references the tag; it has nothing to say about its name.
-    expect(war?.name).toBe('conflict');
-    expect(war?.color).toBe('#abcdef');
-    expect(state().timeline.events).toHaveLength(1);
-  });
-
-  it('brings a referenced built-in tag that is not there yet', async () => {
-    await attach(fakeStore());
-    await state().installPack(BUNDLE);
-
-    expect(state().timeline.tags.find((t) => t.id === 'tag.theme.war')).toBeTruthy();
   });
 });
 
@@ -492,8 +410,8 @@ describe('another tab writes (§8.1, §8.7)', () => {
       return original();
     };
 
-    store.data = { events: [event('e9')], connections: [], tags: [], eras: [], packs: [] };
-    for (const kind of ['events', 'connections', 'tags', 'eras', 'packs'] as const) {
+    store.data = { events: [event('e9')], connections: [], tags: [], eras: [] };
+    for (const kind of ['events', 'connections', 'tags', 'eras'] as const) {
       store.emit({ kind, ids: ['e1', 'e9'] });
     }
     await delay();
@@ -624,13 +542,13 @@ describe('the dirty signal (§8.3)', () => {
   it('is stamped by the wholesale writes as well as the per-record ones', async () => {
     await attach(fakeStore());
 
-    await state().installPack(BUNDLE);
-    const installed = state().lastMutationAt;
-    expect(installed).not.toBeNull();
+    await state().replaceTimeline(makeTimeline({ events: [event('e1')] }));
+    const replaced = state().lastMutationAt;
+    expect(replaced).not.toBeNull();
 
     await delay(5);
-    await state().removePack('pack.test');
-    expect(state().lastMutationAt).not.toBe(installed);
+    await state().resetAll();
+    expect(state().lastMutationAt).not.toBe(replaced);
   });
 
   it('is stamped when another tab changes the timeline', async () => {
@@ -661,60 +579,6 @@ describe('claiming persistent storage (§8.3, layer 1)', () => {
     // "unsupported" — the point is that something asked at all.
     expect(state().persistence).not.toBeNull();
     expect(typeof state().persistence?.message).toBe('string');
-  });
-});
-
-describe('uninstalling a pack (§5.1, D37)', () => {
-  /**
-   * Seeded rather than built through the UI: connecting to a pack event adopts
-   * it, so the app's own routes rarely produce this shape. An import or another
-   * device does, and the records then sit there until an uninstall meets them.
-   */
-  function withPackAndMyLink() {
-    return fakeStore(
-      makeTimeline({
-        events: [packEvent('pack.test/fall', 'pack.test'), event('mine')],
-        connections: [
-          connection('c-pack', { from: 'pack.test/fall', to: 'mine', pack: 'pack.test' }),
-          connection('c-mine', { from: 'mine', to: 'pack.test/fall', note: 'why these two' }),
-        ],
-        packs: [
-          {
-            id: 'pack.test',
-            created_at: OLD,
-            updated_at: OLD,
-            name: 'Test pack',
-            version: '1',
-            license: 'CC0-1.0',
-            installed_at: OLD,
-          },
-        ],
-      }),
-    );
-  }
-
-  it('tombstones my own connection into a departing event, and hard-removes the pack’s', async () => {
-    const store = withPackAndMyLink();
-    await attach(store);
-
-    await state().removePack('pack.test');
-
-    const connections = state().timeline.connections;
-    expect(connections.map((c) => c.id)).toEqual(['c-mine']);
-    expect(connections[0]?.deleted_at).toBeTruthy();
-    // And it reached the database as a tombstone, not as an absence.
-    expect(store.data.connections.map((c) => c.id)).toEqual(['c-mine']);
-    expect(store.data.connections[0]?.deleted_at).toBeTruthy();
-  });
-
-  it('closes the detail pane on a connection it has just tombstoned', async () => {
-    const store = withPackAndMyLink();
-    await attach(store);
-    state().selectConnection('c-mine');
-
-    await state().removePack('pack.test');
-
-    expect(state().selectedConnectionId).toBeNull();
   });
 });
 
@@ -762,17 +626,6 @@ describe("editing an event's tags (§6.2, D20, D44)", () => {
 
     state().setEventTags('e1', ['war']);
     expect(state().timeline.events[0]?.tags).toEqual(['t1']);
-  });
-
-  it('adopts a pack event, like every other edit (§5.1)', async () => {
-    const store = fakeStore(makeTimeline({ events: [packEvent('pack.x/a', 'pack.x')] }));
-    await attach(store);
-
-    state().setEventTags('pack.x/a', ['war']);
-    await state().flush();
-
-    expect(state().timeline.events[0]?.pack).toBeUndefined();
-    expect(store.data.events[0]?.pack).toBeUndefined();
   });
 
   it('does nothing for an event that is not there', async () => {

@@ -27,20 +27,15 @@ export function FilterBar({ onAddLife }: { onAddLife?: () => void }) {
   const filter = useTimeline((state) => state.filter);
   const toggleTag = useTimeline((state) => state.toggleTag);
   const clearTags = useTimeline((state) => state.clearTags);
-  const setIncludePacks = useTimeline((state) => state.setIncludePacks);
 
   const [showUnused, setShowUnused] = useState(false);
   // Collapsed on a phone, where thirty tags is five rows and most of the screen.
   // Always open from `sm` up, where they cost one row and save a tap.
   const [expanded, setExpanded] = useState(false);
 
-  const usage = useMemo(
-    () => tagUsage(timeline, filter.includePacks),
-    [timeline, filter.includePacks],
-  );
+  const usage = useMemo(() => tagUsage(timeline), [timeline]);
 
   const selected = new Set(filter.tags);
-  const hasPacks = timeline.events.some((event) => event.pack);
   const visible = usage.filter((entry) => entry.total > 0 || selected.has(entry.tag.id));
   const hidden = usage.length - visible.length;
   /*
@@ -146,26 +141,6 @@ export function FilterBar({ onAddLife }: { onAddLife?: () => void }) {
                        hover:text-paper sm:min-h-0"
           >
             add my life
-          </button>
-        )}
-        {hasPacks && (
-          /*
-            A toggle, not a checkbox: the box measured 13×13 on a phone, and this
-            is a two-state control that already says which state it is in — the
-            same shape as the tag chips it sits beside.
-          */
-          <button
-            onClick={() => setIncludePacks(!filter.includePacks)}
-            aria-pressed={filter.includePacks}
-            title="count pack events in the mass and the views"
-            className={`inline-flex min-h-8 items-center rounded-full border px-2.5 text-[11px]
-                        sm:min-h-0 sm:py-0.5 ${
-                          filter.includePacks
-                            ? 'border-accent text-paper'
-                            : 'border-line text-paper-dim hover:border-paper-dim'
-                        }`}
-          >
-            packs
           </button>
         )}
         {filter.tags.length > 0 && (

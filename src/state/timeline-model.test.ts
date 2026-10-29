@@ -268,7 +268,7 @@ describe('filter predicates (§3.5, D22)', () => {
 
   it('matches an event tagged Norway when filtering by Europe', () => {
     const timeline = fixture();
-    const filtered = applyFilter(timeline, { tags: ['europe'], includePacks: true });
+    const filtered = applyFilter(timeline, { tags: ['europe'] });
     expect(filtered.events).toHaveLength(1);
     expect(filtered.events[0]?.tags).toEqual(['norway']);
   });
@@ -277,7 +277,7 @@ describe('filter predicates (§3.5, D22)', () => {
     const timeline = fixture();
     // The connection joins the Norway event and the Asia event; filtering to
     // Europe hides one endpoint, so the arc must go too.
-    expect(applyFilter(timeline, { tags: ['europe'], includePacks: true }).connections).toHaveLength(
+    expect(applyFilter(timeline, { tags: ['europe'] }).connections).toHaveLength(
       0,
     );
     expect(applyFilter(timeline, NO_FILTER).connections).toHaveLength(1);
@@ -285,20 +285,8 @@ describe('filter predicates (§3.5, D22)', () => {
 
   it('always shows personal eras, whatever the filter', () => {
     const timeline = fixture();
-    const filtered = applyFilter(timeline, { tags: ['europe'], includePacks: true });
+    const filtered = applyFilter(timeline, { tags: ['europe'] });
     expect(filtered.eras.map((e) => e.id)).toEqual(['life']);
-  });
-
-  it('excludes pack records when packs are switched off', () => {
-    const timeline = fixture();
-    const packed: Timeline = {
-      ...timeline,
-      events: timeline.events.map((event, i) =>
-        i === 2 ? { ...event, pack: 'pack.wwii' } : event,
-      ),
-    };
-    expect(applyFilter(packed, { tags: [], includePacks: false }).events).toHaveLength(2);
-    expect(applyFilter(packed, NO_FILTER).events).toHaveLength(3);
   });
 
   it('survives a cycle in the tag parent chain', () => {

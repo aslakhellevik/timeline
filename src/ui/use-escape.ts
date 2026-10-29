@@ -4,8 +4,8 @@ import { useEffect, useRef } from 'react';
  * Escape, resolved to exactly one layer (docs/design.md §6.4).
  *
  * Every dismissible thing on screen wants the same key, and before this each
- * one answered for itself: the data panel closed, the packs panel ignored it,
- * the detail pane ignored it, and an armed connection cancelled from a window
+ * one answered for itself: the data panel closed, the detail pane ignored it,
+ * and an armed connection cancelled from a window
  * listener that fired underneath all of them. So the app had no answer to "what
  * does Escape do here" — it depended on which component had happened to bind it.
  *

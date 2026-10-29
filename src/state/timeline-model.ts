@@ -12,7 +12,6 @@ import type {
   Connection,
   Era,
   Id,
-  InstalledPack,
   Tag,
   TagKind,
   TimeSpec,
@@ -68,7 +67,6 @@ export const EMPTY_TIMELINE: Timeline = Object.freeze({
   connections: frozenList<Connection>(),
   tags: frozenList<Tag>(),
   eras: frozenList<Era>(),
-  packs: frozenList<InstalledPack>(),
 });
 
 /** Frozen at runtime, but still the mutable type `Timeline` declares. */
@@ -461,7 +459,7 @@ export function ensureTags(
  *
  * They exist as constants, but until they exist as *records* they cannot be
  * filtered on, and — worse — `ensureTags` matches by name, so typing `#war` on a
- * timeline without them invents a private "war" tag that no pack event shares.
+ * timeline without them invents a private "war" tag beside the built-in one.
  * The vocabulary silently forks in two, which is exactly what fixed namespaced
  * ids were supposed to prevent.
  *
@@ -650,7 +648,6 @@ export function applyUndo(
       connections: [...connections],
       tags: [...tags],
       eras: [...eras],
-      packs: timeline.packs,
     },
     touched,
     undo: [],

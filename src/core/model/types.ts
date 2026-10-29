@@ -66,11 +66,11 @@ export interface Base {
   deleted_at?: string;
 }
 
-export type ProvenanceKind = 'manual' | 'pack' | 'import' | 'ai_extract';
+export type ProvenanceKind = 'manual' | 'import';
 
 export interface Provenance {
   kind: ProvenanceKind;
-  /** origin id, pack id, or source document */
+  /** origin id or source document */
   ref?: string;
   confidence?: number;
 }
@@ -105,8 +105,6 @@ export interface TimelineEvent extends Base {
   /** D10 — free text: "Gombrich, ch. 4", "conversation with M" */
   learned_from?: string;
   provenance: Provenance;
-  /** set iff this record came from an installed pack and has not been adopted */
-  pack?: Id;
 }
 
 export interface Connection extends Base {
@@ -119,7 +117,6 @@ export interface Connection extends Base {
   /** Reserved for a later taxonomy; unset in v1. */
   kind?: string;
   provenance: Provenance;
-  pack?: Id;
 }
 
 export type TagKind = 'region' | 'theme' | 'user';
@@ -130,7 +127,6 @@ export interface Tag extends Base {
   /** Europe > Norway, for rollup filtering (D14) */
   parent?: Id;
   color?: string;
-  pack?: Id;
 }
 
 export type EraKind = 'canonical' | 'personal';
@@ -141,27 +137,6 @@ export interface Era extends Base {
   kind: EraKind;
   tags: Id[];
   notes?: string;
-  pack?: Id;
-}
-
-/**
- * A pack the user has installed (§5).
- *
- * Kept as a record rather than derived from the `pack` field on events, for two
- * reasons: a pack whose every event has been adopted would otherwise vanish from
- * the list of what is installed, and the name, version and licence have to
- * survive somewhere. The licence in particular is not optional — Wikipedia-
- * derived content is CC BY-SA and that obligation travels with the data.
- */
-export interface InstalledPack extends Base {
-  /** Stable pack id, e.g. `pack.second-world-war`. */
-  name: string;
-  version: string;
-  license: string;
-  description?: string;
-  /** Where the bundle came from: a built-in id, or a URL/filename. */
-  source?: string;
-  installed_at: string;
 }
 
 /** The whole store, held in memory (§8.1). */
@@ -170,7 +145,6 @@ export interface Timeline {
   connections: Connection[];
   tags: Tag[];
   eras: Era[];
-  packs: InstalledPack[];
 }
 
 // ---------------------------------------------------------------------------
@@ -191,6 +165,4 @@ export interface Viewport {
 export interface Filter {
   /** Tag ids; empty means no tag filtering. An event passes if it carries any. */
   tags: Id[];
-  /** Whether pack-sourced records contribute (D5). */
-  includePacks: boolean;
 }

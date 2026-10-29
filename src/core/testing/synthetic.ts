@@ -241,8 +241,6 @@ interface Cluster {
   /** Ranked: the first is likeliest. Drives tag/place correlation. */
   readonly regions: readonly Id[];
   readonly themes: readonly Id[];
-  /** Set on periods that ship as packs (D5), so some records exercise the toggle. */
-  readonly pack?: Id;
 }
 
 const CLUSTERS: readonly Cluster[] = [
@@ -366,7 +364,6 @@ const CLUSTERS: readonly Cluster[] = [
     register: 'modern',
     regions: [R_EUROPE, R_GERMANY, R_RUSSIA, R_BRITAIN, R_ASIA, R_AFRICA],
     themes: [T_WAR, T_TECHNOLOGY, T_POLITICS],
-    pack: 'pack.second-world-war',
   },
   {
     key: 'early-cold-war',
@@ -374,7 +371,6 @@ const CLUSTERS: readonly Cluster[] = [
     register: 'modern',
     regions: [R_RUSSIA, R_AMERICAS, R_EUROPE, R_ASIA, R_AFRICA],
     themes: [T_POLITICS, T_WAR, T_TECHNOLOGY, T_SCIENCE],
-    pack: 'pack.cold-war',
   },
   {
     key: 'late-cold-war',
@@ -382,7 +378,6 @@ const CLUSTERS: readonly Cluster[] = [
     register: 'modern',
     regions: [R_EUROPE, R_AMERICAS, R_RUSSIA, R_ASIA, R_NORDICS],
     themes: [T_POLITICS, T_TECHNOLOGY, T_ECONOMICS, T_SCIENCE],
-    pack: 'pack.cold-war',
   },
   {
     key: 'living-memory',
@@ -807,7 +802,6 @@ interface Draft {
   learned_at?: string;
   learned_from?: string;
   provenance: Provenance;
-  pack?: Id;
   created_at: string;
   updated_at: string;
 }
@@ -879,15 +873,8 @@ function generateDrafts(rng: Rng, count: number, userTagIds: readonly Id[], pare
     const updatedDays = createdDays + 1 + rng() * 120;
     const updated_at = chance(rng, 0.3) && updatedDays <= NOW_DAYS ? isoFrom(rng, updatedDays) : created_at;
 
-    const fromPack = cluster.pack !== undefined && chance(rng, 0.22);
-    const provRoll = rng();
-    const provenance: Provenance = fromPack
-      ? { kind: 'pack', ref: cluster.pack ?? '' }
-      : provRoll < 0.88
-        ? { kind: 'manual' }
-        : provRoll < 0.94
-          ? { kind: 'import', ref: 'timeline-2025-11-02.json' }
-          : { kind: 'ai_extract', ref: 'notes/reading.md', confidence: 0.55 + rng() * 0.4 };
+    const provenance: Provenance =
+      rng() < 0.9 ? { kind: 'manual' } : { kind: 'import', ref: 'timeline-2025-11-02.json' };
 
     drafts.push({
       cluster,
@@ -898,7 +885,6 @@ function generateDrafts(rng: Rng, count: number, userTagIds: readonly Id[], pare
       provenance,
       created_at,
       updated_at,
-      ...(fromPack && cluster.pack !== undefined ? { pack: cluster.pack } : {}),
       ...(chance(rng, 0.35)
         ? {
             place: {
@@ -1247,11 +1233,10 @@ export function generateTimeline(options: SyntheticOptions = {}): Timeline {
     ...(d.sources !== undefined ? { sources: d.sources } : {}),
     ...(d.learned_at !== undefined ? { learned_at: d.learned_at } : {}),
     ...(d.learned_from !== undefined ? { learned_from: d.learned_from } : {}),
-    ...(d.pack !== undefined ? { pack: d.pack } : {}),
   }));
 
   const connections = generateConnections(rng, events, drafts, connectionCount);
   const eras = generateEras(rng, eraCount);
 
-  return { events, connections, tags, eras, packs: [] };
+  return { events, connections, tags, eras };
 }

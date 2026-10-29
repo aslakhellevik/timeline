@@ -25,7 +25,6 @@ function doc(partial: Partial<TimelineDocument> = {}): TimelineDocument {
     connections: [],
     tags: [],
     eras: [],
-    packs: [],
     ...partial,
   };
 }
@@ -67,7 +66,7 @@ describe('parseDocument', () => {
     expect(() => parseDocument('{"events": []}')).toThrow(DocumentFormatError);
   });
 
-  it('accepts a hand-written pack that omits empty collections', () => {
+  it('accepts a hand-written file that omits empty collections', () => {
     const document = asDocument({ schema_version: SCHEMA_VERSION, events: [event('e1')] });
     expect(document.events).toHaveLength(1);
     expect(document.connections).toEqual([]);
@@ -109,6 +108,95 @@ describe('migrate', () => {
     const future = doc({ schema_version: SCHEMA_VERSION + 1 });
     expect(() => fromDocument(future)).toThrow(SchemaVersionError);
     expect(() => mergeDocument(timeline(), future)).toThrow(SchemaVersionError);
+  });
+});
+
+/**
+ * Schema 2 had packs (D70 removed them): a list of installed packs, a `pack` id
+ * on every record one brought, and `provenance.kind: 'pack'`. An export written
+ * then has to import now, with the pack content as the user's own.
+ */
+describe('migrate — schema 2 → 3, packs removed', () => {
+  /** An export as the schema-2 build wrote it, inline and as plain JSON. */
+  const SCHEMA_2_EXPORT = {
+    schema_version: 2,
+    exported_at: T2,
+    generator: 'arlinje/0.0.0',
+    events: [
+      { ...event('mine', { title: 'Mine' }), provenance: { kind: 'manual' } },
+      {
+        ...event('pack.second-world-war/d-day', { title: 'D-Day' }),
+        pack: 'pack.second-world-war',
+        provenance: { kind: 'pack', ref: 'pack.second-world-war' },
+      },
+      {
+        ...event('read', { title: 'Read somewhere' }),
+        provenance: { kind: 'ai_extract', ref: 'notes/reading.md', confidence: 0.7 },
+      },
+    ],
+    connections: [
+      {
+        ...connection('c1', { from: 'mine', to: 'pack.second-world-war/d-day' }),
+        pack: 'pack.second-world-war',
+        provenance: { kind: 'pack', ref: 'pack.second-world-war' },
+      },
+    ],
+    tags: [{ ...tag('tag.theme.war', { name: 'war', kind: 'theme' }), pack: 'pack.second-world-war' }],
+    eras: [{ ...era('ww2', { kind: 'canonical' }), pack: 'pack.second-world-war' }],
+    packs: [
+      {
+        id: 'pack.second-world-war',
+        created_at: T1,
+        updated_at: T1,
+        name: 'Second World War',
+        version: '1',
+        license: 'CC BY-SA 4.0',
+        installed_at: T1,
+      },
+    ],
+  };
+
+  it('drops the installed packs and makes every pack record the user’s own', () => {
+    const migrated = migrate(parseDocument(JSON.stringify(SCHEMA_2_EXPORT)));
+
+    expect(migrated.schema_version).toBe(SCHEMA_VERSION);
+    expect('packs' in migrated).toBe(false);
+    const records = [...migrated.events, ...migrated.connections, ...migrated.tags, ...migrated.eras];
+    expect(records).toHaveLength(6);
+    for (const record of records) expect('pack' in record).toBe(false);
+
+    const kinds = Object.fromEntries(migrated.events.map((e) => [e.id, e.provenance]));
+    expect(kinds['mine']).toEqual({ kind: 'manual' });
+    // The ref survives, so where it came from is still on the record.
+    expect(kinds['pack.second-world-war/d-day']).toEqual({
+      kind: 'import',
+      ref: 'pack.second-world-war',
+    });
+    expect(kinds['read']).toEqual({ kind: 'import', ref: 'notes/reading.md', confidence: 0.7 });
+    expect(migrated.connections[0]?.provenance.kind).toBe('import');
+  });
+
+  it('imports through the merge rule like any other file', () => {
+    const result = mergeDocument(
+      timeline(),
+      parseDocument(serialiseDocument(SCHEMA_2_EXPORT as unknown as TimelineDocument)),
+    );
+
+    expect(result.timeline.events.map((e) => e.id)).toEqual([
+      'mine',
+      'pack.second-world-war/d-day',
+      'read',
+    ]);
+    expect(result.timeline.connections).toHaveLength(1);
+    expect(result.timeline.eras).toHaveLength(1);
+    expect(Object.keys(result.stats).sort()).toEqual(['connections', 'eras', 'events', 'tags']);
+    expect(result.stats.events).toEqual({ added: 3, updated: 0, skipped: 0, rejected: 0 });
+  });
+
+  it('does not touch the input document', () => {
+    const input = parseDocument(JSON.stringify(SCHEMA_2_EXPORT));
+    migrate(input);
+    expect((input.events[1] as unknown as { pack?: string }).pack).toBe('pack.second-world-war');
   });
 });
 
@@ -218,11 +306,11 @@ describe('mergeDocument', () => {
   });
 
   it('copies accepted records, so the merged timeline does not alias the document', () => {
-    const incoming = event('e1', { title: 'From the pack' });
+    const incoming = event('e1', { title: 'From the file' });
     const result = mergeDocument(timeline(), doc({ events: [incoming] }));
     incoming.title = 'Mutated afterwards';
 
-    expect(result.timeline.events[0]?.title).toBe('From the pack');
+    expect(result.timeline.events[0]?.title).toBe('From the file');
   });
 });
 
@@ -254,81 +342,6 @@ describe('mergeDocument — tombstones (D9)', () => {
 
     expect(result.timeline.events).toHaveLength(1);
     expect(result.timeline.events[0]?.deleted_at).toBe(T2);
-  });
-});
-
-describe('mergeDocument — pack upgrades (§5)', () => {
-  it('upgrades a pack record the user has not touched', () => {
-    const current = timeline({
-      events: [event('e1', { title: 'v1', pack: 'wwii', updated_at: T1, provenance: { kind: 'pack', ref: 'wwii' } })],
-    });
-    const result = mergeDocument(
-      current,
-      doc({
-        events: [event('e1', { title: 'v2', pack: 'wwii', updated_at: T3, provenance: { kind: 'pack', ref: 'wwii' } })],
-      }),
-    );
-
-    expect(result.timeline.events[0]?.title).toBe('v2');
-    expect(result.stats.events.updated).toBe(1);
-  });
-
-  it('never clobbers a record the user adopted, even with a newer pack', () => {
-    // Adoption clears `pack` and makes the record manual (§5). The pack's next
-    // version is newer by definition, so the timestamp rule alone would lose it.
-    const current = timeline({
-      events: [event('e1', { title: 'My rewrite', updated_at: T1, provenance: { kind: 'manual' } })],
-    });
-    const result = mergeDocument(
-      current,
-      doc({ events: [event('e1', { title: 'Pack v2', pack: 'wwii', updated_at: T3 })] }),
-    );
-
-    expect(result.timeline.events[0]?.title).toBe('My rewrite');
-    expect(result.timeline.events[0]?.pack).toBeUndefined();
-    expect(result.stats.events).toEqual({ added: 0, updated: 0, skipped: 1, rejected: 0 });
-  });
-
-  it('skips a pack record edited more recently than the incoming version', () => {
-    const current = timeline({
-      events: [event('e1', { title: 'Edited in place', pack: 'wwii', updated_at: T3 })],
-    });
-    const result = mergeDocument(
-      current,
-      doc({ events: [event('e1', { title: 'Pack v2', pack: 'wwii', updated_at: T2 })] }),
-    );
-
-    expect(result.timeline.events[0]?.title).toBe('Edited in place');
-  });
-
-  it('still installs the pack records that are genuinely new in the upgrade', () => {
-    const current = timeline({
-      events: [event('e1', { title: 'My rewrite', updated_at: T1 })],
-    });
-    const result = mergeDocument(
-      current,
-      doc({
-        events: [
-          event('e1', { title: 'Pack v2', pack: 'wwii', updated_at: T3 }),
-          event('e2', { title: 'New in v2', pack: 'wwii', updated_at: T3 }),
-        ],
-      }),
-    );
-
-    expect(result.timeline.events.map((e) => e.title)).toEqual(['My rewrite', 'New in v2']);
-    expect(result.stats.events).toEqual({ added: 1, updated: 0, skipped: 1, rejected: 0 });
-  });
-
-  it('lets an import carry an adoption from another device onto a pack record', () => {
-    // The reverse direction: nothing about `pack` blocks a genuinely newer edit.
-    const current = timeline({ events: [event('e1', { pack: 'wwii', updated_at: T1 })] });
-    const result = mergeDocument(
-      current,
-      doc({ events: [event('e1', { title: 'Adopted elsewhere', updated_at: T3 })] }),
-    );
-
-    expect(result.timeline.events[0]?.title).toBe('Adopted elsewhere');
-    expect(result.timeline.events[0]?.pack).toBeUndefined();
   });
 });
 
@@ -382,7 +395,7 @@ describe('mergeDocument — restoring a backup onto a diverged store (§8.3)', (
 
 /**
  * §8.7. Everything below is data the app is not entitled to trust: a file the
- * user edited by hand, a pack written by somebody else, a device with the wrong
+ * user edited by hand, a file written by somebody else, a device with the wrong
  * date. The store is trusted absolutely by everything downstream, so the merge
  * is where the checking has to happen.
  */
@@ -499,7 +512,7 @@ describe('mergeDocument — hostile and hand-edited documents', () => {
     expect(result.timeline.connections).toHaveLength(1);
   });
 
-  it('is still lenient about missing collections, which a hand-written pack needs', () => {
+  it('is still lenient about missing collections, which a hand-written file needs', () => {
     const result = mergeDocument(
       timeline(),
       asDocument({ schema_version: SCHEMA_VERSION, events: [event('e1')] }),

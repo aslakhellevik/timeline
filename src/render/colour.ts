@@ -21,8 +21,8 @@ const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 /**
  * Hex to RGB, or `null` for anything this does not understand.
  *
- * Validated rather than assumed. `Tag.color` arrives from packs and from
- * imported files, so `#f00` and `rebeccapurple` both reach the renderers in
+ * Validated rather than assumed. `Tag.color` arrives from imported files, so
+ * `#f00` and `rebeccapurple` both reach the renderers in
  * practice — and the naive `parseInt(slice(0,2), 16)` produced `rgba(NaN, …)`,
  * which canvas ignores in silence. A tag whose colour was written in shorthand
  * simply stopped drawing, with nothing anywhere to say why.

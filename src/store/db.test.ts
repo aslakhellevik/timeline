@@ -29,7 +29,7 @@ afterEach(() => {
 describe('createIndexedDbStore', () => {
   it('starts empty', async () => {
     const db = await store();
-    expect(await db.load()).toEqual({ events: [], connections: [], tags: [], eras: [], packs: [] });
+    expect(await db.load()).toEqual({ events: [], connections: [], tags: [], eras: [] });
   });
 
   it('writes a timeline and hands it back after a reload', async () => {
@@ -97,7 +97,7 @@ describe('createIndexedDbStore', () => {
   it('replaces everything, dropping records the new timeline does not have', async () => {
     const db = await store();
     await db.put('events', [event('old-1'), event('old-2')]);
-    await db.replaceAll({ events: [event('new-1')], connections: [], tags: [], eras: [], packs: [] });
+    await db.replaceAll({ events: [event('new-1')], connections: [], tags: [], eras: [] });
 
     const loaded = await db.load();
     expect(loaded.events.map((e) => e.id)).toEqual(['new-1']);
@@ -207,7 +207,7 @@ describe.skipIf(!hasChannel)('cross-tab notification', () => {
 
     const tabB = await store(name);
     const delivered = nextChange(tabB);
-    await tabA.replaceAll({ events: [event('kept')], connections: [], tags: [], eras: [], packs: [] });
+    await tabA.replaceAll({ events: [event('kept')], connections: [], tags: [], eras: [] });
 
     const change = await delivered;
     expect(change.kind).toBe('events');
@@ -266,10 +266,48 @@ describe('migrations on load (§8.1)', () => {
       },
     });
     await raw.put('events', event('e1', { title: 'Written by the old build' }));
-    // Schema 1 predates packs entirely; the 1 → 2 migration is what settles what
-    // an installed-pack list means on a document that had no concept of one.
     await raw.put('packs', { id: 'pack.junk', created_at: T1, updated_at: T1 });
     raw.close();
+  }
+
+  /**
+   * A database as the last build with packs left it (D70): IndexedDB version 3,
+   * schema 2 in the meta store, a `packs` store, and pack records in the
+   * ordinary stores. Aslak's own timeline is one of these.
+   */
+  async function schema2Database(name: string): Promise<void> {
+    const raw = await openDB(name, 3, {
+      upgrade(database) {
+        for (const kind of ['events', 'connections', 'tags', 'eras', 'packs']) {
+          database.createObjectStore(kind, { keyPath: 'id' });
+        }
+        database.createObjectStore('meta');
+      },
+    });
+    await raw.put('meta', 2, 'schema_version');
+    await raw.put('events', event('mine'));
+    await raw.put('events', {
+      ...event('pack.cold-war/sputnik', { title: 'Sputnik' }),
+      pack: 'pack.cold-war',
+      provenance: { kind: 'pack', ref: 'pack.cold-war' },
+    });
+    await raw.put('packs', {
+      id: 'pack.cold-war',
+      created_at: T1,
+      updated_at: T1,
+      name: 'Cold War',
+      version: '1',
+      license: 'CC BY-SA 4.0',
+      installed_at: T1,
+    });
+    raw.close();
+  }
+
+  async function storeNames(name: string): Promise<string[]> {
+    const raw = await openDB(name);
+    const names = [...raw.objectStoreNames];
+    raw.close();
+    return names;
   }
 
   it('runs the chain over records an older build wrote, and keeps them', async () => {
@@ -280,9 +318,30 @@ describe('migrations on load (§8.1)', () => {
     const loaded = await db.load();
 
     expect(loaded.events.map((e) => e.id)).toEqual(['e1']);
-    // The 1 → 2 migration's whole content: a document from before packs has
-    // none installed. Unmigrated, that junk record was handed to the app.
-    expect(loaded.packs).toEqual([]);
+    expect(Object.keys(loaded).sort()).toEqual(['connections', 'eras', 'events', 'tags']);
+  });
+
+  it('opens a database with packs, keeping their records as the user’s own', async () => {
+    const name = `schema2-${counter++}`;
+    await schema2Database(name);
+
+    const db = await store(name);
+    const loaded = await db.load();
+
+    expect(loaded.events.map((e) => e.id).sort()).toEqual(['mine', 'pack.cold-war/sputnik']);
+    const sputnik = loaded.events.find((e) => e.id === 'pack.cold-war/sputnik');
+    expect(sputnik && 'pack' in sputnik).toBe(false);
+    expect(sputnik?.provenance).toEqual({ kind: 'import', ref: 'pack.cold-war' });
+    expect(await storeNames(name)).not.toContain('packs');
+    expect(await storedVersion(name)).toBe(SCHEMA_VERSION);
+
+    // Written back, not just migrated in memory.
+    db.close();
+    open.length = 0;
+    const raw = await openDB(name);
+    const stored = (await raw.get('events', 'pack.cold-war/sputnik')) as Record<string, unknown>;
+    raw.close();
+    expect('pack' in stored).toBe(false);
   });
 
   it('records the new version, so the migration is paid for once', async () => {
@@ -295,7 +354,8 @@ describe('migrations on load (§8.1)', () => {
 
     // And the write-back really happened: a second load, which now migrates
     // nothing, still sees the migrated state.
-    expect((await db.load()).packs).toEqual([]);
+    expect((await db.load()).events.map((e) => e.id)).toEqual(['e1']);
+    expect(await storeNames(name)).not.toContain('packs');
   });
 
   it('stamps a database it creates with the current version, migrating nothing', async () => {

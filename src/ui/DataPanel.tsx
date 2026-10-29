@@ -264,7 +264,7 @@ export function DataPanel({ demo = false, onClose }: { demo?: boolean; onClose: 
           {confirmingReset ? (
             <>
               <p className="text-xs text-[#e66767]">
-                This deletes every event, connection, era and pack in this browser. It cannot be
+                This deletes every event, connection, era and tag in this browser. It cannot be
                 undone, and nothing else has a copy.
               </p>
               <div className="flex flex-wrap gap-2">

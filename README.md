@@ -13,7 +13,7 @@ talk to people, and its shape says something about what you know and how you con
 
 **v1 is built.** The pure core, the canvas timeline and the list, local-first storage with
 capture, connections and their notes, tag filtering that redistributes the mass, eras in lanes,
-installable packs, and an offline-capable PWA that works on a phone.
+and an offline-capable PWA that works on a phone.
 The concept below is settled; the technical decisions that follow from it live in
 [docs/design.md](docs/design.md).
 
@@ -104,14 +104,8 @@ uncertain events stay smeared while precise ones sharpen. The maths is in
 
 ## Starting from empty
 
-A new timeline is empty — that is the point. Canonical content is available as opt-in **packs**;
-two ship with the app, the Second World War and the Cold War, and both install and uninstall
-cleanly.
-
-Pack events are drawn desaturated and can be excluded from mass, because if canonical events are
-pre-loaded the density plot stops meaning "what I know". The mass is drawn in two layers for the
-same reason — the total in grey, your own share solid inside it. Editing or connecting a pack
-event adopts it as your own, and adopted events survive both an uninstall and a pack update.
+A new timeline is empty, and that is the point: its shape is only a picture of what you know if
+you put everything on it. The demo ([Looking at it](#looking-at-it)) exists for seeing a full one.
 
 ## Deferred
 
@@ -138,7 +132,7 @@ Deduplication, if it ever matters, is a matching problem on top — not a schema
 - **Automatic generation** — consume content (book, PDF, Word doc), produce timeline points from
   it. *(TODO)*
 
-Both are why every record carries provenance from day one: manual, pack, import, or extracted.
+Both are why every record carries provenance from day one: manual or import.
 
 They also both break the privacy baseline — they mean sending your notes and reading history to
 someone else's API. That may be worth doing, but it is a decision to make deliberately against a
@@ -154,7 +148,6 @@ Answered, with rationale in [docs/design.md](docs/design.md):
 | Time representation | One shape — a four-number fuzzy interval — with three input modes: instant (default), interval, fuzzy. Numeric axis is fractional days, proleptic Gregorian, float64 |
 | Mass rendering | Kernel density estimate, screen-space bandwidth, closed-form per event |
 | Event identity | All events personal; no canonical registry |
-| Seed data | Empty by default; canonical content as opt-in packs |
 | Connection types | Free-form only, stored as an ordered pair |
 | Platform | Web app: Vite + TypeScript + React + Tailwind, PWA, installable, desktop and mobile |
 | Local-first vs. server | Local-first; in-memory state, IndexedDB, versioned JSON export |
@@ -178,9 +171,7 @@ src/core/           pure, framework-free, fully tested
   filter.ts         the one filter predicate every view consumes
   search.ts         search, and the capture-time duplicate guard
   quick-add.ts      the capture grammar
-  packs.ts          install, upgrade, adoption, uninstall
   markdown.ts       a small Markdown subset, escape-first (D27)
-src/packs/          the bundled packs — WWII, the Cold War
 src/render/         the canvas renderer — no framework imports (D11)
   arcs.ts           connection arc geometry, colour and hit-testing
   lanes.ts          era lane allocation and bar geometry
@@ -202,7 +193,7 @@ social layer.
 ```
 npm run dev        # your timeline; starts empty
 npm run demo       # a synthetic one, in its own database — opens /?demo
-npm test           # 874 tests
+npm test           # 838 tests
 npm run typecheck
 ```
 

@@ -16,7 +16,7 @@ deferred — but the data model is shaped so that neither requires a migration.
 | D2 | Numeric time is fractional days from an epoch, proleptic Gregorian, astronomical year numbering, float64 |
 | D3 | Mass is a kernel density estimate with a **screen-space** bandwidth |
 | D4 | All events are personal; no canonical event registry in v1 |
-| D5 | Empty timeline by default; canonical content ships as opt-in **packs**, with a `mine / mine + packs` toggle |
+| D5 | Empty timeline by default; ~~canonical content ships as opt-in **packs**, with a `mine / mine + packs` toggle~~ — packs removed, see D70 |
 | D6 | Connections are free-form, but stored as an ordered pair |
 | D7 | Web app: Vite + TypeScript + React + Tailwind, PWA, installable, one codebase for desktop and mobile |
 | D8 | Local-first: in-memory state, IndexedDB persistence, versioned JSON as the portability contract |
@@ -31,7 +31,7 @@ deferred — but the data model is shaped so that neither requires a migration.
 | D17 | ~~Spatial view is v2; `Place` stays in the schema from the start~~ — removed, see D70; `Place` stays in the schema, edited as a name |
 | D18 | MIT licence |
 | D19 | UK English in prose and UI copy; standard programming English in identifiers (`color`, `license`) |
-| D20 | Built-in tags have fixed namespaced IDs; user tags get UUIDv7; packs reference IDs, never names |
+| D20 | Built-in tags have fixed namespaced IDs; user tags get UUIDv7; ~~packs reference IDs, never names~~ — packs removed, see D70 |
 | D21 | Deleting an event soft-deletes its connections, as one undo entry |
 | D22 | A connection renders only if both endpoints pass the filter; personal eras always show |
 | D23 | A searchable, keyboard-navigable list view is v1 scope — the accessibility answer and the way you find things |
@@ -47,16 +47,16 @@ deferred — but the data model is shaped so that neither requires a migration.
 | D33 | ~~The depth view is a **projection, not a camera** — the viewport stays one-dimensional~~ — removed, see D70 |
 | D34 | ~~In the depth view mass is **width**, measured as a rate, not the density grid's per-row count~~ — removed, see D70 |
 | D35 | ~~The depth view's semantic zoom is **per row**, not one number for the frame~~ — removed, see D70 |
-| D36 | Pack record ids are derived from the pack id and the author's key, which is what makes an upgrade an upgrade |
-| D37 | Uninstalling a pack **hard-removes** its content — the one exception to D9's tombstones |
-| D38 | With a pack installed the mass is drawn in **two layers**: the total desaturated, your own share solid inside it |
+| D36 | ~~Pack record ids are derived from the pack id and the author's key, which is what makes an upgrade an upgrade~~ — removed, see D70 |
+| D37 | ~~Uninstalling a pack **hard-removes** its content — the one exception to D9's tombstones~~ — removed, see D70 |
+| D38 | ~~With a pack installed the mass is drawn in **two layers**: the total desaturated, your own share solid inside it~~ — removed, see D70 |
 | D39 | The premade tags are materialised as records on first run, so a typed `#war` attaches to the built-in id |
 | D40 | The service worker is written here rather than taken as a dependency: network-first shell, cache-first fingerprinted assets |
 | D41 | ~~The map uses **Equal Earth** — equal-area, because the view is about how much~~ — removed, see D70 |
 | D42 | ~~The map draws **coastlines, not borders**: borders move on the timescale the timeline covers, coastlines do not~~ — removed, see D70 |
 | D43 | ~~Events with no coordinates are placed by their **region tag**, drawn with a halo at the region's true radius~~ — removed, see D70 |
 | D44 | Tag names are matched **normalised**, and a built-in may carry aliases — a `#tag` is one word and half the premade regions are not |
-| D45 | Uninstalling a pack **tombstones the user's own connections** into departing events, though it still hard-removes the pack's own (D37 is about pack records) |
+| D45 | ~~Uninstalling a pack **tombstones the user's own connections** into departing events, though it still hard-removes the pack's own (D37 is about pack records)~~ — removed, see D70 |
 | D46 | Import **validates every record** and **clamps absurd future timestamps**, reversing §8.7's decision to leave both out of v1 |
 | D47 | An export is recorded as an **export**, never as a backup: the app hands the browser a file and never learns whether it was saved |
 | D48 | The mass scale is calibrated as a **rate**, and turned into a λ for whatever width the frame is drawn at |
@@ -81,7 +81,7 @@ deferred — but the data model is shaped so that neither requires a migration.
 | D67 | ~~A place may be **a name with no coordinates**, and a bundled gazetteer (Natural Earth plus hand-written historical places) turns the names history uses into points, offline~~ — removed, see D70 |
 | D68 | `?demo` opens **a separate database seeded from the synthetic generator**, with backups off and a banner that cannot be dismissed — the app can be shown, and judged, without anyone's real timeline |
 | D69 | ~~A map dot is coloured by **the coloured tag most of its events carry**, an uncoloured sub-region taking its parent's colour — not by the first tag of whichever event sorted first~~ — removed, see D70 |
-| D70 | The depth view, the map and the packs are removed (Oct 2026): one canvas, the flat timeline, plus the list. The product is the mass, the connections and the eras; everything else was weight |
+| D70 | The depth view, the map and the packs are removed (Oct 2026): one canvas, the flat timeline, plus the list. The product is the mass, the connections and the eras; everything else was weight. Schema 3 drops packs: a schema-2 export or database opens with every pack record kept as the user's own (`pack` stripped, provenance `import`) |
 
 Conventions, settled and not worth further discussion:
 
@@ -95,7 +95,7 @@ Conventions, settled and not worth further discussion:
 - `learned_at` is local wall-clock ISO with offset.
 - Dates format as `20 July 1969` (D19).
 - **Two registers of copy, and only two** (D19). Controls, labels and panel titles are
-  lower-case — `your data`, `packs`, `event`, `regions`. Prose addressed to the reader is
+  lower-case — `your data`, `filters`, `event`, `regions`. Prose addressed to the reader is
   sentence case, in whole sentences. There is no third: the screen had lower-case controls,
   Sentence-case headings *and* UPPERCASE labels at once, and the same panel was `your data` in
   the footer and `Your data` in its own heading. A title that names a control takes the
@@ -171,7 +171,7 @@ more than the numbers do — "mid-3rd century BC" and "c. 250 BC" produce identi
 are different claims. Most events will not have it.
 
 **EDTF becomes a boundary converter, not the storage format.** Parse EDTF on import, emit it on
-export, for interop with packs and anything shared later. Simpler than storing it, because the
+export, for interop with anything shared later. Simpler than storing it, because the
 core never has to reason about a string.
 
 The parser is the whole user experience of dates, and it is pure, testable code with no UI
@@ -430,8 +430,7 @@ tag's descendants it carries.
 One filter predicate, evaluated once per frame, consumed by every view (canvas and list).
 Its rules:
 
-- **Events** pass on their own tags, with parent tags rolling up (D14), composed with the
-  `mine / mine + packs` toggle (D5).
+- **Events** pass on their own tags, with parent tags rolling up (D14).
 - **Connections** render only if **both endpoints pass**. Their own tags narrow further; they
   never admit a connection whose endpoints are hidden. Otherwise you get arcs terminating in
   nothing, which reads as a rendering bug.
@@ -463,7 +462,6 @@ type Event = Base & {
   learned_at?: string;          // D10 — when *you* encountered it
   learned_from?: string;        // free text: "Gombrich, ch. 4", "conversation with M"
   provenance: Provenance;
-  pack?: Id;                    // set if this came from an installed pack
 };
 
 type Connection = Base & {
@@ -493,8 +491,7 @@ type Era = Base & {
 type Place = { name: string; lat?: number; lon?: number; precision?: number };
 type Source = { kind: 'book' | 'article' | 'url' | 'conversation' | 'other';
                 ref: string; locator?: string };
-type Provenance = { kind: 'manual' | 'pack' | 'import' | 'ai_extract';
-                    ref?: string; confidence?: number };
+type Provenance = { kind: 'manual' | 'import'; ref?: string; confidence?: number };
 ```
 
 Notes on the non-obvious fields:
@@ -512,8 +509,8 @@ Notes on the non-obvious fields:
   Retrofitting either is genuinely painful; adding them now costs nothing.
 - **Tag IDs (D20).** Built-in tags — the regions and the history-of-ideas set — carry fixed
   namespaced IDs: `tag.region.europe`, `tag.theme.philosophy`. User-created tags get UUIDv7.
-  A tag is built-in if its ID is not a UUID; no extra field needed. This exists so that a pack
-  saying "Europe" attaches to *your* Europe rather than silently creating a second one and
+  A tag is built-in if its ID is not a UUID; no extra field needed. This exists so that an
+  import saying "Europe" attaches to *your* Europe rather than silently creating a second one and
   splitting your filters in a way you would not notice for months.
 
 ### 4.2 Deletion (D21)
@@ -541,81 +538,12 @@ Without building any of it:
   is a *matching* problem solved on top — title similarity plus interval overlap — not a schema
   problem. Keeping a canonical registry out of v1 avoids the hardest question in the project.
 
----
-
-## 5. Packs (D5)
-
-An empty timeline is the point, so canonical content ships as installable packs: versioned JSON
-bundles (`id`, `name`, `version`, `license`, events, eras, suggested tags). Install/uninstall is
-clean because every pack-sourced record carries `pack: <id>`.
-
-The semantic problem worth being deliberate about: **if WWII events are pre-loaded, the density
-plot stops meaning "what I know".** Resolution:
-
-- Packs are opt-in.
-- Pack events render desaturated, and the view has a `mine` / `mine + packs` toggle that changes
-  what contributes mass.
-- "Adopting" a pack event (editing it, connecting it, or an explicit action) converts it to
-  yours: `pack` cleared, `provenance.kind = 'manual'`.
-
-Record `license` per pack — Wikipedia-derived data is CC BY-SA and that propagates.
-
-**Packs reference tags by ID, never by name (D20).** A pack may use a built-in ID
-(`tag.region.europe`) and attach to the tag you already have, or declare its own pack-scoped tag
-which is removed on uninstall. It may not introduce a bare name and hope for a match — that is
-how you end up with two Europes and a filter that quietly shows half of what it should.
-
-Pack install and data import share one code path.
-
-### 5.1 As built (M5)
-
-Two packs ship in the app: the Second World War and the Cold War, forty-odd events each with
-their own connections and eras. **Skeletons, not chronicles** — a pack that tried to be complete
-would bury the user's own events under it, which is the failure this section exists to avoid.
-They are statically imported so installing one makes no network request (D25) and works offline.
-
-**Record ids are `<pack id>/<author key>` (D36).** That is what makes an upgrade an upgrade:
-version two produces the same ids as version one, so the merge rule updates records in place
-instead of installing a second copy of everything. Records arrive from the bundle without ids or
-timestamps and the installer stamps them, so a pack author cannot forge a timestamp newer than
-the user's work.
-
-**Adoption happens on edit, and that simplifies the upgrade rule.** §5 above asks a pack upgrade
-to skip any record whose `pack` has been cleared *or* whose `updated_at` is later than the
-install it came from. Because editing or connecting a pack record clears `pack`, the second
-condition can never hold without the first — so the merge needs no install timestamps to be safe,
-and `mergeDocument`'s single clause covers it.
-
-**Uninstall hard-removes (D37).** The one place D9's "never delete, sync needs tombstones" does
-not apply, and not by oversight: pack content is not the user's data and is re-derivable from the
-bundle, while a tombstone would carry a newer `updated_at` than the bundle and make reinstalling
-restore nothing.
-
-**The user's own connections into a departing event are tombstoned, not dropped (D45).** They
-still have to leave the view — an arc into a hole is what D37's last clause was avoiding — but
-every reason D37 gives for hard removal is a reason about *pack* records: re-derivable from the
-bundle, and blocked by a tombstone on reinstall. Neither is true of an argument somebody wrote
-themselves about why two things belong together, which is the part of this app that is hardest to
-replace. A tombstone leaves it recoverable, and reinstalling the pack does not resurrect it, which
-is right: a connection nobody has seen for a year should not silently reappear. The confirmation
-counts the two kinds separately for the same reason — it used to say only how many events would
-go, which is the count that matters least, since pack events come back with one click.
-
-**The mass is drawn in two layers (D38).** The `mine / mine + packs` toggle turned out not to be
-enough on its own: with a pack installed and the toggle on, a wall of canonical events simply
-reads as knowledge. So the total is drawn desaturated and the user's own share solid inside it,
-as two filled curves. That says what the toggle only implies. Marks and labels are dimmed and shortened for pack
-records on the same reasoning, and shorter as well as dimmer because colour alone is not a
-distinction everyone can see.
+### 4.3 The premade tags (D39, D44)
 
 **The premade tags are materialised as records (D39).** They existed only as constants, and
 `ensureTags` matches by name — so on a timeline that had never created them, typing `#war`
-invented a private tag beside the one every pack event carried, and the vocabulary forked in two.
-Exactly what fixed namespaced ids were meant to prevent. First run now creates them, and a pack
-brings the ones it references, emitted without `pack` since they are shared and an uninstall must
-not take away a tag the user's own events also carry — and with a floor timestamp, so that
-installing a pack adds a missing tag without ever overwriting one the user has renamed or
-recoloured (§8.7).
+invented a private tag beside the built-in one, and the vocabulary forked in two. Exactly what
+fixed namespaced ids were meant to prevent. First run now creates them.
 
 **The premade names have to be typeable (D44).** D39 materialised the tags, and the fork came
 back anyway through the other end of the same pipe: a `#tag` is one word, and eight of the twenty
@@ -628,11 +556,6 @@ The normalisation applies to the user's own tags too, so "Reading List" answers 
 `#reading-list`. A name that means a premade tag now materialises that tag at its fixed id rather
 than waiting for first run, which makes D39 a convenience rather than the thing correctness rests
 on.
-
-**Pack upgrades must not overwrite your work.** Merge-by-`id` on a newer pack version would
-otherwise clobber an event you adopted and rewrote, since the pack's `updated_at` is newer. Rule:
-a pack upgrade skips any record whose `pack` has been cleared, or whose `updated_at` is later
-than the install it came from.
 
 ---
 
@@ -895,9 +818,6 @@ Tags are emitted as **names**, never ids, so that `ensureTags` remains the singl
 means (D20, D44) — one `commit` covers resolving the names, inventing any that are new, and the
 edit itself, so an undo takes back the tag and the tagging together.
 
-The "from a pack" line moved **above** the title. It is a warning about the edit that adoption
-will trigger (§5.1), and under the title it was read after the thing it is about had been done.
-
 **A `listbox`, not a `grid` (D61).** The accessibility claim above was, for a while, only a
 claim: the rows were `role="row"` over bare `<span>`s inside `role="grid"`, and a grid whose
 rows contain no cells announces nothing at all — the one view that exists to be the accessible
@@ -984,8 +904,8 @@ pick away. The backdrop now dismisses and leaves the pick armed, which is what t
 explains; Escape cancels, because that is the exit you mean.
 
 **Escape, and what a modal is (D60).** Every dismissible thing wanted the same key and each one
-answered for itself: the data panel closed on it, the packs panel ignored it, the detail pane
-ignored it, and an armed pick cancelled from a window listener underneath all of them — so the
+answered for itself: the data panel closed on it, the detail pane ignored it, and an armed pick
+cancelled from a window listener underneath all of them — so the
 app had no answer to "what does Escape do here" beyond which component had happened to bind it.
 There is now one stack: layers register in mount order, only the topmost acts, and the ones
 beneath stay bound so closing the top hands the key back. A keystroke a field has already spent
@@ -1019,8 +939,8 @@ and the output is assembled from a fixed set of tags the module emits itself, so
 path from input text to live markup and nothing for a sanitiser to get wrong later.
 
 That matters more than it looks. The social layer plans to let someone "inherit or fork someone's
-connection with its explanation", which makes a note untrusted text the moment it ships; pack
-content is untrusted already. Escaping first makes that safe by construction rather than by
+connection with its explanation", which makes a note untrusted text the moment it ships; an
+imported file is untrusted already. Escaping first makes that safe by construction rather than by
 remembering to sanitise at each boundary. Link `href`s are checked against an allowlist of
 schemes, not a `javascript:` denylist — the ways to smuggle a script URL past a denylist are
 numerous and well catalogued, and the ways to write a legitimate link are three.
@@ -1085,9 +1005,7 @@ since a copy of the timeline was written, what went wrong — plus the two thing
 that state, undoing the last change and the panel that explains the backup age. `+ era` moved
 to the header beside the view nav, because an era is derived from the viewport — you zoom to
 the period you mean and press the button — which makes it the same kind of act as choosing a
-view. `?` sits at the far right of the header. `packs` stays in the footer, since what is
-installed changes what the picture *means* (D38), which is the same sort of claim as the counts
-beside it; it is underlined so it reads as a way in rather than as another reading. Undo names
+view. `?` sits at the far right of the header. Undo names
 what it will undo — `undo add event` — which the store has always known and the button never
 said.
 
@@ -1142,9 +1060,9 @@ targets are D58's other half).
   the top of the footer and the wordmark goes; capture keeps the width, which is the priority
   §9 sets. `+ era` and `?` stay in the header, at 44 px.
 - **Nothing was tappable.** The nav buttons were 24 px tall, `filters` — the only route to
-  filtering on a phone — was 27×17, the packs checkbox was 13×13 and the footer's buttons were
+  filtering on a phone — was 27×17, a checkbox was 13×13 and the footer's buttons were
   16 px. Every single-row control is now at least 44 px tall below `sm`, with the visual size
-  unchanged; the two checkboxes became labelled toggle buttons, which say their own state and
+  unchanged; the checkboxes became labelled toggle buttons, which say their own state and
   match the tag chips they sit beside. The chips themselves stop at 32 px on purpose: they wrap
   into a grid four pixels apart, and a 44 px target there would overlap the row above it and
   swallow the tap meant for another tag.
@@ -1296,8 +1214,7 @@ one.
 
 **Import merges by `id`; it never replaces.** Restoring a backup onto a store that has since
 diverged has to be safe, or backups are a trap. Per record: newer `updated_at` wins, tombstones
-respected. This is also exactly the code path pack install uses — one function, three callers
-(import, restore, pack install).
+respected. Import and restore are one function, `mergeDocument`.
 
 ### 8.4 Is it easy?
 
@@ -1307,7 +1224,7 @@ Yes — this is the cheapest part of the project. Roughly:
 |---|---|---|
 | IndexedDB store + debounced writes | ~150 lines with `idb` | half a day |
 | FSA folder handle, permission flow, rotating snapshots | ~150 lines | half a day, mostly permission UX |
-| Export / import / merge | ~100 lines, shared with packs | half a day |
+| Export / import / merge | ~100 lines | half a day |
 
 Call it **two days including the settings UI and the backup indicator.** Do it in M2, before
 there is data worth losing. The hard part is not the code, it is remembering that the code has to
@@ -1378,14 +1295,8 @@ Found while building it, and worth writing down before the sync layer inherits t
 - **Field-level concurrent edits vanish without trace.** Two tabs editing different fields of one
   event: the older edit is simply gone. Acceptable for single-user v1; this is the seam the
   deferred sync layer will tear at first.
-- **§5's pack rule is not literally implementable.** It says to skip a record whose `updated_at`
-  is later than *the install it came from*, but nothing records the installed version's
-  timestamp. The implementation compares against the incoming record instead. The two differ only
-  for a record edited without being adopted — which §5 says cannot happen — and closing the gap
-  properly needs a `pack_updated_at` on `Base`.
 - **An incoming document is a claim only about the records it contains, never the ones it omits.**
-  That is what makes restore safe, and it means merging can never uninstall a pack; uninstall has
-  to be its own operation.
+  That is what makes restore safe.
 - **`replaceAll` broadcasts the union of removed and written ids**, since the change signal
   carries ids only and a receiving tab must learn about removals too. The receiver's rule is
   "re-read these ids, drop the ones that are gone" — and the receiver now actually implements it.
@@ -1393,17 +1304,12 @@ Found while building it, and worth writing down before the sync layer inherits t
   receiving tab had typed since its last flush; the record it *had* just been told about was the
   only one it was entitled to overwrite. The splice keeps the local record where that is the newer
   of the two, and clears the undo stack outright, because every step on it was computed against a
-  timeline that no longer exists. A `replaceAll` announces once per kind, so the five messages are
+  timeline that no longer exists. A `replaceAll` announces once per kind, so the four messages are
   gathered into one reload.
 - **An undo is a new write, not an old one.** Restoring a record put its old `updated_at` back, so
   a backup taken between the action and the undo compared as newer and silently re-applied the
   change the user had just taken back. The content is old; the write is new, and it is stamped
   accordingly.
-- **The premade tags a pack carries are upsert-if-absent.** They are references, not content: a
-  pack that mentions Europe needs Europe to exist and has nothing to say about what it is called.
-  Emitted with `now`, they were newer than the user's own rename and the merge rule dutifully
-  undid it on every install. They now carry a floor timestamp, so they are added when missing and
-  never preferred over anything already there.
 - **On iOS there is no layer 2 at all.** The plan reads as three layers; on the one platform with
   a 7-day storage cap it is one and a half, and the home-screen prompt is the actual durability
   mechanism rather than an onboarding nicety.
@@ -1460,8 +1366,8 @@ Ordered to put the risky, distinctive work first and the CRUD last.
 | ~~**M1**~~ | ✅ Canvas renderer against synthetic data: linear axis, pan/zoom, density field, semantic zoom crossfade, calendar-correct ticks at every scale, selective labels, hover crosshair. The far view works — it reads as a picture of what someone knows, with the gaps legible at a glance. |
 | ~~**M2**~~ | ✅ IndexedDB store with cross-tab sync, quick-add capture with a duplicate guard, event detail, the searchable list view, export/import/merge, the three durability layers, URL state, first run. |
 | ~~**M3**~~ | ✅ Connections: the creation flow from both the picker and the canvas, arcs with tag colour and additive blending, hit-testing and selection on the canvas, the Markdown subset and the note editor, connections in the event pane. 598 tests. |
-| ~~**M4**~~ | ✅ Tag filtering with rolled-up counts and the packs toggle, animated mass redistribution, era lanes below the axis, era creation and editing. 635 tests. |
-| ~~**M5**~~ | ✅ Two bundled packs with install, upgrade, adoption and uninstall; the two-layer mass; the premade tags as records; a hand-rolled service worker with verified offline loading; the mobile layout. 687 tests. |
+| ~~**M4**~~ | ✅ Tag filtering with rolled-up counts, animated mass redistribution, era lanes below the axis, era creation and editing. 635 tests. |
+| ~~**M5**~~ | ✅ The premade tags as records; a hand-rolled service worker with verified offline loading; the mobile layout. (Bundled packs also shipped here, and were removed in D70.) 687 tests. |
 | **Later** | AI-suggested tags · document ingestion · social layer and sync. |
 
 **M1 is the decision point.** Everything before it is cheap; everything after it assumes the
@@ -1475,7 +1381,7 @@ view of nothing is nothing. Ask one question, a birth year, and create the "my l
 That single question does real work: the timeline is never blank, the personal frame of reference
 exists from the first minute, and the idea the whole project rests on — *an event is not just in
 1847, it is during your great-grandmother's childhood* — is demonstrated before the user has
-added anything. Offer the packs immediately after, and no more onboarding than that.
+added anything. No more onboarding than that.
 
 **Skip creates nothing, which revises D26 to an offer (D59).** `skip` used to seed the life era
 from `this year − 30`, so declining to answer left a personal era on the axis claiming to be
@@ -1485,12 +1391,12 @@ materialises the premade vocabulary and nothing else: the tags have nothing to d
 question and everything to do with a typed `#war` attaching to the built-in tag (D39). The offer
 does not disappear with the screen — while no personal era exists, the filter bar carries a
 small `add my life`, which asks the same question again and says so in its own words, without
-the onboarding prose or the pack step. And the form now gives a reason when it refuses a year:
+the onboarding prose. And the form now gives a reason when it refuses a year:
 `1850` was rejected by `parsed > 1850` with nothing on screen but a disabled button.
 
 **Onboarding is a takeover (D58).** It used to render inside the shell, so the header and footer
-stayed live behind the one question the app asks: you could add an event, switch views or open
-the packs panel while being asked your birth year, and "never backed up" glowed amber before
+stayed live behind the one question the app asks: you could add an event or switch views
+while being asked your birth year, and "never backed up" glowed amber before
 there was anything to back up. It returns before the shell now, as the loading and error states
 already did.
 
@@ -1498,9 +1404,7 @@ already did.
 
 The empty start is right for the person whose timeline it is and wrong for everyone else: a
 friend shown the app sees one question and a blank axis, and nothing in it — the mass, the arcs,
-the eras — can be judged against a corpus without shape. Packs do not fix that; two
-wars are a narrow slice, and installing them into a real timeline to make a point is exactly the
-contamination §5 warns about.
+the eras — can be judged against a corpus without shape.
 
 So `/?demo` opens a **second database**, `arlinje-demo`, and fills it from the synthetic
 generator the renderer was tuned against (2,000 events, 400 connections, 20 eras, every name
@@ -1564,9 +1468,6 @@ the right time to make them is after M1 is on screen:
    swappable scale function, so it costs nothing to try later.
 5. **Connection taxonomy.** Free-form in v1 by decision; whether a light vocabulary emerges is
    something to learn from a few hundred real connections, not to specify now.
-6. **Pack authoring.** Hand-written JSON, or "export a filtered subset as a pack"? The second is
-   nicer and nearly free given that export already exists — but it is an M5 question, and the
-   first pack can be written by hand either way.
 
 Outside the design: the app is called **Årlinje**, provisionally — the name may change, so keep
 it out of module names and types. `arlinje` is the ASCII form, used for the package and anywhere

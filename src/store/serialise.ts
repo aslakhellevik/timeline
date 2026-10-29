@@ -1,8 +1,7 @@
 /**
  * The portability contract: documents in, documents out, and the one merge
- * function that import, backup restore and pack install all share.
- * See docs/design.md §8.1 (versioned JSON, migrations), §8.3 (merge by id) and
- * §5 (pack upgrades must not overwrite your work).
+ * function that import and backup restore share.
+ * See docs/design.md §8.1 (versioned JSON, migrations) and §8.3 (merge by id).
  *
  * Nothing here touches IndexedDB or the DOM. It is pure data, which is why the
  * merge rule — the part that can silently lose a decade of work — is testable
@@ -20,7 +19,6 @@ export const RECORD_KINDS: readonly RecordKind[] = [
   'connections',
   'tags',
   'eras',
-  'packs',
 ];
 
 /** Written into `generator` so a stale export can be traced to what wrote it. */
@@ -73,10 +71,38 @@ export type Migration = (doc: TimelineDocument) => TimelineDocument;
  * loudly if the two ever disagree.
  */
 export const MIGRATIONS: readonly Migration[] = [
-  // 1 → 2: packs became records of their own (§5). A document written before
-  // them simply has none installed; nothing else about it changes.
-  (doc) => ({ ...doc, packs: [] }),
+  // 1 → 2: added an empty list of installed packs. 2 → 3 removes packs again,
+  // so there is nothing left for this step to do.
+  (doc) => doc,
+  // 2 → 3: packs are gone (D70). The list of installed packs is dropped, and
+  // every record a pack brought becomes the user's own: its `pack` id is
+  // stripped and a provenance the app no longer knows reads as an import.
+  (doc) => {
+    const { packs: _packs, ...rest } = doc as TimelineDocument & { packs?: unknown };
+    return {
+      ...rest,
+      events: asArray(rest.events).map(ownRecord),
+      connections: asArray(rest.connections).map(ownRecord),
+      tags: asArray(rest.tags).map(ownRecord),
+      eras: asArray(rest.eras).map(ownRecord),
+    };
+  },
 ];
+
+/** Provenance kinds older schemas wrote that this one folds into `import`. */
+const RETIRED_PROVENANCE = new Set(['pack', 'ai_extract']);
+
+/** A record as schema 2 may have written it, made the user's own (2 → 3). */
+function ownRecord<T>(record: T): T {
+  if (!isObject(record)) return record;
+  const own: Record<string, unknown> = { ...record };
+  delete own.pack;
+  const provenance = own.provenance;
+  if (isObject(provenance) && RETIRED_PROVENANCE.has(provenance.kind as string)) {
+    own.provenance = { ...provenance, kind: 'import' };
+  }
+  return own as T;
+}
 
 /**
  * Runs the chain from whatever version the document declares up to
@@ -135,7 +161,6 @@ export function toDocument(timeline: Timeline, options: ToDocumentOptions = {}):
     connections: timeline.connections.slice(),
     tags: timeline.tags.slice(),
     eras: timeline.eras.slice(),
-    packs: timeline.packs.slice(),
   };
 }
 
@@ -147,7 +172,6 @@ export function fromDocument(doc: TimelineDocument): Timeline {
     connections: asArray(migrated.connections),
     tags: asArray(migrated.tags),
     eras: asArray(migrated.eras),
-    packs: asArray(migrated.packs),
   };
 }
 
@@ -168,13 +192,13 @@ export function parseDocument(text: string): TimelineDocument {
 }
 
 /**
- * Shape-checks an already-parsed value — the entry point for a pack bundle that
- * arrives as an object rather than a file (§5: pack install and import are one
- * code path).
+ * Shape-checks an already-parsed value.
  *
- * Deliberately lenient about the record arrays: a hand-written pack that omits
- * `connections` should install, not fail. It is strict about `schema_version`,
+ * Deliberately lenient about the record arrays: a hand-written file that omits
+ * `connections` should import, not fail. It is strict about `schema_version`,
  * because that is the field which decides how everything else is interpreted.
+ * Anything else a document carries — such as the `packs` list of schema 2 — is
+ * dropped here.
  */
 export function asDocument(raw: unknown): TimelineDocument {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
@@ -194,7 +218,6 @@ export function asDocument(raw: unknown): TimelineDocument {
     connections: asArray(source.connections),
     tags: asArray(source.tags),
     eras: asArray(source.eras),
-    packs: asArray(source.packs),
   };
   if (typeof source.generator === 'string') doc.generator = source.generator;
   return doc;
@@ -259,12 +282,6 @@ export function isWellFormedRecord(kind: RecordKind, value: unknown): boolean {
       );
     case 'tags':
       return typeof value.name === 'string' && typeof value.kind === 'string';
-    case 'packs':
-      return (
-        typeof value.name === 'string' &&
-        typeof value.version === 'string' &&
-        typeof value.installed_at === 'string'
-      );
   }
 }
 
@@ -277,8 +294,7 @@ function hasBaseFields(record: Record<string, unknown>): boolean {
   if (typeof record.id !== 'string' || record.id.length === 0) return false;
   if (typeof record.created_at !== 'string') return false;
   if (typeof record.updated_at !== 'string') return false;
-  if (record.deleted_at !== undefined && typeof record.deleted_at !== 'string') return false;
-  return record.pack === undefined || typeof record.pack === 'string';
+  return record.deleted_at === undefined || typeof record.deleted_at === 'string';
 }
 
 function isIdList(value: unknown): boolean {
@@ -296,7 +312,7 @@ function isPlace(value: unknown): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Merge (§8.3, §5)
+// Merge (§8.3)
 // ---------------------------------------------------------------------------
 
 /** The fields the merge rule reads. Every record kind has them (`Base`). */
@@ -304,7 +320,6 @@ interface MergeableRecord {
   id: string;
   updated_at: string;
   deleted_at?: string;
-  pack?: string;
 }
 
 export interface MergeOptions {
@@ -322,7 +337,6 @@ export interface MergeOptions {
  *   - unknown id           → added
  *   - newer `updated_at`   → replaces the local one
  *   - older or equal       → skipped, so the local edit survives
- *   - locally adopted      → skipped, even if the incoming record is newer (§5)
  *
  * Tombstones need no special case and get none: a delete is a write with a
  * newer `updated_at`, so it propagates like any other change, and an old
@@ -334,7 +348,7 @@ export interface MergeOptions {
  *
  * Validation lives here rather than in `asDocument` because this is where a
  * record actually enters the timeline — every route in (file import, backup
- * restore, pack install) goes through this one function, and only this one has
+ * restore) goes through this one function, and only this one has
  * somewhere to report what it threw away.
  */
 export function mergeDocument(
@@ -358,7 +372,6 @@ export function mergeDocument(
 
   const tags = mergeKind(current.tags, asArray(doc.tags), 'tags', now);
   const eras = mergeKind(current.eras, asArray(doc.eras), 'eras', now);
-  const packs = mergeKind(current.packs, asArray(doc.packs), 'packs', now);
 
   return {
     timeline: {
@@ -366,14 +379,12 @@ export function mergeDocument(
       connections: connections.records,
       tags: tags.records,
       eras: eras.records,
-      packs: packs.records,
     },
     stats: {
       events: events.stats,
       connections: connections.stats,
       tags: tags.stats,
       eras: eras.stats,
-      packs: packs.stats,
     },
   };
 }
@@ -448,12 +459,6 @@ function clampFuture<T extends MergeableRecord>(record: T, now: Date): T {
 
 /** Whether `theirs` should overwrite `mine`. */
 function accepts(mine: MergeableRecord, theirs: MergeableRecord): boolean {
-  // §5 — a pack upgrade skips any record whose `pack` has been cleared. Adopting
-  // a pack event (editing it, connecting it, or explicitly) clears `pack`, and
-  // the next version of the pack carries a newer `updated_at` than the edit, so
-  // without this clause every upgrade would quietly rewrite the user's work.
-  if (theirs.pack !== undefined && mine.pack === undefined) return false;
-
   // §8.3 — newer `updated_at` wins. Ties keep what is already here: a merge
   // should never be able to change a record it has no new information about.
   return compareTimestamps(theirs.updated_at, mine.updated_at) > 0;
@@ -500,8 +505,8 @@ function asArray<T>(value: readonly T[] | undefined): T[] {
 
 /**
  * Accepted records are copied, so a merged timeline never aliases the document
- * it came from — a pack object held in memory must not change when the user
- * edits the event it installed.
+ * it came from — a document object held in memory must not change when the
+ * user edits an event it brought.
  */
 function clone<T>(value: T): T {
   return typeof structuredClone === 'function'

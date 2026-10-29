@@ -9,7 +9,7 @@
  *
  * The three layers of §8.3 are: claim persistence (`durability`), back up to a
  * real folder (`backup`), and always allow a manual export (`backup` again).
- * Import, restore and pack install are one function — `mergeDocument`.
+ * Import and restore are one function — `mergeDocument`.
  */
 
 export type {

@@ -57,7 +57,6 @@ export function makePredicates(timeline: Timeline, filter: Filter): Predicates {
 
   const event = (candidate: TimelineEvent): boolean => {
     if (candidate.deleted_at) return false;
-    if (candidate.pack && !filter.includePacks) return false;
     if (filtering && !carriesWantedTag(candidate.tags)) return false;
     return true;
   };
@@ -75,7 +74,6 @@ export function makePredicates(timeline: Timeline, filter: Filter): Predicates {
      */
     connection: (candidate: Connection): boolean => {
       if (candidate.deleted_at) return false;
-      if (candidate.pack && !filter.includePacks) return false;
       if (!passing.has(candidate.from) || !passing.has(candidate.to)) return false;
       if (filtering && candidate.tags.length > 0 && !carriesWantedTag(candidate.tags)) return false;
       return true;
@@ -90,7 +88,6 @@ export function makePredicates(timeline: Timeline, filter: Filter): Predicates {
     era: (candidate: Era): boolean => {
       if (candidate.deleted_at) return false;
       if (candidate.kind === 'personal') return true;
-      if (candidate.pack && !filter.includePacks) return false;
       if (filtering && !carriesWantedTag(candidate.tags)) return false;
       return true;
     },
@@ -105,13 +102,10 @@ export function applyFilter(timeline: Timeline, filter: Filter): Timeline {
     connections: timeline.connections.filter(predicates.connection),
     tags: timeline.tags.filter((tag) => !tag.deleted_at),
     eras: timeline.eras.filter(predicates.era),
-    // Installed packs are not filtered: which packs you have is a fact about the
-    // timeline, not a record on it.
-    packs: timeline.packs,
   };
 }
 
-export const NO_FILTER: Filter = { tags: [], includePacks: true };
+export const NO_FILTER: Filter = { tags: [] };
 
 export interface TagUsage {
   tag: Tag;
@@ -134,14 +128,13 @@ export interface TagUsage {
  * caller is better placed to decide whether an empty premade tag is worth
  * showing than this function is.
  */
-export function tagUsage(timeline: Timeline, includePacks = true): TagUsage[] {
+export function tagUsage(timeline: Timeline): TagUsage[] {
   const ancestry = buildAncestry(timeline.tags);
   const own = new Map<Id, number>();
   const total = new Map<Id, number>();
 
   for (const event of timeline.events) {
     if (event.deleted_at) continue;
-    if (event.pack && !includePacks) continue;
 
     // Deduped across the event's tags: something tagged both Norway and Europe
     // must not count twice towards Europe. The event's own list is deduped too —

@@ -6,7 +6,7 @@
  * what makes offline creation and any later sync possible.
  *
  * Built-in records (the premade tags) instead get fixed namespaced ids like
- * `tag.region.europe`. This is what lets a pack say "Europe" and attach to the
+ * `tag.region.europe`. This is what lets an import say "Europe" and attach to the
  * Europe you already have, rather than silently creating a second one.
  */
 
