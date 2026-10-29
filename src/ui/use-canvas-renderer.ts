@@ -305,7 +305,7 @@ export function useCanvasRenderer<R extends TimeCanvas>({
   }, [selectedId, selectedConnectionId, selectedEraId, connectFrom]);
 
   /**
-   * Brings the selected event into view (§6.1).
+   * Brings the selected event into view (§5.1).
    *
    * Selecting something used to leave the picture exactly where it was, which
    * made the first thing anyone does with a link — open `#e=…` — look broken:

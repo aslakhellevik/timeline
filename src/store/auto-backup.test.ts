@@ -1,5 +1,5 @@
 /**
- * The schedule that makes layer 2 automatic (docs/design.md §8.3).
+ * The schedule that makes layer 2 automatic (docs/design.md §7.3).
  *
  * Everything here is about *when* a snapshot is taken, never about what one
  * contains — `writeSnapshotTo` owns that, and is tested in `backup.test.ts`.
@@ -136,7 +136,7 @@ describe('startAutoBackup', () => {
   });
 
   it('flushes the write queue before taking the snapshot', async () => {
-    // The debounce window is the likeliest data-loss path (§8.7): a snapshot
+    // The debounce window is the likeliest data-loss path (§7.7): a snapshot
     // taken without flushing can be missing the edits it exists to protect.
     const order: string[] = [];
     const h = harness({
@@ -209,7 +209,7 @@ describe('startAutoBackup', () => {
     expect(h.write).not.toHaveBeenCalled();
   });
 
-  it('keeps §8.3’s ten minutes', () => {
+  it('keeps §7.3’s ten minutes', () => {
     expect(AUTO_BACKUP_INTERVAL_MS).toBe(10 * 60_000);
   });
 });

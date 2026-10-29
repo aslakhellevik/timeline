@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import type { RefObject } from 'react';
 
 /**
- * What a modal has to do besides look like one (docs/design.md §6.4).
+ * What a modal has to do besides look like one (docs/design.md §5.4).
  *
  * Three panels carried `aria-modal="true"` and none of them behaved like a
  * modal: Tab walked straight out of the dialog and down the chrome behind it,
@@ -90,7 +90,7 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>): void {
        * editor with `autoFocus` in the same commit — and React applies that
        * while the DOM changes, before this cleanup runs. Restoring
        * unconditionally would take the cursor straight back out of the note,
-       * which is the one place §6.4 says the flow should land.
+       * which is the one place §5.4 says the flow should land.
        */
       const active = document.activeElement;
       const unclaimed = active === null || active === document.body;

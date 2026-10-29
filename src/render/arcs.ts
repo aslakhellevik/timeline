@@ -1,5 +1,5 @@
 /**
- * Connection arcs (docs/design.md §6.1).
+ * Connection arcs (docs/design.md §5.1).
  *
  * Quadratic Béziers above the axis. Split out from the renderer because the
  * geometry is the part with decisions in it — how tall an arc gets, which ones
@@ -302,7 +302,7 @@ const TIE_EPSILON = 1;
  * How much to dim each stroke once a great many arcs are laid down at once.
  *
  * `lighter` compositing has no ceiling — that is the property that makes a
- * bundle read as structure (§6.1), and it is also what drives the modern peak of
+ * bundle read as structure (§5.1), and it is also what drives the modern peak of
  * a large corpus towards white, where two hundred crossings and two thousand are
  * the same flat slab and the structure is gone again. Ink per stroke falls as
  * `1/√n`, so the *total* ink laid down still grows — as `√n` — and a busier

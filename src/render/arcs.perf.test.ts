@@ -4,7 +4,7 @@ import { interval } from '../core/time';
 import { DEFAULT_ARC_LIMIT, buildArcIndex, hitTestArc, layoutArcs } from './arcs';
 
 /**
- * The stated budget (design.md §6.1): 50k events, 10k connections, 60 fps.
+ * The stated budget (design.md §5.1): 50k events, 10k connections, 60 fps.
  *
  * Warmed up before timing, because a first pass through an unoptimised function
  * measures the JIT rather than the code.

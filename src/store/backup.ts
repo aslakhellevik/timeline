@@ -1,5 +1,5 @@
 /**
- * Layers 2 and 3 of docs/design.md §8.3.
+ * Layers 2 and 3 of docs/design.md §7.3.
  *
  * Layer 2 — automatic file backup. The user picks a folder once; the
  * `FileSystemDirectoryHandle` is structured-cloneable, so it lives in IndexedDB
@@ -36,11 +36,11 @@ const LAST_EXPORT_KEY = 'last-export-at';
 /**
  * Snapshots kept, which is **twenty days, not twenty saves**: the filename is
  * the local date, so every write after the first on a given day overwrites that
- * day's file (§8.3).
+ * day's file (§7.3).
  */
 export const SNAPSHOT_RETENTION = 20;
 
-/** The indicator turns amber past this (§8.3). */
+/** The indicator turns amber past this (§7.3). */
 export const BACKUP_STALE_DAYS = 7;
 
 const SNAPSHOT_PATTERN = /^timeline-\d{4}-\d{2}-\d{2}\.json$/;
@@ -352,7 +352,7 @@ export interface DownloadExportOptions {
 }
 
 /**
- * Hands the browser a file to save (§8.3, layer 3). Available everywhere; on
+ * Hands the browser a file to save (§7.3, layer 3). Available everywhere; on
  * Safari and Firefox it is the whole backup story.
  *
  * **What this records is an export, not a backup, and the difference is not

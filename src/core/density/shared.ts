@@ -40,7 +40,7 @@ export const DEFAULT_SUPERSAMPLE = 4;
 /**
  * Compression applied to λ before it becomes a height (§3.4).
  *
- * Set by eye against the synthetic corpus, as §10 anticipated. A square root —
+ * Set by eye against the synthetic corpus, as §9 anticipated. A square root —
  * the design's first guess — is not enough: a realistic personal timeline spans
  * roughly 500:1 between the Second World War and the early middle ages, which
  * √ only flattens to 22:1, leaving everything before 1000 AD as a sliver at the

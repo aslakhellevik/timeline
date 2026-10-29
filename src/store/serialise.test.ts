@@ -345,7 +345,7 @@ describe('mergeDocument — tombstones (D9)', () => {
   });
 });
 
-describe('mergeDocument — restoring a backup onto a diverged store (§8.3)', () => {
+describe('mergeDocument — restoring a backup onto a diverged store (§7.3)', () => {
   it('keeps every edit made since the backup, and restores what was lost', () => {
     // The backup: three events as they were in January.
     const backup = doc({
@@ -394,7 +394,7 @@ describe('mergeDocument — restoring a backup onto a diverged store (§8.3)', (
 });
 
 /**
- * §8.7. Everything below is data the app is not entitled to trust: a file the
+ * §7.7. Everything below is data the app is not entitled to trust: a file the
  * user edited by hand, a file written by somebody else, a device with the wrong
  * date. The store is trusted absolutely by everything downstream, so the merge
  * is where the checking has to happen.
@@ -523,7 +523,7 @@ describe('mergeDocument — hostile and hand-edited documents', () => {
   });
 });
 
-describe('mergeDocument — the future-timestamp guard (§8.7)', () => {
+describe('mergeDocument — the future-timestamp guard (§7.7)', () => {
   const NOW = new Date('2026-08-15T12:00:00Z');
   const soon = new Date(NOW.getTime() + 3 * 3_600_000).toISOString();
   const absurd = '2035-01-01T00:00:00.000Z';

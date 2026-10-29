@@ -11,7 +11,7 @@ import { Button, Field, plural } from './controls';
 import { useDraft } from './use-draft';
 
 /**
- * The selected event (docs/design.md §6.2).
+ * The selected event (docs/design.md §5.2).
  *
  * **Editable, which it was not.** The pane showed the title, the date and the
  * tags as text and offered no way to change any of them: a mistyped title from
@@ -20,7 +20,7 @@ import { useDraft } from './use-draft';
  * fix was delete and retype. The store had `updateEvent` covering all three the
  * whole time.
  *
- * Every field commits on blur or Enter, never per keystroke (§6.5). The date is
+ * Every field commits on blur or Enter, never per keystroke (§5.5). The date is
  * one text box because `formatTime` round-trips through `parseTime` — see
  * `TimeField` for why that removes the mode selector §2.2 imagined.
  */

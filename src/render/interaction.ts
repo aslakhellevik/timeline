@@ -1,5 +1,5 @@
 /**
- * Turns gestures into viewport changes (docs/design.md §6.1).
+ * Turns gestures into viewport changes (docs/design.md §5.1).
  *
  * Wheel zooms at the cursor, drag pans, two fingers pinch, arrows pan and +/-
  * zoom. All of it goes through the pure functions in `viewport.ts`; nothing here
@@ -33,7 +33,7 @@ export interface InteractionHandlers {
   getViewport: () => Viewport;
   /**
    * `eased` asks for the change to be animated rather than applied at once
-   * (§6.1).
+   * (§5.1).
    *
    * The distinction is between gestures that are already continuous and
    * gestures that are one discrete jump. A drag or a wheel arrives as a stream

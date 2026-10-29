@@ -212,7 +212,7 @@ describe('undo through the store', () => {
     expect(state().timeline.tags[0]?.deleted_at).toBeTruthy();
   });
 
-  it('stamps a restored record as a new write, not an old one (§8.7)', async () => {
+  it('stamps a restored record as a new write, not an old one (§7.7)', async () => {
     await attach(fakeStore(makeTimeline({ events: [event('e1', { updated_at: OLD })] })));
 
     state().deleteEvent('e1');
@@ -224,7 +224,7 @@ describe('undo through the store', () => {
   });
 });
 
-describe('making a connection (§6.4)', () => {
+describe('making a connection (§5.4)', () => {
   const twoEvents = () => makeTimeline({ events: [event('e1'), event('e2')] });
 
   it('persists nothing when the connection is refused', async () => {
@@ -309,7 +309,7 @@ describe('making a connection (§6.4)', () => {
   });
 });
 
-describe('starting over (§8.7a)', () => {
+describe('starting over (§7.8)', () => {
   it('leaves nothing queued and nothing stored', async () => {
     const store = fakeStore(makeTimeline({ events: [event('e1')] }));
     await attach(store);
@@ -340,7 +340,7 @@ describe('starting over (§8.7a)', () => {
   });
 });
 
-describe('another tab writes (§8.1, §8.7)', () => {
+describe('another tab writes (§7.1, §7.7)', () => {
   it('keeps the local record when it is the newer of the two', async () => {
     const store = fakeStore(makeTimeline({ events: [event('e1', { title: 'Original' })] }));
     await attach(store);
@@ -508,10 +508,10 @@ describe('the error line', () => {
 });
 
 /**
- * §8.3's layer 2 runs on a dirty signal, and a signal that misses a change is
+ * §7.3's layer 2 runs on a dirty signal, and a signal that misses a change is
  * worse than none: it means the automatic backup quietly stops covering it.
  */
-describe('the dirty signal (§8.3)', () => {
+describe('the dirty signal (§7.3)', () => {
   it('is null until something changes', async () => {
     await attach(fakeStore(makeTimeline({ events: [event('e1')] })));
     expect(state().lastMutationAt).toBeNull();
@@ -567,7 +567,7 @@ describe('the dirty signal (§8.3)', () => {
   });
 });
 
-describe('claiming persistent storage (§8.3, layer 1)', () => {
+describe('claiming persistent storage (§7.3, layer 1)', () => {
   it('asks on the first write, and records the answer', async () => {
     await attach(fakeStore(makeTimeline({ events: [event('e1')] })));
     expect(state().persistence).toBeNull();
@@ -582,7 +582,7 @@ describe('claiming persistent storage (§8.3, layer 1)', () => {
   });
 });
 
-describe("editing an event's tags (§6.2, D20, D44)", () => {
+describe("editing an event's tags (§5.2, D20, D44)", () => {
   it('attaches a premade region to a name typed any of its ways', async () => {
     const store = fakeStore(makeTimeline({ events: [event('e1')] }));
     await attach(store);
@@ -642,7 +642,7 @@ describe("editing an event's tags (§6.2, D20, D44)", () => {
   });
 });
 
-describe('asking for a reveal (§6.1)', () => {
+describe('asking for a reveal (§5.1)', () => {
   it('counts requests, so the same event can be revealed twice', async () => {
     await attach(fakeStore(makeTimeline({ events: [event('e1')] })));
 

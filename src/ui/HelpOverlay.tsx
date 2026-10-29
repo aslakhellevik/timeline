@@ -4,7 +4,7 @@ import { useFocusTrap } from './use-focus-trap';
 import { useOnEscape } from './use-escape';
 
 /**
- * What the app can do without the mouse, said once (docs/design.md §6.4).
+ * What the app can do without the mouse, said once (docs/design.md §5.4).
  *
  * The shortcuts were real and entirely undiscoverable: `/` and `c` and `⌘Z`
  * existed in a window listener and nowhere in the interface, so the only way to

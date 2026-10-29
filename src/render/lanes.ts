@@ -1,5 +1,5 @@
 /**
- * Era lanes below the axis (docs/design.md §6.1, D15).
+ * Era lanes below the axis (docs/design.md §5.1, D15).
  *
  * Eras are spans, and spans overlap — the Victorian era, the Meiji period and
  * your grandmother's childhood all cover 1890 — so they need rows. Allocation is
@@ -139,7 +139,7 @@ export function layoutLanes(
 
     // The flanks are the era's own uncertainty, drawn as a fade rather than an
     // edge: "the years I was reading Russian novels" has no first day. Shared
-    // with event marks, which are the same trapezoid (§6.1).
+    // with event marks, which are the same trapezoid (§5.1).
     const geometry = spanBar(era.when, toPx, width);
 
     const labelWidth = options.labelWidth?.(era) ?? 0;

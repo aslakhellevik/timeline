@@ -1,5 +1,5 @@
 /**
- * Batches record writes to the store (docs/design.md §8.1).
+ * Batches record writes to the store (docs/design.md §7.1).
  *
  * Typing in a note fires a mutation per keystroke; writing each one straight
  * through would mean a transaction per character. The queue coalesces by record
@@ -68,7 +68,7 @@ export class PersistQueue {
   /**
    * Drops everything pending and cancels the timer.
    *
-   * For "start over" (§8.7a): a record still queued when the database is
+   * For "start over" (§7.8): a record still queued when the database is
    * emptied is written back a moment later and resurrects on the next load,
    * which is the one way to lose the reset the user just asked for.
    */

@@ -1,5 +1,5 @@
 /**
- * The quick-add grammar (design.md §9). Capture friction is the project's top
+ * The quick-add grammar (design.md §8). Capture friction is the project's top
  * product risk, so this is tested the way the box is actually typed into:
  * fast, in any order, with punctuation left wherever it fell.
  */

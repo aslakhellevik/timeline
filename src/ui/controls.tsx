@@ -9,7 +9,7 @@ import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, Ref } from '
  * opacities, two focus colours, two paddings), and two different components
  * called `Action` existed in two panels with different text colours. Nobody
  * decided any of that; it is what copying does. The visual language here is
- * deliberately quiet (§7), which makes small drift the main way it degrades.
+ * deliberately quiet (§6), which makes small drift the main way it degrades.
  */
 
 /** `n` of something, with the plural the number actually calls for. */
@@ -102,7 +102,7 @@ export function Button({ variant = 'default', className, onClick, ...rest }: But
       onClick={() => void onClick?.()}
       // `min-h-11` only below `sm`: on a phone every one of these was a 16-to-24
       // pixel target, and the visual size is right — it is the hit area that was
-      // not (§7.1).
+      // not (§6.1).
       className={`inline-flex min-h-11 items-center justify-center px-2 py-1 text-xs
                   sm:min-h-0 ${VARIANTS[variant]} ${className ?? ''}`}
     />

@@ -5,7 +5,7 @@ import { useTimeline } from '../state/timeline-store';
 import { useTagNames } from '../state/tag-names';
 
 /**
- * An event's tags, as something you can change (docs/design.md §6.2).
+ * An event's tags, as something you can change (docs/design.md §5.2).
  *
  * The chips were read-only, which made the pane a receipt for what quick-add had
  * understood rather than an editor: a mistyped `#warr` could be seen and not
@@ -170,7 +170,7 @@ export function TagEditor({ tags, onChange }: TagEditorProps) {
             onBlur={close}
             onKeyDown={(keyed) => {
               if (keyed.key === 'Escape') {
-                // Claimed, so closing the box does not also close the pane (§6.4).
+                // Claimed, so closing the box does not also close the pane (§5.4).
                 keyed.preventDefault();
                 close();
                 return;

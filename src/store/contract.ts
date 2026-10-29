@@ -1,5 +1,5 @@
 /**
- * The persistence contract (docs/design.md §8).
+ * The persistence contract (docs/design.md §7).
  *
  * The in-memory `Timeline` is canonical; this layer only durably records it and
  * hands it back on the next load. Nothing here decides anything about the data —
@@ -46,7 +46,7 @@ export interface Store {
 
   /**
    * Notifies of writes made by other tabs in this browser. Two tabs both hold
-   * in-memory state and would otherwise silently overwrite each other (§8.1).
+   * in-memory state and would otherwise silently overwrite each other (§7.1).
    */
   subscribe(listener: (change: StoreChange) => void): () => void;
 
@@ -60,7 +60,7 @@ export interface MergeStats {
   skipped: number;
   /**
    * Thrown away as unreadable — a malformed record, or a connection to an event
-   * nothing has (§8.7). Distinct from `skipped`, which is the merge rule working
+   * nothing has (§7.7). Distinct from `skipped`, which is the merge rule working
    * as designed; this is data that could not be let in at all, and the panel
    * says so rather than reporting a clean import.
    */

@@ -1,7 +1,7 @@
 /**
  * The portability contract: documents in, documents out, and the one merge
  * function that import and backup restore share.
- * See docs/design.md §8.1 (versioned JSON, migrations) and §8.3 (merge by id).
+ * See docs/design.md §7.1 (versioned JSON, migrations) and §7.3 (merge by id).
  *
  * Nothing here touches IndexedDB or the DOM. It is pure data, which is why the
  * merge rule — the part that can silently lose a decade of work — is testable
@@ -55,7 +55,7 @@ export class SchemaVersionError extends Error {
 }
 
 // ---------------------------------------------------------------------------
-// Migrations (§8.1)
+// Migrations (§7.1)
 // ---------------------------------------------------------------------------
 
 /** A pure upgrade step. Never mutates its argument. */
@@ -63,7 +63,7 @@ export type Migration = (doc: TimelineDocument) => TimelineDocument;
 
 /**
  * Ordered, and never deleted — an export from two years ago has to open, or the
- * portability promise was a decoration (§8.1).
+ * portability promise was a decoration (§7.1).
  *
  * `MIGRATIONS[i]` upgrades a document from schema version `i + 1` to `i + 2`,
  * so the array always has `SCHEMA_VERSION - 1` entries. Adding one is a single
@@ -164,7 +164,7 @@ export function toDocument(timeline: Timeline, options: ToDocumentOptions = {}):
   };
 }
 
-/** A document as a timeline, migrated first (§8.1: migrations run on load and on import). */
+/** A document as a timeline, migrated first (§7.1: migrations run on load and on import). */
 export function fromDocument(doc: TimelineDocument): Timeline {
   const migrated = migrate(doc);
   return {
@@ -224,12 +224,12 @@ export function asDocument(raw: unknown): TimelineDocument {
 }
 
 // ---------------------------------------------------------------------------
-// Record validation (§8.7)
+// Record validation (§7.7)
 // ---------------------------------------------------------------------------
 
 /**
  * How far ahead of the importing machine a record may claim to have been
- * written. §8.7 records the hole this closes: `updated_at` is client wall-clock
+ * written. §7.7 records the hole this closes: `updated_at` is client wall-clock
  * time, so one device with a wrong clock stamps a record in 2035 and
  * last-write-wins never overwrites it again — the record is frozen for a decade
  * and nothing in the UI explains why.
@@ -312,7 +312,7 @@ function isPlace(value: unknown): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Merge (§8.3)
+// Merge (§7.3)
 // ---------------------------------------------------------------------------
 
 /** The fields the merge rule reads. Every record kind has them (`Base`). */
@@ -329,11 +329,11 @@ export interface MergeOptions {
 
 /**
  * Merges a document into the current timeline **by `id`; it never replaces**
- * (§8.3). Restoring a backup onto a store that has since diverged has to be
+ * (§7.3). Restoring a backup onto a store that has since diverged has to be
  * safe, or backups are a trap.
  *
  * Per record:
- *   - malformed            → rejected, and counted (§8.7)
+ *   - malformed            → rejected, and counted (§7.7)
  *   - unknown id           → added
  *   - newer `updated_at`   → replaces the local one
  *   - older or equal       → skipped, so the local edit survives
@@ -445,7 +445,7 @@ function mergeKind<T extends MergeableRecord>(
  * **Clamped, not skipped**, and the difference matters: the record is the
  * user's data and is very likely fine — it is the *claim to have been written
  * tomorrow* that is not, and that claim is what would freeze the id against
- * every later edit (§8.7). Clamping keeps the content and costs the record only
+ * every later edit (§7.7). Clamping keeps the content and costs the record only
  * its place at the front of the queue: it now merges by the ordinary rule, so a
  * newer local version wins and an unknown id is still added.
  *
@@ -459,7 +459,7 @@ function clampFuture<T extends MergeableRecord>(record: T, now: Date): T {
 
 /** Whether `theirs` should overwrite `mine`. */
 function accepts(mine: MergeableRecord, theirs: MergeableRecord): boolean {
-  // §8.3 — newer `updated_at` wins. Ties keep what is already here: a merge
+  // §7.3 — newer `updated_at` wins. Ties keep what is already here: a merge
   // should never be able to change a record it has no new information about.
   return compareTimestamps(theirs.updated_at, mine.updated_at) > 0;
 }

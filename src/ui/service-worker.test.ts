@@ -4,7 +4,7 @@ import { onUpdateReady, trackUpdates } from './service-worker';
 
 /**
  * The worker replaces itself and deletes the cache the running tab is using
- * (§7.2), so "a newer build is installed" is a state the app has to notice.
+ * (§6.2), so "a newer build is installed" is a state the app has to notice.
  * These are the three ways it can find out, each of which the other two miss.
  */
 function fakes(controlled: boolean) {

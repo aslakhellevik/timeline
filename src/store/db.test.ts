@@ -240,11 +240,11 @@ describe.skipIf(!hasChannel)('cross-tab notification', () => {
 });
 
 /**
- * §8.1 says migrations are applied "on load and on import". Import had them
+ * §7.1 says migrations are applied "on load and on import". Import had them
  * from the start; this path did not, so a database written by an older build
  * reached the app unmigrated — the one case the migration chain exists for.
  */
-describe('migrations on load (§8.1)', () => {
+describe('migrations on load (§7.1)', () => {
   /** Reads the recorded schema version straight out of the meta store. */
   async function storedVersion(name: string): Promise<unknown> {
     const raw = await openDB(name);

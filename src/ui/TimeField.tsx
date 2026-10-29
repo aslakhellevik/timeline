@@ -88,7 +88,7 @@ export function TimeField({
       onKeyDown={(keyed) => {
         if (keyed.key === 'Enter') commit();
         if (keyed.key === 'Escape') {
-          // Claimed, so reverting the field does not also close the pane (§6.4).
+          // Claimed, so reverting the field does not also close the pane (§5.4).
           keyed.preventDefault();
           setDraft(formatted);
           setError(null);

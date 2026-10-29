@@ -139,7 +139,7 @@ export interface Era extends Base {
   notes?: string;
 }
 
-/** The whole store, held in memory (§8.1). */
+/** The whole store, held in memory (§7.1). */
 export interface Timeline {
   events: TimelineEvent[];
   connections: Connection[];

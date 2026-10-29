@@ -1,5 +1,5 @@
 /**
- * The persistence layer (docs/design.md §8).
+ * The persistence layer (docs/design.md §7).
  *
  *   db.ts          IndexedDB, one transaction per write, cross-tab notification
  *   serialise.ts   documents, migrations, validation, and the merge rule
@@ -7,7 +7,7 @@
  *   auto-backup.ts what makes layer 2 automatic: on open, and when dirty
  *   durability.ts  persistent-storage permission and storage estimates
  *
- * The three layers of §8.3 are: claim persistence (`durability`), back up to a
+ * The three layers of §7.3 are: claim persistence (`durability`), back up to a
  * real folder (`backup`), and always allow a manual export (`backup` again).
  * Import and restore are one function — `mergeDocument`.
  */

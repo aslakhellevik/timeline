@@ -40,7 +40,7 @@ export interface Mutation {
   undo: UndoStep[];
   label: string;
   /**
-   * Key under which consecutive mutations merge into one undo entry (§8.6).
+   * Key under which consecutive mutations merge into one undo entry (§7.6).
    * Unset means "never merge" — a delete and its cascade are one step and the
    * next thing the user does is a different one.
    */
@@ -128,7 +128,7 @@ function applyPatch<T extends object>(record: T, patch: object, now: string): T 
   return next as T;
 }
 
-/** How long consecutive edits of one field stay a single undo entry (§8.6). */
+/** How long consecutive edits of one field stay a single undo entry (§7.6). */
 export const COALESCE_MS = 1000;
 
 /**
@@ -147,7 +147,7 @@ function coalesceKey(kind: RecordKind, id: Id, patch: object): string {
 
 /**
  * Pushes an undo entry, merging it into the top one when it continues the same
- * edit (§8.6).
+ * edit (§7.6).
  *
  * The merge keeps the *older* entry's steps — its "before" is what undo has to
  * restore — and only moves the clock forward, so a continuous burst of typing
@@ -578,7 +578,7 @@ function referencedTags(
  * Restored records are stamped with the current `updated_at`. The *content* is
  * old; the *write* is new, and leaving the old stamp on it meant a backup taken
  * between the action and the undo looked newer to the merge rule and silently
- * re-applied the change the user had just taken back (§8.7).
+ * re-applied the change the user had just taken back (§7.7).
  */
 export function applyUndo(
   timeline: Timeline,

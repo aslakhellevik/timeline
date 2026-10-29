@@ -41,7 +41,7 @@ export function MarkdownEditor({
   const [chosen, setChosen] = useState<'write' | 'read'>(
     value.trim().length > 0 && !autoFocus ? 'read' : 'write',
   );
-  // A note is committed when the typing stops, not per keystroke (§6.5) — see
+  // A note is committed when the typing stops, not per keystroke (§5.5) — see
   // `use-draft` for what was wrong with a database write per character.
   const draft = useDraft(value, onChange);
   const id = useId();

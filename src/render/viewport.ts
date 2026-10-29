@@ -181,7 +181,7 @@ const REVEAL_COMFORT = 0.44;
 
 /**
  * The window that brings `[from, to]` into view, or `null` when it is already
- * there (docs/design.md §6.1).
+ * there (docs/design.md §5.1).
  *
  * Two rules, in this order. The span the user chose is kept wherever it already
  * shows the target — a reveal is a **pan** whenever a pan is enough, because

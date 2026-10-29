@@ -1,8 +1,8 @@
 /**
- * Layer 2's schedule (docs/design.md §8.3): "on open and every ~10 minutes when
+ * Layer 2's schedule (docs/design.md §7.3): "on open and every ~10 minutes when
  * dirty".
  *
- * The layer §8.3 calls "the one that matters" was, for a while, entirely manual
+ * The layer §7.3 calls "the one that matters" was, for a while, entirely manual
  * — every part of it existed except the thing that runs it, so a folder chosen
  * in January still held January's snapshot in August unless the user remembered
  * to press "back up now". A backup that depends on being remembered is layer 3
@@ -20,7 +20,7 @@
  *     snapshot skips the write entirely — an idle tab left open overnight costs
  *     nothing and does not churn the folder.
  *   - **It flushes first.** The debounce window is the likeliest data-loss path
- *     (§8.7), so a snapshot taken without flushing could be missing the very
+ *     (§7.7), so a snapshot taken without flushing could be missing the very
  *     edits it was scheduled to protect.
  *
  * No React, no store import: this module is driven from `App`, which hands it
@@ -32,7 +32,7 @@ import type { Timeline } from '../core/model/types';
 import { backupStatus, writeSnapshot } from './backup';
 import type { BackupStatus, SnapshotResult } from './backup';
 
-/** §8.3's "every ~10 minutes". */
+/** §7.3's "every ~10 minutes". */
 export const AUTO_BACKUP_INTERVAL_MS = 10 * 60_000;
 
 /** Why a cycle ran. Only `'interval'` and `'hide'` require the timeline to be dirty. */
@@ -121,7 +121,7 @@ export function startAutoBackup(options: AutoBackupOptions): AutoBackup {
   (timer as { unref?: () => void }).unref?.();
 
   // `pagehide`, not `beforeunload`: the latter is unreliable on mobile, which is
-  // where a tab is most likely to be discarded without warning (§8.7).
+  // where a tab is most likely to be discarded without warning (§7.7).
   const onHide = (): void => void tick('hide');
   const scope = globalThis as {
     addEventListener?: typeof addEventListener;

@@ -1,5 +1,5 @@
 /**
- * Eases the viewport from where it is to where it should be (§6.1).
+ * Eases the viewport from where it is to where it should be (§5.1).
  *
  * `viewport.ts` knows how to interpolate two windows and deliberately knows
  * nothing else; this is the part with a clock in it. Framework-agnostic like
@@ -34,7 +34,7 @@ export interface AnimationClock {
 /**
  * Long enough to read as motion, short enough that nobody waits for it.
  *
- * §6.1 asks for "a short ease" for one specific reason: the mass-to-marks
+ * §5.1 asks for "a short ease" for one specific reason: the mass-to-marks
  * transition is a crossfade, and a jump cuts straight past it, so a zoom that
  * teleports looks like a redraw rather than like resolving detail.
  */

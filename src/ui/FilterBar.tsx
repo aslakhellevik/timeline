@@ -39,7 +39,7 @@ export function FilterBar({ onAddLife }: { onAddLife?: () => void }) {
   const visible = usage.filter((entry) => entry.total > 0 || selected.has(entry.tag.id));
   const hidden = usage.length - visible.length;
   /*
-   * The frame of reference, or the offer to make one (§9, D26).
+   * The frame of reference, or the offer to make one (§8, D26).
    *
    * Skipping the birth-year question now creates nothing rather than inventing a
    * year, so the app has to leave the offer somewhere — and this row, which is
@@ -67,7 +67,7 @@ export function FilterBar({ onAddLife }: { onAddLife?: () => void }) {
     >
       {/*
         The only route to filtering on a phone, and it measured 27×17 — so the
-        hit area is a real one even though the word stays small (§7.1).
+        hit area is a real one even though the word stays small (§6.1).
       */}
       {!nothingToFilter && (
         <button
@@ -94,7 +94,7 @@ export function FilterBar({ onAddLife }: { onAddLife?: () => void }) {
           return (
             <div key={kind} className="flex flex-wrap items-center gap-1">
               {/* Lower case, and the faint token rather than a fade of the dim
-                  one: at ten pixels the alpha measured 3.2:1 (§6.2). */}
+                  one: at ten pixels the alpha measured 3.2:1 (§5.2). */}
               <span className="mr-0.5 text-[11px] tracking-wide text-paper-faint">{label}</span>
               {group.map(({ tag, total }) => {
                 const on = selected.has(tag.id);

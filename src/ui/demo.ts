@@ -2,7 +2,7 @@ import { createIndexedDbStore } from '../store';
 import type { Store } from '../store';
 
 /**
- * The demo timeline: `?demo` (docs/design.md §9, D68).
+ * The demo timeline: `?demo` (docs/design.md §8, D68).
  *
  * The app starts empty on purpose, which makes it the hardest possible thing to
  * show anyone — and the renderer can only be judged against a corpus with

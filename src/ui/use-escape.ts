@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 /**
- * Escape, resolved to exactly one layer (docs/design.md §6.4).
+ * Escape, resolved to exactly one layer (docs/design.md §5.4).
  *
  * Every dismissible thing on screen wants the same key, and before this each
  * one answered for itself: the data panel closed, the detail pane ignored it,

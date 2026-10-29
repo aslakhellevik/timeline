@@ -7,7 +7,7 @@ import { useTimeline } from '../state/timeline-store';
 import { Field } from './controls';
 
 /**
- * The list view (docs/design.md §6.2, D23) — v1 scope for two independent
+ * The list view (docs/design.md §5.2, D23) — v1 scope for two independent
  * reasons, either of which would be sufficient.
  *
  * It is the accessible presentation of the same data: a canvas is opaque to
@@ -32,7 +32,7 @@ export interface EventListProps {
    * work of any other view, for an answer `App` had already computed.
    */
   events: readonly TimelineEvent[];
-  /** Puts the selection back on the canvas — `Enter` on a row (§6.1). */
+  /** Puts the selection back on the canvas — `Enter` on a row (§5.1). */
   onShowOnCanvas?: () => void;
 }
 
@@ -60,7 +60,7 @@ export function EventList({ events, onShowOnCanvas }: EventListProps) {
    *
    * Null the rest of the time, when the selection *is* the cursor. It has to
    * stop being the selection while a pick is armed: `select` completes the
-   * pending connection (§6.4), so arrowing down the list wrote one connection
+   * pending connection (§5.4), so arrowing down the list wrote one connection
    * per keypress and left a trail of them behind the cursor. `Enter` commits,
    * which is what the picker's own footer promises.
    */
@@ -147,7 +147,7 @@ export function EventList({ events, onShowOnCanvas }: EventListProps) {
               commit();
             }
           }}
-          // What it actually searches (§6.3). It used to promise "sources",
+          // What it actually searches (§5.3). It used to promise "sources",
           // which is a field on an event that the index does not read; what it
           // does read is where you learned the thing.
           placeholder="search titles, notes, tags and where you learned it"

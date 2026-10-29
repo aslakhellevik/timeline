@@ -1,5 +1,5 @@
 /**
- * Seeded synthetic timeline generator (design.md §6.1, M0).
+ * Seeded synthetic timeline generator (design.md §5.1, M0).
  *
  * The density view (§3) cannot be developed or judged against an empty timeline, and it
  * cannot be judged against *uniform* data either: the whole claim of the far view is that
@@ -165,7 +165,7 @@ const EARLIEST_YEAR = -3000;
 const LATEST_YEAR = 2026.5;
 
 // ---------------------------------------------------------------------------
-// Tags (D14, D20, §5)
+// Tags (D14, D20, §4.3)
 // ---------------------------------------------------------------------------
 
 /**

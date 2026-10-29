@@ -9,7 +9,7 @@ import { useOnEscape } from './use-escape';
 import { useFocusTrap } from './use-focus-trap';
 
 /**
- * Picking the second event of a connection (§6.2).
+ * Picking the second event of a connection (§5.2).
  *
  * Search, not the canvas: "creating a connection means picking a second event,
  * and picking it by scrubbing a density plot is absurd." The canvas route still
@@ -39,7 +39,7 @@ export function ConnectPicker() {
 
   useFocusTrap(panelRef);
   // Escape cancels the pick, rather than only dismissing the picker: dismissing
-  // is what the footer's "pick on the timeline instead" is for (§6.4).
+  // is what the footer's "pick on the timeline instead" is for (§5.4).
   useOnEscape(cancelConnect);
 
   const source = timeline.events.find((event) => event.id === connectFrom) ?? null;

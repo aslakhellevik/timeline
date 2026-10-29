@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useOnEscape } from './use-escape';
 
 /**
- * The shell the three detail panes share (docs/design.md §7.1).
+ * The shell the three detail panes share (docs/design.md §6.1).
  *
  * A sidebar on a desktop and a bottom sheet on a phone. Below `sm` a fixed
  * 320px column leaves a 375px screen with 55px of canvas, so the pane has to
@@ -24,7 +24,7 @@ export function DetailPane({
   children: ReactNode;
 }) {
   // The pane is dismissible and ignored the one key that dismisses things.
-  // Bottom of the stack, so an open panel or picker answers first (§6.4).
+  // Bottom of the stack, so an open panel or picker answers first (§5.4).
   useOnEscape(onClose);
 
   return (

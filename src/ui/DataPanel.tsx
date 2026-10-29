@@ -25,7 +25,7 @@ import { useOnEscape } from './use-escape';
 import { useFocusTrap } from './use-focus-trap';
 
 /**
- * The three durability layers, made visible (docs/design.md §8.3).
+ * The three durability layers, made visible (docs/design.md §7.3).
  *
  * This panel exists because the honest failure mode of local-first is "cleared
  * browsing data, years of work gone", and the mitigations are worthless if the
@@ -147,7 +147,7 @@ export function DataPanel({ demo = false, onClose }: { demo?: boolean; onClose: 
                 !persistence.persisted &&
                 persistence.supported &&
                 /*
-                  The app already asked, on the first thing you saved (§8.3, layer
+                  The app already asked, on the first thing you saved (§7.3, layer
                   1). Offering a button that repeats a refused request is worse than
                   saying what happened: the browser decides this on how much the app
                   is used, so the honest advice is the one that changes its mind.

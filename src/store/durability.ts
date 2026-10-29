@@ -1,8 +1,8 @@
 /**
- * Layer 1 of docs/design.md §8.3: ask the browser not to throw the data away.
+ * Layer 1 of docs/design.md §7.3: ask the browser not to throw the data away.
  *
  * IndexedDB is durable in the ordinary sense — it survives reloads, crashes and
- * reboots. It is not durable against the browser reclaiming space (§8.2), and
+ * reboots. It is not durable against the browser reclaiming space (§7.2), and
  * `navigator.storage.persist()` is the only lever the page has over that. It is
  * a request, not a guarantee, so everything here reports rather than promises.
  *
@@ -48,7 +48,7 @@ const PRIVATE_QUOTA_CEILING = 300 * 1024 * 1024;
 
 /**
  * Asks the browser to keep this origin's storage until the user deletes it
- * (§8.3, layer 1). Call it on first write — Chromium grants it silently for
+ * (§7.3, layer 1). Call it on first write — Chromium grants it silently for
  * installed or high-engagement sites, so asking early and asking once is right.
  */
 export async function requestPersistence(): Promise<PersistenceResult> {
@@ -150,7 +150,7 @@ export async function storageEstimate(): Promise<StorageEstimateResult> {
 }
 
 /**
- * Best-effort private-window detection (§8.2: "detect and warn"). A small quota
+ * Best-effort private-window detection (§7.2: "detect and warn"). A small quota
  * is the signal Chromium gives; Safari and Firefox private windows are not
  * distinguishable from the page, so `'unknown'` is an honest answer and the UI
  * should word it as a possibility, never a finding.

@@ -467,7 +467,7 @@ describe('export naming', () => {
 });
 
 /**
- * §8.3 layer 3, and the distinction the indicator turns on: a snapshot is a
+ * §7.3 layer 3, and the distinction the indicator turns on: a snapshot is a
  * file this app wrote, an export is one the browser was asked to save. A
  * cancelled save-as used to clear the amber warning as thoroughly as a real
  * backup did.

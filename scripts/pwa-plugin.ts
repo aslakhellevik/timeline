@@ -1,7 +1,7 @@
 import type { Plugin } from 'vite';
 
 /**
- * Emits the web app manifest and a service worker (docs/design.md §7, D36).
+ * Emits the web app manifest and a service worker (docs/design.md §6, D36).
  *
  * Written here rather than pulled in as a plugin dependency, for the same reason
  * the Markdown renderer was (D27): what this needs is forty lines, and the

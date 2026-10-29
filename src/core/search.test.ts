@@ -1,5 +1,5 @@
 /**
- * Search and the duplicate guard (design.md §6.2–6.3).
+ * Search and the duplicate guard (design.md §5.2–6.3).
  *
  * The realistic cases run against `generateTimeline()` — 2,000 events with
  * believable titles, notes and reading provenance — because a search tested only
@@ -193,7 +193,7 @@ describe('searchEvents', () => {
     });
   });
 
-  describe('performance (§6.3: a linear scan, and no index until measurement says otherwise)', () => {
+  describe('performance (§5.3: a linear scan, and no index until measurement says otherwise)', () => {
     it('searches 50,000 events in a few milliseconds', () => {
       const big = generateTimeline({ events: 50000, connections: 0, eras: 0, seed: 3 }).events;
       expect(big).toHaveLength(50000);
@@ -269,7 +269,7 @@ describe('findPossibleDuplicates', () => {
   });
 
   it('does flag the same title a century apart when both dates are only a century', () => {
-    // The tolerance scales with what the dates claim (§6.3): two events placed
+    // The tolerance scales with what the dates claim (§5.3): two events placed
     // no more precisely than a century make no claim that tells them apart, so
     // the title is the only evidence there is, and it says duplicate.
     const vague = ev('vague', 'the fall of Ur-Sabath', {

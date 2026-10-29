@@ -137,7 +137,7 @@ Both are why every record carries provenance from day one: manual or import.
 They also both break the privacy baseline — they mean sending your notes and reading history to
 someone else's API. That may be worth doing, but it is a decision to make deliberately against a
 stated default, not one to arrive at by accident inside a feature. See
-[docs/design.md §8.8](docs/design.md#88-privacy-d25).
+[docs/design.md §7.9](docs/design.md#88-privacy-d25).
 
 ## Decisions
 
@@ -157,7 +157,7 @@ Answered, with rationale in [docs/design.md](docs/design.md):
 | Licence / language | MIT; UK English |
 
 Nothing blocks implementation. What is deliberately left until there is something on screen:
-[docs/design.md §10](docs/design.md#10-deliberately-left-open).
+[docs/design.md §9](docs/design.md#10-deliberately-left-open).
 
 ## Repo layout
 
@@ -186,7 +186,7 @@ scripts/shot.mjs    screenshot the running app over CDP, for verification
 That boundary is the one architectural rule worth enforcing — see
 [D11](docs/design.md#1-decision-log).
 
-Build order: [docs/design.md §9](docs/design.md#9-build-order). **M0–M5 complete** — that is all
+Build order: [docs/design.md §8](docs/design.md#9-build-order). **M0–M5 complete** — that is all
 of v1. What comes next is deliberately deferred: AI and the
 social layer.
 

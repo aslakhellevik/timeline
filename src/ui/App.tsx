@@ -143,7 +143,7 @@ export function App() {
    *
    * Everything the write needs is read at write time, from refs and from the
    * store, so panning can schedule one without React re-rendering. That is the
-   * property the renderer depends on (§6.1) and the reason a pan never reached
+   * property the renderer depends on (§5.1) and the reason a pan never reached
    * the hash before: the effect only fired on selection, tags and view, and
    * "the 1840s, art history only" is supposed to be a link (D24).
    */
@@ -223,7 +223,7 @@ export function App() {
    *
    * Through the shared stack rather than a window listener of its own, which is
    * what it was: an open panel would close *and* the pick would cancel, from two
-   * handlers that did not know about each other (§6.4).
+   * handlers that did not know about each other (§5.4).
    */
   useOnEscape(cancelConnect, connectFrom !== null);
 
@@ -271,10 +271,10 @@ export function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [undo, selectedId, beginConnect, helpOpen]);
 
-  // A newer build has installed itself under this tab (§7.2).
+  // A newer build has installed itself under this tab (§6.2).
   useEffect(() => onUpdateReady(setUpdateReady), []);
 
-  // The "last backed up N days ago" indicator (§8.3, layer 3). Re-checked when
+  // The "last backed up N days ago" indicator (§7.3, layer 3). Re-checked when
   // the panel closes, since that is when it is most likely to have changed.
   // Not in the demo: the figure is about the real timeline, not this one.
   useEffect(() => {
@@ -283,7 +283,7 @@ export function App() {
   }, [status, dataOpen]);
 
   /*
-   * Layer 2's schedule (§8.3): a snapshot once the store is ready, then every
+   * Layer 2's schedule (§7.3): a snapshot once the store is ready, then every
    * ten minutes while there is something new to save, and one on the way out.
    *
    * Everything it reads is read at the moment of the write, through
@@ -353,7 +353,7 @@ export function App() {
       <header className="flex items-center gap-2 border-b border-line px-3 py-1 sm:gap-4 sm:px-4 sm:py-2">
         {/*
           The wordmark is the first thing to go below `sm`. Capture is the
-          surface the whole app is built around (§9) and the placeholder is the
+          surface the whole app is built around (§8) and the placeholder is the
           only place its grammar is written down — `#europe #war` truncating
           away costs more than a name the phone already shows on the tab.
         */}
@@ -362,7 +362,7 @@ export function App() {
         </h1>
         <QuickAdd />
         {/*
-          Actions, not status (§7.1). An era is derived from the viewport — you
+          Actions, not status (§6.1). An era is derived from the viewport — you
           zoom to the period you mean and press the button — which makes it a
           header-level act beside the view nav, not a word in the status bar it
           used to share with the backup age.
@@ -457,7 +457,7 @@ export function App() {
       </div>
 
       {/*
-        Status, and one undo (§7.1).
+        Status, and one undo (§6.1).
 
         Everything that *did* something has left: the footer had `+ era`, `undo`
         and `your data` set in the same eleven-pixel word as the event
@@ -501,7 +501,7 @@ export function App() {
           </button>
           {/*
             The worker replaces itself and drops the cache the running tab is
-            using, so this is a state the app is in, not an offer (§7.2).
+            using, so this is a state the app is in, not an offer (§6.2).
           */}
           {updateReady && (
             <button

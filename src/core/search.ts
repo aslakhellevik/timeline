@@ -1,5 +1,5 @@
 /**
- * Search over the in-memory store (design.md §6.2–6.3).
+ * Search over the in-memory store (design.md §5.2–6.3).
  *
  * Two jobs, one file, because they are the same matching problem:
  *
@@ -11,7 +11,7 @@
  *    density is corrupted quietly — no error, just a slightly wrong picture of
  *    what someone knows.
  *
- * **A linear scan is the right implementation at this size** (§6.3). 50k events
+ * **A linear scan is the right implementation at this size** (§5.3). 50k events
  * per keystroke is a few milliseconds, and there is a test that says so rather
  * than an assumption that it is true. No index, no worker, until measurement
  * says otherwise.
@@ -181,7 +181,7 @@ function startsWord(text: string, index: number): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * The tiers, in the order §6.3 asks for: a title prefix beats a title substring
+ * The tiers, in the order §5.3 asks for: a title prefix beats a title substring
  * beats a notes match beats a fuzzy-only match. The gaps are wide enough that
  * the within-tier bonus below can never lift one tier into the next, so the
  * ranking is decided by *how* an event matched before anything else is
@@ -297,7 +297,7 @@ function tagsMatching(tagNames: ReadonlyMap<Id, string>, needle: string): Set<Id
 
 /**
  * Substring across `title`, `notes`, `learned_from` and tag names, plus fuzzy
- * matching on `title` alone (§6.3). Soft-deleted events never appear. An empty
+ * matching on `title` alone (§5.3). Soft-deleted events never appear. An empty
  * query returns nothing rather than everything — "no query" is not "match all",
  * and the list view shows the unfiltered store itself.
  *
@@ -345,7 +345,7 @@ export function searchEvents(
 }
 
 // ---------------------------------------------------------------------------
-// The duplicate guard (§6.3)
+// The duplicate guard (§5.3)
 // ---------------------------------------------------------------------------
 
 /**
@@ -376,7 +376,7 @@ const CONTAINED_SIMILARITY = 0.8;
  *
  * That second term is what makes the rule right at both ends. Two events dated
  * to the year and a century apart are 100 years apart against a 3-year reach, so
- * they are different events, exactly as §6.3 wants. Two events dated only to a
+ * they are different events, exactly as §5.3 wants. Two events dated only to a
  * century *are* within reach of each other a hundred years apart — and they
  * should be, because at that granularity the dates make no claim that could tell
  * them apart, and only the title is evidence.
@@ -430,7 +430,7 @@ function timeSimilarEnough(x: TimeSpec, y: TimeSpec): boolean {
 }
 
 /**
- * Capture-time duplicate guard (design.md §6.3): adding the Battle of Lepanto
+ * Capture-time duplicate guard (design.md §5.3): adding the Battle of Lepanto
  * twice six months apart is the obvious failure mode of a capture-optimised
  * tool, and it corrupts the density quietly.
  *

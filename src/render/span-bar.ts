@@ -1,5 +1,5 @@
 /**
- * The trapezoid, in pixels (docs/design.md §6.1).
+ * The trapezoid, in pixels (docs/design.md §5.1).
  *
  * A `TimeSpec` is four numbers: certain between `b` and `c`, uncertain over the
  * flanks `a`→`b` and `c`→`d`. Drawn, that is a solid bar with a ramp to

@@ -1,5 +1,5 @@
 /**
- * Registering the service worker (docs/design.md §7.2, D40).
+ * Registering the service worker (docs/design.md §6.2, D40).
  *
  * Production only. In development the worker would cache modules Vite is busy
  * replacing, and the resulting "why is my edit not showing" is the classic way

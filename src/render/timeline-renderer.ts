@@ -1,5 +1,5 @@
 /**
- * The timeline canvas (docs/design.md §6.1).
+ * The timeline canvas (docs/design.md §5.1).
  *
  * Framework-agnostic by rule (D11): no React, no imports from `src/ui`. It owns
  * nothing but drawing — the caller supplies data, a viewport and a hover
@@ -469,7 +469,7 @@ export class TimelineRenderer {
 
   /**
    * The window that would bring `[from, to]` into view, or `null` when it is
-   * already there (§6.1).
+   * already there (§5.1).
    *
    * The decision lives here rather than in the view because the bounds it has
    * to respect come from the frame, which is this object's business; the view
@@ -1215,7 +1215,7 @@ export class TimelineRenderer {
   /**
    * Titles, where there is room for them.
    *
-   * Gated on the mark, not on the frame. §6.1 always said labels appear on
+   * Gated on the mark, not on the frame. §5.1 always said labels appear on
    * "available label width without collision" and nothing else; the frame-wide
    * `farViewOpacity < 0.35` test bolted on top of that broke down as soon as
    * the crossfade went per column (D50), because a single busy century then
@@ -1243,7 +1243,7 @@ export class TimelineRenderer {
     );
     // How many of those rows are used depends on how near the view is. The far
     // view is meant to be the density and the arcs — "zoomed out, the connection
-    // structure should be the most visually striking thing on screen" (§6.1) —
+    // structure should be the most visually striking thing on screen" (§5.1) —
     // and forty titles over it is not that. One row at full extent still names
     // the handful of events with a whole millennium to themselves.
     const rowCount = Math.max(1, Math.round(affordable * this.resolvedShare ** 3));

@@ -1,6 +1,6 @@
 /**
  * The working store: IndexedDB via `idb`, one object store per record kind
- * (docs/design.md §8.1).
+ * (docs/design.md §7.1).
  *
  * The in-memory `Timeline` is canonical; this is only the durable record of it.
  * Two responsibilities beyond read and write:
@@ -30,7 +30,7 @@ const DB_VERSION = 4;
 /** Object stores earlier versions created and this one deletes on upgrade. */
 const RETIRED_STORES = ['packs'];
 
-/** Where the schema version of the records on disk is kept (§8.1). */
+/** Where the schema version of the records on disk is kept (§7.1). */
 const META_STORE = 'meta';
 const SCHEMA_KEY = 'schema_version';
 
@@ -143,7 +143,7 @@ export async function createIndexedDbStore(name: string = DEFAULT_DB_NAME): Prom
       if (version === SCHEMA_VERSION) return loaded;
 
       /*
-       * §8.1: migrations are applied "on load and on import". Import had them
+       * §7.1: migrations are applied "on load and on import". Import had them
        * from the start and this path did not, so a database written by an older
        * build was handed to the app unmigrated — the one case where the
        * migration chain, which exists precisely so that old data opens, was

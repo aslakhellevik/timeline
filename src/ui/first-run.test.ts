@@ -3,7 +3,7 @@ import { birthYearError } from './FirstRun';
 
 /**
  * The one question the app asks, and what it says when it will not take the
- * answer (§9, D26).
+ * answer (§8, D26).
  */
 describe('birthYearError', () => {
   const thisYear = 2026;

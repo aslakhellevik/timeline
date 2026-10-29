@@ -10,7 +10,7 @@
  * generator builds its corpus from it rather than keeping a parallel list.
  *
  * The colours are provisional. Connection colour encoding is deliberately left
- * open until the far view exists (design.md §10), and the palette gets a proper
+ * open until the far view exists (design.md §9), and the palette gets a proper
  * pass when the renderer actually draws; these are placeholders that merely
  * need to be distinguishable.
  */

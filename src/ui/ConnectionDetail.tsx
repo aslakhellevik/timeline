@@ -16,7 +16,7 @@ import { Button } from './controls';
  *
  * The editor opens in write mode on an empty note, which is the state a
  * just-created connection is in: finishing the pick puts the cursor where the
- * argument goes (§6.4).
+ * argument goes (§5.4).
  */
 export function ConnectionDetail() {
   const timeline = useTimeline((state) => state.timeline);
@@ -30,7 +30,7 @@ export function ConnectionDetail() {
   if (!connection) return null;
   /*
    * Keyed, so the note editor's mode and its draft belong to *this* connection.
-   * It is also what keeps §6.4's promise: a freshly made connection mounts a
+   * It is also what keeps §5.4's promise: a freshly made connection mounts a
    * fresh editor, which is the only way `autoFocus` fires on the second one.
    */
   return <ConnectionPane key={connection.id} connection={connection} />;

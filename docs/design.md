@@ -57,7 +57,7 @@ deferred — but the data model is shaped so that neither requires a migration.
 | D43 | ~~Events with no coordinates are placed by their **region tag**, drawn with a halo at the region's true radius~~ — removed, see D70 |
 | D44 | Tag names are matched **normalised**, and a built-in may carry aliases — a `#tag` is one word and half the premade regions are not |
 | D45 | ~~Uninstalling a pack **tombstones the user's own connections** into departing events, though it still hard-removes the pack's own (D37 is about pack records)~~ — removed, see D70 |
-| D46 | Import **validates every record** and **clamps absurd future timestamps**, reversing §8.7's decision to leave both out of v1 |
+| D46 | Import **validates every record** and **clamps absurd future timestamps**, reversing §7.7's decision to leave both out of v1 |
 | D47 | An export is recorded as an **export**, never as a backup: the app hands the browser a file and never learns whether it was saved |
 | D48 | The mass scale is calibrated as a **rate**, and turned into a λ for whatever width the frame is drawn at |
 | D49 | Event marks are drawn as their **trapezoid**, like eras; an instant stays a hairline whatever its granularity |
@@ -74,7 +74,7 @@ deferred — but the data model is shaped so that neither requires a migration.
 | D60 | One Escape stack, **topmost wins**; a modal traps focus and silences the window-level shortcuts while it is up |
 | D61 | The list is a `listbox` and the canvas is `application` — revising the `grid`-of-`span`s and `img`-with-`tabIndex` roles, which announced the opposite of what they are |
 | D62 | Faint ink is **one token at full opacity**, and only on the page plane: on the chart surface `paper-dim` is the contrast floor |
-| D63 | Below `sm` the wordmark and the view switcher leave the header — capture keeps the width (§9) |
+| D63 | Below `sm` the wordmark and the view switcher leave the header — capture keeps the width (§8) |
 | D64 | The app checks for a newer build hourly and **says when one has installed itself**, because the worker evicts the assets the running tab is using |
 | D65 | A date is edited in **one text field with no mode selector**: `formatTime` round-trips through `parseTime`, so the text carries the mode — revising §2.2's "the selector exists for editing" |
 | D66 | ~~An event can be **placed by clicking the map**, and the precision is read off the zoom — D43 applied to input rather than to drawing~~ — removed, see D70 |
@@ -106,7 +106,7 @@ Conventions, settled and not worth further discussion:
 - Quick-add grammar: the date is parsed from anywhere in the string, `#tags` are extracted, and
   whatever remains is the title. Nothing else in v1.
 
-§10 lists what is deliberately left open.
+§9 lists what is deliberately left open.
 
 ---
 
@@ -513,7 +513,7 @@ Notes on the non-obvious fields:
   import saying "Europe" attaches to *your* Europe rather than silently creating a second one and
   splitting your filters in a way you would not notice for months.
 
-### 4.2 Deletion (D21)
+### 4.1 Deletion (D21)
 
 Deleting an event soft-deletes its connections in the same operation, recorded as **one** undo
 entry; restoring the event restores them. The alternative — leaving connections dangling and
@@ -523,7 +523,7 @@ forgotten in exactly one of them.
 Tags and eras do not cascade: deleting a tag removes it from events, deleting an era affects
 nothing else.
 
-### 4.1 Forward compatibility with the social layer
+### 4.2 Forward compatibility with the social layer
 
 Without building any of it:
 
@@ -559,13 +559,13 @@ on.
 
 ---
 
-## 6. Views (D11, D23, D24)
+## 5. Views (D11, D23, D24)
 
 Two views over one filtered state: the canvas and the list. Both read the same filter predicate
 (§3.5) and the same in-memory store, and either can be the primary one depending on what you are
 doing.
 
-### 6.1 The canvas
+### 5.1 The canvas
 
 **Canvas 2D, one canvas, devicePixelRatio-aware, with a DOM overlay for labels and hit targets
 at near zoom.** Not SVG (thousands of nodes), not WebGL yet (unnecessary — the far view is a
@@ -780,7 +780,7 @@ there to be revealed.
 synthetic-data generator on day one — the density view cannot be developed against an empty
 timeline, and the perf budget is meaningless without it.
 
-### 6.2 The list view (D23)
+### 5.2 The list view (D23)
 
 A searchable, sortable, keyboard-navigable table of events, sharing filter state with the canvas.
 It is v1 scope for two independent reasons, either of which would be sufficient:
@@ -802,7 +802,7 @@ bottom two thirds of the scroller and "just inside the window" is behind the she
 the very row it is hiding.
 
 `Enter` on a row is the way back to the picture: it switches to the canvas last used and reveals
-the row there (§6.1). The same link sits under the date in the event panel, which is where
+the row there (§5.1). The same link sits under the date in the event panel, which is where
 someone reading about an event is when they wonder where it sits.
 
 **The pane is an editor, which it was not.** The event panel showed the title, the date and the
@@ -827,7 +827,7 @@ about where they had got to. It is a single-column list of options, which is wha
 and what the connect picker had been declaring correctly all along; the container carries
 `aria-activedescendant`, each row an `id`, and the two wrappers the windowing needs are
 `presentation`, since a listbox owns its options directly. `aria-selected` stays the selection
-and `aria-current` stays the cursor, for the reason §6.4 gives.
+and `aria-current` stays the cursor, for the reason §5.4 gives.
 
 The canvas was mislabelled in the opposite direction: `role="img"` on a focusable element
 whose arrow keys pan it and whose `+`/`−` zoom it, which is a picture as far as a screen reader
@@ -840,7 +840,7 @@ The list takes the filtered corpus from the app rather than filtering again. It 
 the search box re-filtered everything before searching it — twice the work of any other view,
 for an answer the app had already computed for the footer.
 
-### 6.3 Search
+### 5.3 Search
 
 Over the in-memory store: substring across `title`, `notes`, `learned_from` and tag names, plus
 fuzzy matching on `title`. A linear scan per keystroke — no index, no worker.
@@ -866,13 +866,13 @@ palette later.
 interval. Adding the Battle of Lepanto twice six months apart is the obvious failure mode of a
 capture-optimised tool, and it corrupts the density quietly.
 
-### 6.4 Making a connection (M3)
+### 5.4 Making a connection (M3)
 
 Two routes, one state. `connectFrom` holds the first endpoint, and while it is set, *every* path
 that would select an event completes the connection instead — a canvas click, a list row, the
 picker. That is one rule in the store rather than a connect-aware branch in three components.
 
-The **search picker** is the default route, for the reason §6.2 gives: picking a second event by
+The **search picker** is the default route, for the reason §5.2 gives: picking a second event by
 scrubbing a density plot is absurd. It can be dismissed without disarming the pick ("pick on the
 timeline instead"), which is the only way to reach the canvas route; a banner then says so,
 because the pick is still armed and the modal that explained it is gone. `Escape` cancels, and
@@ -930,7 +930,7 @@ lists them, in the picker's idiom; `?` is registered in the same handler as `c` 
 guard covers it, a dim `/` sits inside the right edge of the capture box, and the pane's
 `connect…` button carries `connect (c)` as its title.
 
-### 6.5 Notes and Markdown (D27)
+### 5.5 Notes and Markdown (D27)
 
 Event notes and connection arguments are Markdown. The renderer is a subset written in
 `core/markdown.ts` rather than a library plus a sanitiser, for one reason that outweighs the
@@ -959,7 +959,7 @@ of them — the note, a connection's argument, an era's name, `learned from` —
 store on every keystroke: a database write, a re-render of the whole app, and an `updated_at`
 recording the moment of the last letter rather than the moment of the thought. The draft is now
 held in the component and committed on about half a second of idle and on blur. It complements rather than replaces
-the undo coalescing (§8.6): the window is one second per `(kind, id, field)`, so a slow typist
+the undo coalescing (§7.6): the window is one second per `(kind, id, field)`, so a slow typist
 still gets one undo entry per sentence rather than one per pause.
 
 The mode was worse, because it was *sticky across selections*. `MarkdownEditor` reads "empty note
@@ -968,12 +968,12 @@ long-lived component — so reading one event's note and then selecting an event
 an empty preview beside a `write` tab that was disabled: a field that could not be typed into and
 had nothing in it. Each pane is now keyed on the record it is showing, so the drafts and the mode
 belong to that record; and the selected tab is never the disabled one, whatever else happens.
-That keying is also what keeps §6.4's promise that finishing a connection lands in a focused note
+That keying is also what keeps §5.4's promise that finishing a connection lands in a focused note
 editor — `autoFocus` only fires on a fresh mount, so without it the promise held for the first
 connection of a session and no other.
 
 
-### 6.6 URL state (D24)
+### 5.6 URL state (D24)
 
 Viewport (centre and span) and selection live in the URL hash. Cheap now, awkward to retrofit
 once React state and the renderer's viewport have grown into each other. It buys bookmarkable
@@ -985,14 +985,14 @@ watching selection, tags and view, and panning changes none of them — so the o
 the section names first never reached the address bar, and the link said "art history only"
 without the 1840s. The write is now scheduled by the viewport callback as well, on the same ~300 ms
 debounce, and it reads everything it needs at write time from a ref and from the store rather than
-from a closure. That keeps the property §6.1 depends on: **React never re-renders on a pan.**
+from a closure. That keeps the property §5.1 depends on: **React never re-renders on a pan.**
 
 Restoring runs in the opposite direction and exactly once, on mount. It has to set the selection
 *directly* rather than through the store's `select`, because while a connection is pending `select`
-completes it (§6.4) — a bookmark is not a click, and routing it through the connect rule let a
+completes it (§5.4) — a bookmark is not a click, and routing it through the connect rule let a
 re-render write a connection nobody asked for.
 
-### 6.7 The chrome around them (D58, D62)
+### 5.7 The chrome around them (D58, D62)
 
 The chrome is deliberately quiet, and quiet chrome degrades in a particular way: everything ends
 up the same size, in the same grey, in whichever row it was added to. The footer had become a
@@ -1020,7 +1020,7 @@ either way, because a colour you cannot name is a colour nobody measures.
 
 ---
 
-## 7. Platform (D7)
+## 6. Platform (D7)
 
 **Web app, TypeScript, PWA (installable, offline), one codebase for desktop and mobile,
 deployed static to Cloudflare Pages.**
@@ -1039,7 +1039,7 @@ the same canvas, simplified chrome. The honest risk: the far-zoom density view o
 screen may simply not be legible — test this early, and be willing to give mobile a different
 default view.
 
-### 7.1 As built (M5)
+### 6.1 As built (M5)
 
 **Two changes carry the mobile layout**, both below Tailwind's `sm`. The detail pane becomes a
 bottom sheet rather than a column, because a fixed 320 px sidebar leaves a 390 px screen with
@@ -1058,7 +1058,7 @@ targets are D58's other half).
   `#europe #`, cutting off the tag half of the grammar — and the placeholder is the only place
   that grammar is written down. Below `sm` the view switcher moves to a segmented control across
   the top of the footer and the wordmark goes; capture keeps the width, which is the priority
-  §9 sets. `+ era` and `?` stay in the header, at 44 px.
+  §8 sets. `+ era` and `?` stay in the header, at 44 px.
 - **Nothing was tappable.** The nav buttons were 24 px tall, `filters` — the only route to
   filtering on a phone — was 27×17, a checkbox was 13×13 and the footer's buttons were
   16 px. Every single-row control is now at least 44 px tall below `sm`, with the visual size
@@ -1072,7 +1072,7 @@ targets are D58's other half).
   a takeover is that you can still see what you selected, and with the selection now revealed on
   the canvas (D57) there is something there worth seeing.
 
-### 7.2 The service worker (D40)
+### 6.2 The service worker (D40)
 
 Written in `scripts/pwa-plugin.ts` rather than taken as a dependency, for the reason the Markdown
 renderer was (D27): it is forty lines, and one aspect has to be exactly right. Workbox would do
@@ -1118,9 +1118,9 @@ app is in, not an offer.
 
 ---
 
-## 8. Storage, durability and privacy (D8, D16, D25)
+## 7. Storage, durability and privacy (D8, D16, D25)
 
-### 8.1 The working store
+### 7.1 The working store
 
 - **Canonical state in memory.** 10k events is ~2 MB; keeping everything resident makes the
   render loop trivial and removes a whole class of async complexity.
@@ -1145,7 +1145,7 @@ app is in, not an offer.
   have other tabs apply it to their in-memory state. Twenty lines, and the alternative is a bug
   that looks like corruption.
 
-### 8.2 What actually threatens the data
+### 7.2 What actually threatens the data
 
 IndexedDB is durable in the ordinary sense — it survives reloads, crashes and reboots. It is not
 durable against the browser deciding to reclaim space, and that is the real risk:
@@ -1159,7 +1159,7 @@ durable against the browser deciding to reclaim space, and that is the real risk
 
 Verify the current behaviour of each when implementing — these policies move.
 
-### 8.3 The plan: three layers, all in v1
+### 7.3 The plan: three layers, all in v1
 
 **Layer 1 — claim persistence.** Call `navigator.storage.persist()` on first write; show the
 result in settings. On iOS, prompt to add to the home screen on second or third visit, and say
@@ -1193,7 +1193,7 @@ that depends on being remembered is layer 3 with extra steps. As built:
 - **It never prompts.** Folder permission is only granted on a user gesture, so a cycle that finds
   permission ungranted does nothing at all and leaves the panel to say so. A dialog raised by a
   ten-minute timer is how an app gets denied permanently.
-- **It flushes first**, since the debounce window is the likeliest data-loss path (§8.7) and a
+- **It flushes first**, since the debounce window is the likeliest data-loss path (§7.7) and a
   snapshot taken without flushing can be missing the edits it was scheduled to protect.
 
 **"The last ~20" is twenty days, not twenty saves.** The filename is the local date, so every
@@ -1216,7 +1216,7 @@ one.
 diverged has to be safe, or backups are a trap. Per record: newer `updated_at` wins, tombstones
 respected. Import and restore are one function, `mergeDocument`.
 
-### 8.4 Is it easy?
+### 7.4 Is it easy?
 
 Yes — this is the cheapest part of the project. Roughly:
 
@@ -1230,14 +1230,14 @@ Call it **two days including the settings UI and the backup indicator.** Do it i
 there is data worth losing. The hard part is not the code, it is remembering that the code has to
 exist before you have three hundred events in there.
 
-### 8.5 If durability has to be guaranteed
+### 7.5 If durability has to be guaranteed
 
 The three layers cover realistic failure. If you want *no* dependence on browser storage policy,
-the answer is the Tauri shell (§7): the same web app, but the vault is a real file on disk, and
+the answer is the Tauri shell (§6): the same web app, but the vault is a real file on disk, and
 IndexedDB becomes a cache. Half a day to wrap, no code changes to the app. Worth doing the day
 the timeline stops being an experiment.
 
-### 8.6 Undo
+### 7.6 Undo
 
 An in-memory operation stack, plus soft deletes making destructive actions recoverable after the
 stack is gone. Cascading deletes (D21) are a single entry.
@@ -1256,7 +1256,7 @@ upsert-only (D9). One exception: a tag another live record still carries is left
 the quick-add that invented `#war` must not take the tag away from the four events that have since
 been given it.
 
-### 8.7 Known limitations of the merge rule
+### 7.7 Known limitations of the merge rule
 
 Found while building it, and worth writing down before the sync layer inherits them:
 
@@ -1317,7 +1317,7 @@ Found while building it, and worth writing down before the sync layer inherits t
   mid-window loses the last edits, so the queue is flushed on `pagehide` and
   `visibilitychange` — not `beforeunload`, which is unreliable on mobile.
 
-### 8.7a Starting over
+### 7.8 Starting over
 
 The data panel also offers a reset: empty everything and return to the first-run screen. Added
 when showing the app to someone a second time made it obvious there was no way to show them the
@@ -1337,7 +1337,7 @@ avoid. The backup folder and its stamp are deliberately kept: they are settings 
 copies go, and forgetting them would disarm the safety net immediately after the one action that
 makes it matter.
 
-### 8.8 Privacy (D25)
+### 7.9 Privacy (D25)
 
 **No telemetry, no analytics, no error reporting, no network traffic beyond loading the app
 itself.** The app is static files; after first load it never talks to a server.
@@ -1356,7 +1356,7 @@ retroactive over the existing corpus, and recorded in `provenance` on anything i
 
 ---
 
-## 9. Build order
+## 8. Build order
 
 Ordered to put the risky, distinctive work first and the CRUD last.
 
@@ -1444,14 +1444,14 @@ the same shape: one absolutely-positioned dropdown that cleared only on the next
 same gutter — `added · <title> · <date> · #tags`, with `undo` beside it — which says everything
 the line claimed, including which tags it resolved to, and clears itself after four seconds or on
 blur. A duplicate warning or a refusal stays a dropdown and waits to be dismissed on purpose,
-since the thing it is warning about is the failure mode §6.3 calls the obvious one for a
+since the thing it is warning about is the failure mode §5.3 calls the obvious one for a
 capture-optimised tool. Its duplicate rows are buttons that select the existing event, which is
 the whole point of showing them and was not previously reachable.
 
 
 ---
 
-## 10. Deliberately left open
+## 9. Deliberately left open
 
 Nothing blocks implementation. These are decisions that want evidence rather than argument, and
 the right time to make them is after M1 is on screen:

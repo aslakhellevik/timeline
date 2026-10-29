@@ -47,7 +47,7 @@ import type {
 /** How many undo entries to keep. Beyond this, soft deletes are the safety net. */
 const UNDO_DEPTH = 50;
 
-/** Write debounce (§8.1): long enough to coalesce typing, short enough to lose little. */
+/** Write debounce (§7.1): long enough to coalesce typing, short enough to lose little. */
 const PERSIST_DELAY_MS = 200;
 
 /**
@@ -64,7 +64,7 @@ const LIFE_ERA_NAME = 'my life';
 export interface QuickAddOutcome {
   ok: boolean;
   event?: TimelineEvent;
-  /** Existing events that look like the same thing (§6.3 duplicate guard). */
+  /** Existing events that look like the same thing (§5.3 duplicate guard). */
   duplicates?: TimelineEvent[];
   reason?: string;
 }
@@ -93,7 +93,7 @@ interface TimelineStoreState {
   query: string;
   /**
    * Bumped whenever something asks the views to bring the selection into view
-   * (§6.1) — "show on timeline", or `Enter` on a list row.
+   * (§5.1) — "show on timeline", or `Enter` on a list row.
    *
    * A counter rather than an id, because the request is not always a *change*:
    * pressing "show on timeline" on the event that is already selected has to
@@ -109,7 +109,7 @@ interface TimelineStoreState {
   /**
    * When the timeline last changed, as `Date.now()`. Null until it has.
    *
-   * The dirty signal the automatic backup runs on (§8.3): a cycle that finds
+   * The dirty signal the automatic backup runs on (§7.3): a cycle that finds
    * this unchanged since the last snapshot skips the write. Deliberately a
    * stamp rather than a boolean — nothing has to reset it, so the flag cannot
    * be cleared by one reader and missed by another.
@@ -117,7 +117,7 @@ interface TimelineStoreState {
   lastMutationAt: number | null;
   /**
    * The outcome of the one automatic `navigator.storage.persist()` request
-   * (§8.3, layer 1), or null before the first write.
+   * (§7.3, layer 1), or null before the first write.
    *
    * Kept so the data panel can tell "never asked" from "asked and refused" —
    * `persistenceState()` reports both as simply not persisted, and only one of
@@ -175,7 +175,7 @@ let backing: Store | null = null;
 let queue: PersistQueue | null = null;
 /** Undoes `store.subscribe`, so re-attaching does not leave the old one running. */
 let unsubscribe: (() => void) | null = null;
-/** Cross-tab changes gathered since the last reload, by kind (§8.7). */
+/** Cross-tab changes gathered since the last reload, by kind (§7.7). */
 let incoming: Map<RecordKind, Set<Id>> | null = null;
 let incomingTimer: ReturnType<typeof setTimeout> | null = null;
 /** Attaches run one at a time; StrictMode starts two before either finishes. */
@@ -188,7 +188,7 @@ let attaching: Promise<unknown> = Promise.resolve();
 let claimingPersistence = false;
 
 /**
- * Merges one record kind after another tab's write (§8.7).
+ * Merges one record kind after another tab's write (§7.7).
  *
  * Only the announced ids are considered: an id the database no longer has is
  * dropped, one it has is taken unless the local copy is newer — an edit typed
@@ -218,7 +218,7 @@ function spliceRemote<T extends Base>(
       continue;
     }
     fresh.delete(record.id);
-    // Last writer wins by instant, as everywhere else (§8.7).
+    // Last writer wins by instant, as everywhere else (§7.7).
     if (compareTimestamps(theirs.updated_at, record.updated_at) > 0) {
       next.push(theirs);
       changed = true;
@@ -246,7 +246,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
   });
 
   /**
-   * Claims persistent storage, once, on the first real write (§8.3, layer 1).
+   * Claims persistent storage, once, on the first real write (§7.3, layer 1).
    *
    * `requestPersistence` has said "call it on first write" in its own docstring
    * since it was written and nothing ever did, so the layer the design puts
@@ -323,10 +323,10 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
   };
 
   /**
-   * Applies another tab's write to the in-memory timeline (§8.1, §8.7).
+   * Applies another tab's write to the in-memory timeline (§7.1, §7.7).
    *
    * The naive answer — reload everything — silently threw away whatever this
-   * tab had typed since its last flush. §8.7 states the rule instead: re-read
+   * tab had typed since its last flush. §7.7 states the rule instead: re-read
    * exactly the ids the change names, drop the ones that are gone, and keep the
    * local record where it is the newer of the two.
    */
@@ -445,7 +445,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
     }
 
     // Another tab wrote something; both hold in-memory state and would
-    // otherwise overwrite each other silently (§8.1).
+    // otherwise overwrite each other silently (§7.1).
     unsubscribe = store.subscribe((change) => receive(store, change));
   };
 
@@ -697,7 +697,7 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
      * personal frame of reference exists before the user has added anything.
      *
      * Idempotent, because the first-run screen is reachable a second time
-     * through "start over" (§8.7a) and because StrictMode will happily submit
+     * through "start over" (§7.8) and because StrictMode will happily submit
      * the form's effect twice — two overlapping lives on the axis is a mess
      * only a manual delete gets out of.
      */

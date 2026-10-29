@@ -1,5 +1,5 @@
 /**
- * Quick-add (design.md §9): one typed line becomes a draft event.
+ * Quick-add (design.md §8): one typed line becomes a draft event.
  *
  * Capture friction is the top product risk in this project — the app is used
  * while reading a book, and an event that takes more than a few seconds to enter

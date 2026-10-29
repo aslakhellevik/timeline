@@ -8,7 +8,7 @@ import { Field } from './controls';
 import { modalIsOpen } from './use-focus-trap';
 
 /**
- * Capture (docs/design.md §9).
+ * Capture (docs/design.md §8).
  *
  * This is the highest-stakes surface in the app. If adding an event while
  * reading takes more than a few seconds the timeline never gets dense enough to
@@ -62,7 +62,7 @@ export function QuickAdd() {
         (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA');
       if (typingElsewhere) return;
       // Not from under a dialog: `/` used to focus this box behind the overlay,
-      // so the next keystrokes went into a field nobody could see (§6.4).
+      // so the next keystrokes went into a field nobody could see (§5.4).
       if (modalIsOpen()) return;
 
       if (event.key === '/' || ((event.ctrlKey || event.metaKey) && event.key === 'k')) {
@@ -145,7 +145,7 @@ export function QuickAdd() {
           if (event.key === 'Enter') submit();
           if (event.key === 'Escape') {
             // Claimed, so that clearing the box does not also close whatever
-            // pane is open behind it (§6.4).
+            // pane is open behind it (§5.4).
             event.preventDefault();
             setValue('');
             setStatus(null);
@@ -207,7 +207,7 @@ export function QuickAdd() {
             {/*
               Dismissed on purpose. This panel covers the filter chips, and the
               thing it is warning about — the same event entered twice, which
-              §6.3 calls the obvious failure mode of a capture-optimised tool —
+              §5.3 calls the obvious failure mode of a capture-optimised tool —
               is worth a deliberate act to put away.
             */}
             <button

@@ -3,7 +3,7 @@ import { useTimeline } from '../state/timeline-store';
 import { Field } from './controls';
 
 /**
- * First run (docs/design.md §9, D26).
+ * First run (docs/design.md §8, D26).
  *
  * "Empty timeline is the point" is right conceptually and terrible as a first
  * screen — a density view of nothing is nothing. One question does real work:
