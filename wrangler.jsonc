@@ -1,0 +1,14 @@
+{
+    "$schema": "node_modules/wrangler/config-schema.json",
+    "name": "arlinje",
+    "compatibility_date": "2026-04-23",
+    "routes": [
+        { "pattern": "timeline.aslakhellevik.no", "custom_domain": true }
+    ],
+    "assets": {
+        "directory": "./dist",
+        // The app has no routes (the view is in the hash, D24), so this only
+        // catches a mistyped address: it lands in the app, not on a bare 404.
+        "not_found_handling": "single-page-application"
+    }
+}

@@ -109,7 +109,19 @@ async function precache() {
       const request = new Request(path, { cache: 'reload' });
       try {
         const response = await fetch(request);
-        if (response.ok) await cache.put(request, response);
+        if (!response.ok) return;
+        // Cloudflare's static assets answer index.html with a redirect to the
+        // directory, and a redirected response is refused as the answer to a
+        // navigation — so the offline fallback would fail. Store the body
+        // under a clean response instead.
+        const clean = response.redirected
+          ? new Response(await response.blob(), {
+              status: response.status,
+              statusText: response.statusText,
+              headers: response.headers,
+            })
+          : response;
+        await cache.put(request, clean);
       } catch {
         // Offline during install, or one asset missing. The fetch handler falls
         // back to the network for anything not precached.
