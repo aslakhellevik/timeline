@@ -16,7 +16,7 @@ export interface UrlState {
   span?: number;
   selectedId?: string;
   tags?: string[];
-  view?: 'timeline' | 'map' | 'list';
+  view?: 'timeline' | 'list';
 }
 
 export function encodeUrlState(state: UrlState): string {
@@ -52,9 +52,9 @@ export function decodeUrlState(hash: string): UrlState {
   }
 
   const view = parts.get('v');
-  // Anything else — including `depth`, from links made before that view was
-  // removed (D70) — opens the timeline.
-  if (view === 'list' || view === 'map') state.view = view;
+  // Anything else — including `depth` and `map`, from links made before those
+  // views were removed (D70) — opens the timeline.
+  if (view === 'list') state.view = view;
 
   return state;
 }

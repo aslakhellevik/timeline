@@ -59,8 +59,8 @@ describe('installBuiltinTags', () => {
 
 /**
  * D44. A `#tag` is one word, so eight of the twenty premade regions could not be
- * typed at all: `#britain` invented a private tag beside "Britain and Ireland"
- * and the event never reached the map, since the map places by region tag.
+ * typed at all: `#britain` invented a private tag beside "Britain and Ireland",
+ * and the event never showed under that region's filter.
  */
 describe('tag aliases and normalisation (D44)', () => {
   const seeded = installBuiltinTags(EMPTY_TIMELINE, T1).timeline;

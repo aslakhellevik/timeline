@@ -1,25 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { Id, TagKind } from '../core/model/types';
 import { normaliseTagName } from '../core/model/builtin-tags';
-import { isPlaceableTag } from '../core/geo';
 import { useTimeline } from '../state/timeline-store';
 import { useTagNames } from '../state/tag-names';
-import { MapPin } from './controls';
 
 /**
- * An event's tags, as something you can change (docs/design.md §6.2, §11.4).
+ * An event's tags, as something you can change (docs/design.md §6.2).
  *
  * The chips were read-only, which made the pane a receipt for what quick-add had
  * understood rather than an editor: a mistyped `#warr` could be seen and not
  * fixed, and a tag thought of afterwards could not be added at all.
  *
- * Two things beyond add-and-remove, both about the same confusion. **Regions are
- * marked with a pin**, in the chips and in the suggestions, because the map
- * places almost every event by its region tag (§11.4) and nothing said so — a
- * user who does not know it has no way to guess why one event is on the map and
- * the next is not. And the region group is **listed first and labelled with what
- * it does**, since the vocabulary is otherwise thirty flat words with no hint
- * that eight of them are geography.
+ * The suggestions are grouped by kind — regions, themes, yours — since the
+ * vocabulary is otherwise thirty flat words with no hint of which are which.
  *
  * Everything is emitted as **names**, never ids: `ensureTags` owns what a word
  * means (D20, D44), and a component that resolved ids itself would be a second
@@ -28,19 +21,10 @@ import { MapPin } from './controls';
 export interface TagEditorProps {
   tags: readonly Id[];
   onChange: (names: string[]) => void;
-  /**
-   * Bumped to open the box and put the cursor in it — the `add a region` link in
-   * the place field. A counter rather than a boolean for the reason the store's
-   * `revealRequest` is one: asking twice in a row is two requests, and nothing
-   * about the state has changed between them.
-   */
-  focusRequest?: number;
 }
 
 const GROUPS: { kind: TagKind; label: string }[] = [
-  // The label is the answer to the one thing users did not work out about the
-  // map, said in the one place they are choosing a tag.
-  { kind: 'region', label: 'regions — these place the event on the map' },
+  { kind: 'region', label: 'regions' },
   { kind: 'theme', label: 'themes' },
   { kind: 'user', label: 'yours' },
 ];
@@ -48,7 +32,7 @@ const GROUPS: { kind: TagKind; label: string }[] = [
 /** How many suggestions are worth showing above a three-hundred-pixel pane. */
 const MAX_SUGGESTIONS = 8;
 
-export function TagEditor({ tags, onChange, focusRequest = 0 }: TagEditorProps) {
+export function TagEditor({ tags, onChange }: TagEditorProps) {
   const allTags = useTimeline((state) => state.timeline.tags);
   const names = useTagNames();
 
@@ -56,7 +40,6 @@ export function TagEditor({ tags, onChange, focusRequest = 0 }: TagEditorProps) 
   const [query, setQuery] = useState('');
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const requestRef = useRef(focusRequest);
 
   /*
    * An id with no tag record behind it is dropped rather than shown.
@@ -74,14 +57,6 @@ export function TagEditor({ tags, onChange, focusRequest = 0 }: TagEditorProps) 
       }),
     [tags, names],
   );
-
-  useEffect(() => {
-    if (focusRequest === requestRef.current) return;
-    requestRef.current = focusRequest;
-    setOpen(true);
-    // After the input exists: the box is not rendered until `open` is true.
-    queueMicrotask(() => inputRef.current?.focus());
-  }, [focusRequest]);
 
   const currentNames = applied.map((tag) => tag.name);
   const taken = new Set(applied.map((tag) => normaliseTagName(tag.name)));
@@ -103,8 +78,7 @@ export function TagEditor({ tags, onChange, focusRequest = 0 }: TagEditorProps) 
       return group.length === 0 ? [] : [{ label, tags: group }];
     });
 
-    // Trimmed to a paneful, in the order the groups are listed — so the regions
-    // and their label survive a long list rather than being cut off the bottom.
+    // Trimmed to a paneful, in the order the groups are listed.
     let left = MAX_SUGGESTIONS;
     const trimmed: { label: string; tags: typeof allTags }[] = [];
     for (const group of grouped) {
@@ -151,15 +125,12 @@ export function TagEditor({ tags, onChange, focusRequest = 0 }: TagEditorProps) 
     <section className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-1.5">
         {applied.map(({ id, name }) => {
-          const placeable = isPlaceableTag(id);
           return (
             <span
               key={id}
-              title={placeable ? 'a region — it places this event on the map' : undefined}
               className="flex items-center gap-1 rounded bg-line/60 py-0.5 pl-1.5 pr-0.5
                          text-xs text-paper-soft"
             >
-              {placeable && <MapPin className="text-paper-dim" />}
               {name}
               <button
                 onClick={() => remove(name)}
@@ -259,7 +230,6 @@ export function TagEditor({ tags, onChange, focusRequest = 0 }: TagEditorProps) 
                                 style={{ backgroundColor: tag.color }}
                               />
                             )}
-                            {isPlaceableTag(tag.id) && <MapPin className="text-paper-dim" />}
                             {tag.name}
                           </button>
                         </li>

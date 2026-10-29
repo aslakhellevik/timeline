@@ -16,7 +16,6 @@ import { EventList } from './EventList';
 import { FilterBar } from './FilterBar';
 import { FirstRun } from './FirstRun';
 import { HelpOverlay } from './HelpOverlay';
-import { MapView } from './MapView';
 import { PackPanel } from './PackPanel';
 import { QuickAdd } from './QuickAdd';
 import { TimelineView } from './TimelineView';
@@ -27,7 +26,7 @@ import { modalIsOpen } from './use-focus-trap';
 import { decodeUrlState, encodeUrlState } from './url-state';
 import type { UrlState } from './url-state';
 
-const VIEWS = ['timeline', 'map', 'list'] as const;
+const VIEWS = ['timeline', 'list'] as const;
 type View = (typeof VIEWS)[number];
 
 /**
@@ -51,9 +50,6 @@ export function App() {
   const connectFrom = useTimeline((state) => state.connectFrom);
   const pickerOpen = useTimeline((state) => state.pickerOpen);
   const cancelConnect = useTimeline((state) => state.cancelConnect);
-  const placingId = useTimeline((state) => state.placingId);
-  const cancelPlacing = useTimeline((state) => state.cancelPlacing);
-  const placeAt = useTimeline((state) => state.placeAt);
   const beginConnect = useTimeline((state) => state.beginConnect);
   const select = useTimeline((state) => state.select);
   const selectConnection = useTimeline((state) => state.selectConnection);
@@ -158,17 +154,6 @@ export function App() {
    */
   const viewRef = useRef<View>(view);
   const hashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /*
-   * The canvas the user was last on, so "show on timeline" from the list has
-   * somewhere to go.
-   *
-   * Remembered rather than fixed to `timeline`: someone reading the map who
-   * looks an event up in the list means "put it back on the map", and sending
-   * them to a view they did not choose is a worse answer than any default.
-   */
-  const lastCanvasView = useRef<'timeline' | 'map'>(
-    initial.view && initial.view !== 'list' ? initial.view : 'timeline',
-  );
 
   const scheduleHashWrite = useCallback(() => {
     if (hashTimer.current !== null) clearTimeout(hashTimer.current);
@@ -187,7 +172,6 @@ export function App() {
 
   useEffect(() => {
     viewRef.current = view;
-    if (view !== 'list') lastCanvasView.current = view;
     scheduleHashWrite();
     return () => {
       if (hashTimer.current !== null) {
@@ -206,7 +190,7 @@ export function App() {
   );
 
   /**
-   * "show on timeline": go to the last canvas and put the selection on screen.
+   * "show on timeline": go to the timeline and put the selection on screen.
    *
    * The request is a counter in the store rather than a call into a view,
    * because the view that has to act on it may not be mounted yet — pressing
@@ -214,7 +198,7 @@ export function App() {
    * selection anyway.
    */
   const showOnCanvas = useCallback(() => {
-    setView(lastCanvasView.current);
+    setView('timeline');
     revealSelected();
   }, [revealSelected]);
 
@@ -247,33 +231,6 @@ export function App() {
    * handlers that did not know about each other (§6.4).
    */
   useOnEscape(cancelConnect, connectFrom !== null);
-  // The same key for the same kind of thing: an armed mode the user wants out
-  // of, above the pane and below any panel (D60).
-  useOnEscape(cancelPlacing, placingId !== null);
-
-  /*
-   * Placing an event happens on the map, so the app goes there and comes back.
-   *
-   * The offer is made in the detail pane, which is reachable from every view —
-   * so without this, "set on the map" from the list would arm a mode whose
-   * only surface was not on screen. Coming back matters as much as going: the
-   * user was reading the timeline, and a detour should end where it started.
-   */
-  const returnView = useRef<View | null>(null);
-  useEffect(() => {
-    if (placingId !== null) {
-      if (returnView.current === null) {
-        returnView.current = viewRef.current;
-        setView('map');
-      }
-      return;
-    }
-    if (returnView.current !== null) {
-      const back = returnView.current;
-      returnView.current = null;
-      setView(back);
-    }
-  }, [placingId]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -365,8 +322,8 @@ export function App() {
    *
    * Each view reads the prop once, at mount — which is exactly when a switch
    * between them happens — so it has to be where the user last was, not where
-   * the URL said when the tab opened. Panning the timeline and then pressing
-   * "map" used to land back at the load-time viewport. The ref is seeded from
+   * the URL said when the tab opened. Panning the timeline and then opening the
+   * list and coming back used to land back at the load-time viewport. The ref is seeded from
    * the hash, so a fresh load still honours the bookmark.
    */
   const startViewport = viewportRef.current;
@@ -460,18 +417,10 @@ export function App() {
       */}
       {connectFrom && !pickerOpen && (
         <ArmedBanner onCancel={cancelConnect}>
-          pick the other event — click a mark on the timeline, a dot on the map, or a row in the
-          list
+          pick the other event — click a mark on the timeline, or a row in the list
         </ArmedBanner>
       )}
 
-      {/* The spatial twin of the banner above, in the same yellow for the same
-          reason: one mode is armed and the next click belongs to it (D66). */}
-      {placingId && (
-        <ArmedBanner onCancel={cancelPlacing}>
-          click the map where it happened — how close you can point is how precise it will be
-        </ArmedBanner>
-      )}
 
       <div className="flex min-h-0 flex-1">
         <main className="min-w-0 flex-1">
@@ -489,20 +438,6 @@ export function App() {
               onSelectEvent={select}
               onSelectConnection={selectConnection}
               onSelectEra={selectEra}
-              revealRequest={revealRequest}
-              {...(startViewport ? { initialViewport: startViewport } : {})}
-              onViewportChange={onViewportChange}
-            />
-          ) : view === 'map' ? (
-            <MapView
-              events={visible.events}
-              tags={visible.tags}
-              allEvents={timeline.events}
-              selectedId={selectedId}
-              connectFrom={connectFrom}
-              placingId={placingId}
-              onPlace={placeAt}
-              onSelectEvent={select}
               revealRequest={revealRequest}
               {...(startViewport ? { initialViewport: startViewport } : {})}
               onViewportChange={onViewportChange}

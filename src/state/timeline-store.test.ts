@@ -118,7 +118,6 @@ beforeEach(() => {
     selectedEraId: null,
     connectFrom: null,
     pickerOpen: false,
-    placingId: null,
     query: '',
     undoStack: [],
     undoLabel: null,
@@ -728,8 +727,8 @@ describe("editing an event's tags (§6.2, D20, D44)", () => {
     await state().flush();
 
     // The whole point of taking names rather than ids: "north-america" is the
-    // built-in region, not a private tag beside it (D44) — and because the map
-    // places by region tag, the difference is whether the event appears on it.
+    // built-in region, not a private tag beside it (D44) — the difference is
+    // whether the event shows under that region's filter.
     expect(state().timeline.events[0]?.tags).toEqual(['tag.region.north-america']);
     expect(state().timeline.tags.map((t) => t.id)).toContain('tag.region.north-america');
   });
@@ -787,68 +786,6 @@ describe("editing an event's tags (§6.2, D20, D44)", () => {
     // itself behind in the vocabulary.
     expect(state().timeline.tags).toHaveLength(0);
     expect(store.puts).toHaveLength(0);
-  });
-});
-
-describe('placing an event on the map (D66)', () => {
-  it('stores the click with the precision the caller derived, and disarms', async () => {
-    const store = fakeStore(makeTimeline({ events: [event('e1')] }));
-    await attach(store);
-
-    state().beginPlacing('e1');
-    expect(state().placingId).toBe('e1');
-    expect(state().selectedId).toBe('e1');
-
-    state().placeAt(41.01, 28.98, 60);
-    await state().flush();
-
-    expect(state().timeline.events[0]?.place).toEqual({
-      name: '',
-      lat: 41.01,
-      lon: 28.98,
-      precision: 60,
-    });
-    expect(state().placingId).toBeNull();
-  });
-
-  it('keeps a name that was already typed', async () => {
-    await attach(
-      fakeStore(makeTimeline({ events: [event('e1', { place: { name: 'Constantinople' } })] })),
-    );
-
-    state().beginPlacing('e1');
-    state().placeAt(41.01, 28.98, 60);
-
-    // Two true things were said about the place; keeping the numbers and
-    // throwing the word away loses the better half.
-    expect(state().timeline.events[0]?.place?.name).toBe('Constantinople');
-  });
-
-  it('ignores a click when nothing is armed', async () => {
-    const store = fakeStore(makeTimeline({ events: [event('e1')] }));
-    await attach(store);
-
-    state().placeAt(0, 0, 10);
-    await state().flush();
-    expect(state().timeline.events[0]?.place).toBeUndefined();
-    expect(store.puts).toHaveLength(0);
-  });
-
-  it('is disarmed by the other modes, and by the event going away', async () => {
-    await attach(fakeStore(makeTimeline({ events: [event('e1'), event('e2')] })));
-
-    state().beginPlacing('e1');
-    state().beginConnect('e1');
-    expect(state().placingId).toBeNull();
-
-    state().cancelConnect();
-    state().beginPlacing('e1');
-    state().select('e2');
-    expect(state().placingId).toBeNull();
-
-    state().beginPlacing('e2');
-    state().deleteEvent('e2');
-    expect(state().placingId).toBeNull();
   });
 });
 

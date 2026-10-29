@@ -5,9 +5,9 @@ import type { Store } from '../store';
  * The demo timeline: `?demo` (docs/design.md §9, D68).
  *
  * The app starts empty on purpose, which makes it the hardest possible thing to
- * show anyone — and the renderer and the map can only be judged
- * against a corpus with shape. So `?demo` opens a *second* database, filled once
- * from the synthetic generator the renderer was tuned against.
+ * show anyone — and the renderer can only be judged against a corpus with
+ * shape. So `?demo` opens a *second* database, filled once from the synthetic
+ * generator the renderer was tuned against.
  *
  * A second database, not a second dataset in the first: the demo must be unable
  * to touch the real timeline, and a separate name is the one guarantee that

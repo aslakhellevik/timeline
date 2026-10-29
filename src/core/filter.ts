@@ -1,7 +1,7 @@
 /**
  * The one filter predicate every view consumes (docs/design.md §3.5, D22).
  *
- * Canvas, list and — in v2 — the map all read this. Keeping it single means a
+ * The canvas and the list both read this. Keeping it single means a
  * connection can never render as an arc terminating in an event the list has
  * hidden, and it means "what is currently showing" has exactly one definition.
  */

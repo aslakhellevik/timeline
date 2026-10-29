@@ -12,10 +12,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * so that undoing a sentence does not undo it one letter at a time, but the
  * writes themselves were still per keystroke.
  *
- * So the draft is held here and committed on ~500 ms of idle, and on blur —
- * which is what `PlaceField` had always done, and what the rest of the panes
- * copied nothing from. The two together mean nothing is ever lost: leaving the
- * field commits immediately, and staying in it commits half a second later.
+ * So the draft is held here and committed on ~500 ms of idle, and on blur. The
+ * two together mean nothing is ever lost: leaving the field commits
+ * immediately, and staying in it commits half a second later.
  *
  * The debounce **complements** the undo coalescing rather than replacing it: an
  * undo window is one second per `(kind, id, field)`, so a slow typist still gets

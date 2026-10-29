@@ -94,15 +94,6 @@ interface TimelineStoreState {
    * instead" escape hatch, which is the only way the canvas route is reachable.
    */
   pickerOpen: boolean;
-  /**
-   * The event waiting to be given a spot on the map, if any (D66).
-   *
-   * The spatial twin of `connectFrom`, and deliberately the same shape: while it
-   * is set the app is in one mode, the map click means one thing, and a banner
-   * says so. Typed coordinates remain the route for anyone who has them; this is
-   * the route for everyone who does not, which is almost everyone.
-   */
-  placingId: Id | null;
   query: string;
   /**
    * Bumped whenever something asks the views to bring the selection into view
@@ -148,12 +139,6 @@ interface TimelineStoreState {
   setEventTags(id: Id, names: readonly string[]): void;
   deleteEvent(id: Id): void;
   undo(): void;
-
-  /** Arms "click the map where it happened" for one event (D66). */
-  beginPlacing(id: Id): void;
-  cancelPlacing(): void;
-  /** Finishes it: stores the point and disarms. Ignored when nothing is armed. */
-  placeAt(lat: number, lon: number, precision: number): void;
 
   beginConnect(from: Id): void;
   cancelConnect(): void;
@@ -540,7 +525,6 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
     selectedEraId: null,
     connectFrom: null,
     pickerOpen: false,
-    placingId: null,
     query: '',
     revealRequest: 0,
     undoStack: [],
@@ -659,37 +643,6 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
       });
     },
 
-    /**
-     * Placing an event by clicking the map (D66).
-     *
-     * Armed and disarmed like a connection, and for the same reason: what a
-     * click on the canvas means has to be one piece of state the whole app can
-     * read, not a flag inside whichever component happens to be mounted.
-     */
-    beginPlacing(id) {
-      // A pending connection and a pending placement are two answers to the same
-      // click, so arming one disarms the other.
-      set({ placingId: id, selectedId: id, connectFrom: null, pickerOpen: false });
-    },
-
-    cancelPlacing() {
-      set({ placingId: null });
-    },
-
-    placeAt(lat, lon, precision) {
-      const id = get().placingId;
-      if (!id) return;
-      const event = get().timeline.events.find((candidate) => candidate.id === id);
-      set({ placingId: null });
-      if (!event) return;
-      // The name is kept if there is one. Someone who typed "Constantinople" and
-      // then pointed at the Bosphorus has said two true things about the place,
-      // and throwing the word away to keep the numbers loses the better half.
-      get().updateEvent(id, {
-        place: { name: event.place?.name ?? '', lat, lon, precision },
-      });
-    },
-
     deleteEvent(id) {
       const mutation = removeEvent(get().timeline, id);
       // The cascade (D21) is computed once, by the model. A connection it is
@@ -709,7 +662,6 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
           ? { selectedConnectionId: null }
           : {}),
         ...(state.connectFrom === id ? { connectFrom: null, pickerOpen: false } : {}),
-        ...(state.placingId === id ? { placingId: null } : {}),
       };
       if (Object.keys(patch).length > 0) set(patch);
     },
@@ -730,7 +682,6 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
         pickerOpen: true,
         selectedId: from,
         selectedConnectionId: null,
-        placingId: null,
       });
     },
 
@@ -892,7 +843,6 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
         selectedId: null,
         selectedConnectionId: null,
         connectFrom: null,
-        placingId: null,
       });
     },
 
@@ -1053,9 +1003,6 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
         selectedId: id,
         selectedConnectionId: null,
         selectedEraId: null,
-        // A placement is armed for one event; selecting a different one ends it,
-        // exactly as it ends a pending connection.
-        ...(id === get().placingId ? {} : { placingId: null }),
       });
     },
 
@@ -1065,7 +1012,6 @@ export const useTimeline = create<TimelineStoreState>((set, get) => {
         selectedEraId: null,
         connectFrom: null,
         pickerOpen: false,
-        placingId: null,
       });
     },
 

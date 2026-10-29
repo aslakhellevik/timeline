@@ -28,6 +28,7 @@ describe('url state', () => {
 
   it('opens a link to a removed view on the timeline', () => {
     expect(decodeUrlState('#v=depth&e=ev-0100')).toEqual({ selectedId: 'ev-0100' });
+    expect(decodeUrlState('#v=map')).toEqual({});
   });
 
   it('rejects a span that would invert or collapse the viewport', () => {

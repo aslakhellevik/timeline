@@ -11,7 +11,7 @@ talk to people, and its shape says something about what you know and how you con
 
 ## Status
 
-**v1 is built**, and the map with it. The pure core, three canvas views, local-first storage with
+**v1 is built.** The pure core, the canvas timeline and the list, local-first storage with
 capture, connections and their notes, tag filtering that redistributes the mass, eras in lanes,
 installable packs, and an offline-capable PWA that works on a phone.
 The concept below is settled; the technical decisions that follow from it live in
@@ -102,28 +102,6 @@ zooming in genuinely resolves clumps into structure instead of stretching the sa
 uncertain events stay smeared while precise ones sharpen. The maths is in
 [docs/design.md](docs/design.md#3-mass-d3).
 
-### The map
-
-The same events in space, not only time: a world map with a dot wherever something you know
-happened. It is **coupled to the timeline** — a scrubber along the bottom moves the window, and
-the dots fill in and drain away as you sweep through the centuries.
-
-Two things it is careful about. It draws **coastlines, not borders**, because a timeline running
-from the Bronze Age to last week cannot honestly lay the frontiers of 2026 across itself. And
-most events are placed by their region tag rather than by coordinates, so each dot is ringed at
-its true radius — an event tagged only *Asia* is a soft circle two thousand kilometres across,
-because that is all that is really known about where it happened.
-
-The projection is equal-area (Equal Earth), since the question the map answers is *how much*.
-
-Where an event happened can be typed as a **name** — `Constantinople`, `Carthage`, `Oslo` — against
-a small gazetteer bundled with the app: Natural Earth's cities and countries, plus a hand-written
-set of the historical places a history timeline needs and no modern gazetteer has. Nothing is
-looked up over the network, ever. A name it does not know is kept as a name and says so, and for
-anything else you can simply **click the map**: how far you are zoomed in is how precise the
-result claims to be, so a click at world zoom records a two-hundred-kilometre halo rather than a
-false pinpoint.
-
 ## Starting from empty
 
 A new timeline is empty — that is the point. Canonical content is available as opt-in **packs**;
@@ -183,7 +161,6 @@ Answered, with rationale in [docs/design.md](docs/design.md):
 | Data durability | Three layers: persisted storage, automatic file backup, manual export — all in v1 |
 | Views | One canvas — the flat timeline — plus a searchable, keyboard-navigable list, over one shared filter |
 | Privacy | No telemetry, no analytics, no network traffic beyond loading the app |
-| Spatial view | Built: Equal Earth, coastlines rather than borders, coupled to the time window |
 | Licence / language | MIT; UK English |
 
 Nothing blocks implementation. What is deliberately left until there is something on screen:
@@ -202,13 +179,11 @@ src/core/           pure, framework-free, fully tested
   search.ts         search, and the capture-time duplicate guard
   quick-add.ts      the capture grammar
   packs.ts          install, upgrade, adoption, uninstall
-  geo/              projection, coastlines, region placement, clustering, gazetteer
   markdown.ts       a small Markdown subset, escape-first (D27)
 src/packs/          the bundled packs — WWII, the Cold War
-src/render/         canvas renderers — no framework imports (D11)
+src/render/         the canvas renderer — no framework imports (D11)
   arcs.ts           connection arc geometry, colour and hit-testing
   lanes.ts          era lane allocation and bar geometry
-  map-renderer.ts   the world map and its time scrubber
 src/state/          in-memory timeline, mutations, undo, persist queue
 src/store/          IndexedDB, merge, backup, durability
 src/ui/             React
@@ -221,13 +196,13 @@ That boundary is the one architectural rule worth enforcing — see
 [D11](docs/design.md#1-decision-log).
 
 Build order: [docs/design.md §9](docs/design.md#9-build-order). **M0–M5 complete** — that is all
-of v1 — and the map was built after it. What comes next is deliberately deferred: AI and the
+of v1. What comes next is deliberately deferred: AI and the
 social layer.
 
 ```
 npm run dev        # your timeline; starts empty
 npm run demo       # a synthetic one, in its own database — opens /?demo
-npm test           # 935 tests
+npm test           # 874 tests
 npm run typecheck
 ```
 
@@ -243,6 +218,5 @@ Things worth trying in it:
 
 - **timeline** — scroll to zoom from five thousand years to a week; the mass dissolves into marks
   and then labels, column by column. Click a tag chip and watch the weight move.
-- **map** — drag the band along the bottom and the dots fill in and drain away.
 - **list** — everything, searchable; `?` shows the keyboard shortcuts.
 - Type `battle of lepanto 1571 #europe #war` into the box at the top and press enter.

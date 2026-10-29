@@ -27,7 +27,7 @@ export interface BuiltinTag {
    * Other names for the same tag (D44). A `#tag` in quick-add is one word, so a
    * premade tag called "Britain and Ireland" is untypeable without them: the
    * user types `#britain`, gets a private tag beside the built-in one, and the
-   * event never reaches the map. Aliases are matched after normalisation, so
+   * event never shows under the region's filter. Aliases are matched after normalisation, so
    * only genuine synonyms belong here — a hyphen or a leading article does not.
    */
   aliases?: readonly string[];

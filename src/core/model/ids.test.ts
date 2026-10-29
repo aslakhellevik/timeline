@@ -51,7 +51,7 @@ describe('builtin tags', () => {
 
   it('can be typed as a single quick-add word (D44)', () => {
     // A tag is entered as `#one-word`, so a premade tag nobody can type is a
-    // premade tag nobody uses — and its events never reach the map.
+    // premade tag nobody uses.
     const QUICK_ADD_TAG = /^[\p{L}\p{N}_]+(?:-[\p{L}\p{N}_]+)*$/u;
     for (const tag of BUILTIN_TAGS) {
       const typed = normaliseTagName(tag.name).replace(/ /g, '-');

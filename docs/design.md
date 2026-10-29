@@ -3,8 +3,8 @@
 Technical design for the concept in [../README.md](../README.md). Written before implementation;
 every decision here should be revisited once there is something on screen.
 
-**v1 is single-user, local-first, no accounts, no server.** The social layer, AI features and the
-map are deferred — but the data model is shaped so that none of them require a migration.
+**v1 is single-user, local-first, no accounts, no server.** The social layer and AI features are
+deferred — but the data model is shaped so that neither requires a migration.
 
 ---
 
@@ -28,7 +28,7 @@ map are deferred — but the data model is shaped so that none of them require a
 | D14 | Tags are flat with an optional parent and a `kind` discriminator |
 | D15 | Eras are a separate entity from events, laid out in lanes |
 | D16 | Durability is three layers: `storage.persist()`, automatic file backup, manual export — all in v1 |
-| D17 | Spatial view is v2; `Place` stays in the schema from the start |
+| D17 | ~~Spatial view is v2; `Place` stays in the schema from the start~~ — removed, see D70; `Place` stays in the schema, edited as a name |
 | D18 | MIT licence |
 | D19 | UK English in prose and UI copy; standard programming English in identifiers (`color`, `license`) |
 | D20 | Built-in tags have fixed namespaced IDs; user tags get UUIDv7; packs reference IDs, never names |
@@ -52,9 +52,9 @@ map are deferred — but the data model is shaped so that none of them require a
 | D38 | With a pack installed the mass is drawn in **two layers**: the total desaturated, your own share solid inside it |
 | D39 | The premade tags are materialised as records on first run, so a typed `#war` attaches to the built-in id |
 | D40 | The service worker is written here rather than taken as a dependency: network-first shell, cache-first fingerprinted assets |
-| D41 | The map uses **Equal Earth** — equal-area, because the view is about how much |
-| D42 | The map draws **coastlines, not borders**: borders move on the timescale the timeline covers, coastlines do not |
-| D43 | Events with no coordinates are placed by their **region tag**, drawn with a halo at the region's true radius |
+| D41 | ~~The map uses **Equal Earth** — equal-area, because the view is about how much~~ — removed, see D70 |
+| D42 | ~~The map draws **coastlines, not borders**: borders move on the timescale the timeline covers, coastlines do not~~ — removed, see D70 |
+| D43 | ~~Events with no coordinates are placed by their **region tag**, drawn with a halo at the region's true radius~~ — removed, see D70 |
 | D44 | Tag names are matched **normalised**, and a built-in may carry aliases — a `#tag` is one word and half the premade regions are not |
 | D45 | Uninstalling a pack **tombstones the user's own connections** into departing events, though it still hard-removes the pack's own (D37 is about pack records) |
 | D46 | Import **validates every record** and **clamps absurd future timestamps**, reversing §8.7's decision to leave both out of v1 |
@@ -65,22 +65,22 @@ map are deferred — but the data model is shaped so that none of them require a
 | D51 | The kernel bandwidth is **β = 3 px**: β and the height exponent `p` cannot be chosen independently |
 | D52 | The pannable frame is events **and** eras, and a stated default when there is neither |
 | D53 | ~~The depth view's three label systems share **one occupancy**, and event titles are anchored outside the era lanes — fitted to the room there is, or not drawn~~ — removed, see D70 |
-| D54 | A vagueness halo is a **ring at the true radius**, not a filled disc — revising how D43 is drawn |
-| D55 | Clustering is a grid **plus agglomerative passes**, merging against the radii the dots are actually **drawn** at |
+| D54 | ~~A vagueness halo is a **ring at the true radius**, not a filled disc — revising how D43 is drawn~~ — removed, see D70 |
+| D55 | ~~Clustering is a grid **plus agglomerative passes**, merging against the radii the dots are actually **drawn** at~~ — removed, see D70 |
 | D56 | Additive arc ink falls as `1/√n`, so a bundle brightens as `√n` instead of saturating to white |
 | D57 | Selecting an event **reveals** it: every view moves to show it, and a window more than four times the event's own period counts as not showing it |
 | D58 | The footer is **status**; everything that creates something is header chrome — and first run is a takeover, not a layer over live chrome |
 | D59 | First run **offers** the "my life" era rather than always creating one: skipping creates no era, only the premade tags — revising D26 |
 | D60 | One Escape stack, **topmost wins**; a modal traps focus and silences the window-level shortcuts while it is up |
-| D61 | The list is a `listbox` and the canvases are `application` — revising the `grid`-of-`span`s and `img`-with-`tabIndex` roles, which announced the opposite of what they are |
+| D61 | The list is a `listbox` and the canvas is `application` — revising the `grid`-of-`span`s and `img`-with-`tabIndex` roles, which announced the opposite of what they are |
 | D62 | Faint ink is **one token at full opacity**, and only on the page plane: on the chart surface `paper-dim` is the contrast floor |
 | D63 | Below `sm` the wordmark and the view switcher leave the header — capture keeps the width (§9) |
 | D64 | The app checks for a newer build hourly and **says when one has installed itself**, because the worker evicts the assets the running tab is using |
 | D65 | A date is edited in **one text field with no mode selector**: `formatTime` round-trips through `parseTime`, so the text carries the mode — revising §2.2's "the selector exists for editing" |
-| D66 | An event can be **placed by clicking the map**, and the precision is read off the zoom — D43 applied to input rather than to drawing |
-| D67 | A place may be **a name with no coordinates**, and a bundled gazetteer (Natural Earth plus hand-written historical places) turns the names history uses into points, offline |
+| D66 | ~~An event can be **placed by clicking the map**, and the precision is read off the zoom — D43 applied to input rather than to drawing~~ — removed, see D70 |
+| D67 | ~~A place may be **a name with no coordinates**, and a bundled gazetteer (Natural Earth plus hand-written historical places) turns the names history uses into points, offline~~ — removed, see D70 |
 | D68 | `?demo` opens **a separate database seeded from the synthetic generator**, with backups off and a banner that cannot be dismissed — the app can be shown, and judged, without anyone's real timeline |
-| D69 | A map dot is coloured by **the coloured tag most of its events carry**, an uncoloured sub-region taking its parent's colour — not by the first tag of whichever event sorted first |
+| D69 | ~~A map dot is coloured by **the coloured tag most of its events carry**, an uncoloured sub-region taking its parent's colour — not by the first tag of whichever event sorted first~~ — removed, see D70 |
 | D70 | The depth view, the map and the packs are removed (Oct 2026): one canvas, the flat timeline, plus the list. The product is the mass, the connections and the eras; everything else was weight |
 
 Conventions, settled and not worth further discussion:
@@ -427,8 +427,8 @@ does: filtering by Europe shows an event tagged only Norway, so offering "Europe
 would reveal thirty is a lie told every time. An event counts once per tag however many of that
 tag's descendants it carries.
 
-One filter predicate, evaluated once per frame, consumed by every view (canvas, list, and the
-map in v2). Its rules:
+One filter predicate, evaluated once per frame, consumed by every view (canvas and list).
+Its rules:
 
 - **Events** pass on their own tags, with parent tags rolling up (D14), composed with the
   `mine / mine + packs` toggle (D5).
@@ -477,7 +477,7 @@ type Connection = Base & {
 
 type Tag = Base & {
   name: string;
-  kind: 'region' | 'theme' | 'user';   // D14 — drives map and premade sets without name hacks
+  kind: 'region' | 'theme' | 'user';   // D14 — drives premade sets without name hacks
   parent?: Id;                          // Europe > Norway, for rollup filtering
   color?: string;
 };
@@ -621,8 +621,7 @@ recoloured (§8.7).
 back anyway through the other end of the same pipe: a `#tag` is one word, and eight of the twenty
 premade regions are not — "Britain and Ireland", "the Nordics", "the Near East". `ensureTags`
 compared names exactly, so `#britain` and `#north-america` each invented a private tag beside the
-built-in one, and because the map places an event by its region tag, the event simply never
-appeared on the map. Names are now compared normalised — `-`, `_` and a space are the same
+built-in one, and the event simply never showed under the region's filter. Names are now compared normalised — `-`, `_` and a space are the same
 character, a leading article is dropped — and a built-in may declare `aliases` for genuine
 synonyms (`#germany` for "German lands"), never for its parts, which deserve the user's own tag.
 The normalisation applies to the user's own tags too, so "Reading List" answers to
@@ -835,8 +834,7 @@ finger would be the canvas arguing with the hand.
 said and nothing else, which made the first thing anyone does with a link look broken: opening
 `#e=…` described an event in July 1990 beside a canvas showing five thousand years, with the
 event a hairline at the right-hand edge and the list still at the top of the corpus. Every view
-now moves to the selection — the timeline and the map's window in time, the map's camera in
-space, and the list by scrolling.
+now moves to the selection — the timeline in time, and the list by scrolling.
 
 The rule has two halves, and the second is the one worth arguing. *Where*: keep the span the
 user chose wherever it already shows the event, because a reveal is a pan whenever a pan is
@@ -892,12 +890,8 @@ and retype. The title is a borderless input styled as the heading; the date is t
 `TimeField` (D65); the tag chips carry a `×` and a `+ tag` box beside them. All three commit on
 blur or Enter and revert on Escape, never per keystroke.
 
-The tag box suggests over the whole vocabulary, **grouped, with the regions first and labelled
-`regions — these place the event on the map`**, and every region chip — here and on the filter
-bar — carries a small pin. That is the whole answer to the one thing nobody worked out about the
-map: almost every dot on it is placed by a region tag (§11.4), and until the pin existed there
-was nothing anywhere in the interface saying which of thirty words were geography. Tags are
-emitted as **names**, never ids, so that `ensureTags` remains the single answer to what a word
+The tag box suggests over the whole vocabulary, **grouped by kind** — regions, themes, yours.
+Tags are emitted as **names**, never ids, so that `ensureTags` remains the single answer to what a word
 means (D20, D44) — one `commit` covers resolving the names, inventing any that are new, and the
 edit itself, so an undo takes back the tag and the tagging together.
 
@@ -915,12 +909,11 @@ and what the connect picker had been declaring correctly all along; the containe
 `presentation`, since a listbox owns its options directly. `aria-selected` stays the selection
 and `aria-current` stays the cursor, for the reason §6.4 gives.
 
-The canvases were mislabelled in the opposite direction: `role="img"` on a focusable element
+The canvas was mislabelled in the opposite direction: `role="img"` on a focusable element
 whose arrow keys pan it and whose `+`/`−` zoom it, which is a picture as far as a screen reader
-is concerned — so it swallows exactly those keys. They are `role="application"` with an
+is concerned — so it swallows exactly those keys. It is `role="application"` with an
 `aria-roledescription` and a label that says what the keyboard does and where the same data is
-available as text. The map keeps the role and admits in its label that it is pointer-only for
-now.
+available as text.
 
 The list takes the filtered corpus from the app rather than filtering again. It was running
 `applyFilter` over the whole timeline inside the same memo as the search, so every keystroke in
@@ -1045,8 +1038,7 @@ implies: an empty note wants a cursor, a written one wants to be read.
 of them — the note, a connection's argument, an era's name, `learned from` — wrote through to the
 store on every keystroke: a database write, a re-render of the whole app, and an `updated_at`
 recording the moment of the last letter rather than the moment of the thought. The draft is now
-held in the component and committed on about half a second of idle and on blur, which is what the
-place field had always done and what nothing else had copied. It complements rather than replaces
+held in the component and committed on about half a second of idle and on blur. It complements rather than replaces
 the undo coalescing (§8.6): the window is one second per `(kind, id, field)`, so a slow typist
 still gets one undo entry per sentence rather than one per pause.
 
@@ -1121,7 +1113,7 @@ deployed static to Cloudflare Pages.**
   code, no rewrite. Worth knowing the door is open; not worth walking through now.
 
 Stack: **Vite + TypeScript + React + Tailwind**, with a small state store (Zustand). React for
-the ecosystem — a Markdown editor now, a map in v2. The renderer boundary (D11) means React
+the ecosystem — a Markdown editor, for one. The renderer boundary (D11) means React
 never touches the canvas, so this choice stays reversible.
 
 **Mobile is a capture-and-browse client.** Full connection authoring is desktop. Pinch-zoom on
@@ -1470,7 +1462,7 @@ Ordered to put the risky, distinctive work first and the CRUD last.
 | ~~**M3**~~ | ✅ Connections: the creation flow from both the picker and the canvas, arcs with tag colour and additive blending, hit-testing and selection on the canvas, the Markdown subset and the note editor, connections in the event pane. 598 tests. |
 | ~~**M4**~~ | ✅ Tag filtering with rolled-up counts and the packs toggle, animated mass redistribution, era lanes below the axis, era creation and editing. 635 tests. |
 | ~~**M5**~~ | ✅ Two bundled packs with install, upgrade, adoption and uninstall; the two-layer mass; the premade tags as records; a hand-rolled service worker with verified offline loading; the mobile layout. 687 tests. |
-| **Later** | Map view · AI-suggested tags · document ingestion · social layer and sync. |
+| **Later** | AI-suggested tags · document ingestion · social layer and sync. |
 
 **M1 is the decision point.** Everything before it is cheap; everything after it assumes the
 core view works.
@@ -1506,7 +1498,7 @@ already did.
 
 The empty start is right for the person whose timeline it is and wrong for everyone else: a
 friend shown the app sees one question and a blank axis, and nothing in it — the mass, the arcs,
-the map — can be judged against a corpus without shape. Packs do not fix that; two
+the eras — can be judged against a corpus without shape. Packs do not fix that; two
 wars are a narrow slice, and installing them into a real timeline to make a point is exactly the
 contamination §5 warns about.
 
@@ -1580,150 +1572,3 @@ Outside the design: the app is called **Årlinje**, provisionally — the name m
 it out of module names and types. `arlinje` is the ASCII form, used for the package and anywhere
 a diacritic would be hostile. It still needs somewhere to live (`arlinje.aslakhellevik.no`, or
 its own domain); neither blocks anything.
-
----
-
-## 11. The spatial view (D17, D41–D43)
-
-Built after v1, ahead of schedule, because §5's packs gave the corpus enough geography to make it
-worth looking at. The README always described it: "a world map with dots, driven by the geographic
-tag or an explicit location. Ideally coupled to the timeline — scrub through time and watch the
-map fill in."
-
-### 11.1 Coupled to time, which is the point
-
-A static map of everything says where you have read about, not what happened when — and the
-timeline already answers the first question better. So the map draws only what overlaps the
-current window, and carries a scrubber along the bottom: a density strip of the whole corpus with
-the window as a lit band. Drag it and the dots fill in and drain away.
-
-The window is the same `(start, end)` the other views use, so switching views keeps your place.
-An event counts as present if its span *overlaps* the window rather than if its midpoint falls
-inside: the Second World War belongs on the map for every year of it, not only for 1942.
-
-The canvas has two regions and each has exactly one meaning — the map pans and zooms in space,
-the scrubber moves and resizes the window in time. Two interaction models sharing one surface is
-a surface nobody can predict.
-
-### 11.2 Equal Earth (D41)
-
-Equal-area, and not for looks. The map answers "where do I know about", which is a question about
-*how much*, and Mercator inflates Greenland to the size of Africa — a view whose whole point is
-comparing quantities cannot sit on a projection that distorts them by an order of magnitude at
-the latitudes a European user cares most about. Equal Earth (Šavrič, Patterson & Jenny, 2018) has
-a closed-form forward, an inverse by Newton iteration, and looks like a world map rather than a
-diagram. The equal-area property is asserted by a test rather than assumed.
-
-### 11.3 Coastlines, not borders (D42)
-
-The data could as easily have been countries, and borders would look richer. They would also be a
-lie on this particular map: a timeline running from the Bronze Age to last week cannot draw the
-frontiers of 2026 across it and call the result a picture of anything. The README says as much —
-"the hard part is not the map; it is that borders and place names move". Coastlines move too, but
-over millennia rather than decades, so one outline is an honest backdrop for the whole span.
-
-Natural Earth's 110m land outline, public domain, committed to the repo rather than pulled from a
-package — 55 kB of TopoJSON, decoded by twenty lines written here. A runtime dependency for that
-much arithmetic is not a trade worth making, and the data now cannot change underneath the app.
-
-### 11.4 Vagueness is drawn (D43)
-
-Almost no event has coordinates, and asking users to geocode everything they read about would
-make capture slow — which is the stated top product risk. So an event with no `place` is located
-by its **most specific region tag**, read straight off the radius so adding a region needs no
-ordering table.
-
-Those are representative points *with a radius*, not centroids, and each dot carries a halo at
-its true size. An event tagged only *Asia* is vague to two thousand kilometres, because that is
-genuinely all that is known about where it happened. Drawing it as a neat dot would be the same
-lie the time model refuses to tell about dates. A centroid would be worse than useless here: the
-centroid of Europe's landmass is in Belarus.
-
-**The halo is a ring, not a disc (D54).** The claim it makes is "known to within about here",
-which is a statement about an edge — and at world zoom the filled version was a hundred and
-twenty-five pixels of flat translucency saying nothing the outline does not, over the part of the
-map the eye was meant to land on. Worse, the halos were drawn inside the per-cluster loop, so
-every small cluster's wash went over the large dots already painted. All of them are drawn in one
-pass before any dot now, as a hairline at the true radius with a very soft gradient inside it so
-it does not read as a drawn boundary.
-
-Clustering happens in **screen space**, on the same reasoning as the density's screen-space
-bandwidth (§3.1) — what matters is whether two dots would overlap where they are drawn. Zooming
-in therefore separates a cluster into its parts, exactly as zooming the timeline resolves mass
-into events. Dot area is proportional to count, and a cluster is anchored by its *best*-placed
-member, so one precise event among fifty vague ones is not drawn as continent-sized.
-
-**A grid does not deliver that, and the grid was all there was (D55).** Bucketing by
-`round(x / cell)` puts two points a fifth of a pixel apart into different buckets whenever the
-cell boundary falls between them, and the promise in `clusterEvents`' own first line — no two
-clusters closer than `radius` — was simply false. Against a real corpus it showed: at world zoom
-the European region anchors sit nine to twenty-nine pixels apart and are drawn as fifty-pixel
-discs, so the map opened on a stack of five overlapping counts over France with nothing legible
-in it. The grid is now the cheap first cut, and two or three agglomerative passes finish the job:
-any two clusters whose **drawn** discs would overlap become one. Drawn, not stated — whether two
-dots overlap depends on how the renderer sizes them, so the radius function is passed in rather
-than assumed, and the clustering and the drawing can no longer disagree. A sweep ordered in `x`
-keeps it near-linear, and the ordering is a deterministic function of position, so the grouping
-does not flicker between frames.
-
-The size cap moved with it. Area proportional to count is right, and `min(26, 3.4·√n)` saturated
-at fifty-nine events — so on this corpus a Europe of four hundred and ninety-seven was drawn
-exactly as large as a Britain of sixty-one, and the encoding was gone across most of the range
-that matters. Forty saturates at a hundred and thirty-eight, which is a disc a map can hold;
-above it the count label carries what the area no longer can, which is why the label is drawn on
-every dot big enough to hold one.
-
-**A dot's colour is a plurality, not an accident (D69).** It was the first coloured tag of the
-cluster's first event — so against the demo corpus Europe's dot of eleven hundred was drawn
-orange, a colour that belongs to Africa and to art, on the strength of whichever tag the event
-that happened to sort first carried, and a single new event could repaint a continent. It is now the coloured tag the most members carry, ties broken by
-tag order so the answer does not depend on event order either: the arcs' own rule (a tag both
-endpoints share wins, §6.1) extended from two events to many. Nearly every event has a region, so
-in practice a dot is its region's colour, which is the colour of the chip that filters to it.
-Sub-regions — Japan, France, the German lands — have no colour of their own and now take their
-parent's, so an event typed `#japan` alone counts as Asian. A cluster with no region at all, such
-as events placed by coordinates and tagged only by theme, is coloured by its commonest theme,
-which is the most informative thing left to say about it.
-
-Coordinates can be typed as `59.91, 10.75` — the same choice as the era span field, since a
-map-picker for a field almost nobody fills in is a lot of interface for very little. Impossible
-pairs are rejected rather than clamped: a latitude of 200 is a typo or a swapped pair, and
-quietly moving it to the pole hides the mistake in the one place it would look plausible.
-
-**A place may be a name, and there is a gazetteer for the names history uses (D67).** The field
-accepted coordinates and nothing else, so typing `Constantinople` reddened the box — although
-`name` is the first field of `Place` and the only one that is not optional. Three routes now, in
-the order a person reaches for them. A name the gazetteer knows brings its coordinates *and its
-own radius*, offered as suggestions while typing and attached on Enter. A name it does not know
-is stored as a name, with the field saying plainly that this is not yet a point on the map and
-offering the two ways to make it one. Coordinates still work, and now include `59,91 10,75` and
-`N59.91 E10.75` — a decimal comma is how half of Europe writes a number, including the country
-this app is named in, and refusing it was a parochialism.
-
-The gazetteer is bundled, for the reason the coastlines are (D25): geocoding a place name is
-exactly the request that would leak what someone is reading, to a third party, from a timeline
-they were told never leaves the device. Twelve kilobytes of `name|lat|lon|precisionKm`, from three
-sources — Natural Earth's 243 populated places at 25 km each, its 177 countries at their label
-point with the radius derived from the country's own area (`√(area/π)`, so Russia is 2321 km and
-Monaco is the 10 km floor), and about sixty-five **historical** places written by hand. The last
-group is the half that matters and the half no modern gazetteer has: Constantinople is not
-Istanbul, Carthage is not a suburb of Tunis, and the radius is the size of the place as it was.
-
-**And an event can be placed by clicking the map (D66).** "A map-picker for a field almost nobody
-fills in is a lot of interface for very little" was right about a *picker* and wrong about the
-map, which already exists, already knows how to turn a pixel into a point, and is the only
-surface on which the answer to "where did this happen" is obvious. The mode is armed from the
-place field, held in the store beside `connectFrom` — one piece of state the whole app can read
-rather than a flag inside whichever component is mounted — and announced by a banner in the same
-yellow, cancelled by the same Escape. The app switches to the map and comes back afterwards to
-where it was, because the offer is made from a pane reachable from every view.
-
-The precision comes from the **zoom**, not from a constant: six pixels is about as accurately as
-anyone points, and six pixels is two hundred kilometres at world zoom and five in close. So a
-click while looking at the whole of Europe records a Europe-sized uncertainty, and the halo drawn
-for it tells the truth without anyone having to think about it. That is D43 applied to input
-instead of to drawing — the same refusal to record a confidence nobody has. A name already typed
-survives the click: someone who wrote "Constantinople" and then pointed at the Bosphorus has said
-two true things about the place, and keeping only the numbers loses the better half.
-
-

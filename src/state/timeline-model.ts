@@ -401,7 +401,7 @@ export function removeConnection(
  * character and a leading article is dropped, because a `#tag` is one word and
  * half the premade regions are not. Without it `#nordics` and `#north-america`
  * each invented a private tag beside the built-in one, and the event never
- * appeared on the map. A premade tag reached by one of its other spellings is
+ * showed under the region's filter. A premade tag reached by one of its other spellings is
  * materialised at its fixed id rather than copied under a new one (D20/D39).
  */
 export function ensureTags(

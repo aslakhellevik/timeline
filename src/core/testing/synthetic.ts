@@ -840,8 +840,7 @@ function generateDrafts(rng: Rng, count: number, userTagIds: readonly Id[], pare
     const tags = chooseTags(rng, cluster, parentOf, userTagIds);
 
     // Keep the place consistent with the region tag where there is one: a Mediterranean
-    // event should not be titled after a Norwegian fjord, and the future map view (D17)
-    // will want lat/lon that agree with the filter.
+    // event should not be titled after a Norwegian fjord.
     // Rolls up (D14): an event tagged only `tag.region.europe` still gets a European
     // place, because every place carries the *narrow* region tag.
     const region = tags.find((t) => t.startsWith('tag.region.'));

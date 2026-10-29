@@ -5,7 +5,6 @@ import { connectionsFor } from '../state/timeline-model';
 import { useTimeline } from '../state/timeline-store';
 import { DetailPane } from './DetailPane';
 import { MarkdownEditor } from './MarkdownEditor';
-import { PlaceField } from './PlaceField';
 import { TagEditor } from './TagEditor';
 import { TimeField } from './TimeField';
 import { Button, Field, plural } from './controls';
@@ -70,8 +69,13 @@ function EventPane({
 
   const [title, setTitle] = useState(event.title);
   const titleRef = useRef<HTMLInputElement>(null);
-  /** Asks the tag editor to open — the place field's `add a region` link. */
-  const [tagFocus, setTagFocus] = useState(0);
+
+  // Only the name is edited. Coordinates an older record carries are kept with
+  // it, and nothing reads them any more (D70); an emptied box removes the place.
+  const place = useDraft(event.place?.name ?? '', (value) => {
+    const name = value.trim();
+    updateEvent(event.id, { place: name.length > 0 ? { ...event.place, name } : undefined });
+  });
 
   const learnedFrom = useDraft(event.learned_from ?? '', (value) =>
     updateEvent(event.id, { learned_from: value }),
@@ -154,7 +158,6 @@ function EventPane({
       <TagEditor
         tags={event.tags}
         onChange={(names) => setEventTags(event.id, names)}
-        focusRequest={tagFocus}
       />
 
       {/*
@@ -209,7 +212,13 @@ function EventPane({
         rows={6}
       />
 
-      <PlaceField event={event} onAddRegion={() => setTagFocus((current) => current + 1)} />
+      <Field
+        label="place"
+        value={place.value}
+        onChange={(change) => place.onChange(change.target.value)}
+        onBlur={place.flush}
+        placeholder="Constantinople"
+      />
 
       {/*
         D10: when and from where you learned it. Half the point of the project —
