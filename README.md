@@ -18,6 +18,8 @@ interesting content is not the events but the reasoning between them.
 v1 is done: single user, local-first, no accounts, no server, an installable PWA that works
 offline and on a phone. The technical decisions live in [docs/design.md](docs/design.md).
 
+Built by Aslak Hellevik and Eivind Hjertholm, with Claude Code.
+
 ## Core concepts
 
 ### Events
