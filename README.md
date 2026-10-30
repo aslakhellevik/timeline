@@ -5,6 +5,11 @@ news, lectures — placed on a shared axis of time, and connected to each other.
 
 *Årlinje* — year-line. The package and any ASCII-only contexts use `arlinje`.
 
+**Live at [timeline.aslakhellevik.no](https://timeline.aslakhellevik.no)** — and
+[`/?demo`](https://timeline.aslakhellevik.no/?demo) shows a full, synthetic one first.
+
+![The demo timeline: five thousand years of mass, with connection arcs over it and eras in lanes below](docs/screenshot-demo.png)
+
 Most timelines are canonical and impersonal: someone else decided what belongs on them. This
 one is a record of an individual's accumulated historical knowledge. It grows as you read and
 talk to people, and its shape says something about what you know and how you connect it. The
@@ -185,7 +190,8 @@ Things worth trying in it:
 
 It is a static build served from a Cloudflare Worker with static assets, at
 `timeline.aslakhellevik.no` (`wrangler.jsonc`). All paths in the build are relative, so `dist/`
-also works from any other host or subdirectory.
+also works from any other host or subdirectory — to run your own copy, change the route in
+`wrangler.jsonc` or just serve `dist/` from anywhere.
 
 ```
 npx wrangler login   # once per machine

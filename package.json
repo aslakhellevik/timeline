@@ -3,7 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Arlinje - a personal historical timeline",
+  "description": "Årlinje — a personal historical timeline: the events you have encountered, placed on one axis and connected",
+  "homepage": "https://timeline.aslakhellevik.no",
+  "repository": { "type": "git", "url": "https://github.com/aslakhellevik/timeline.git" },
   "license": "MIT",
   "scripts": {
     "dev": "vite",
